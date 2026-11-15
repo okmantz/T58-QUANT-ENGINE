@@ -84,3 +84,35 @@ account_settings.json
 
 # per-install id used to detect an uninstall + reinstall (master-key clean slate)
 .t58_install_id
+
+# --- Local run output (tests and normal use write these; never source) ---------------------------------------------------------
+# Downloaded/imported market files. The three shipped parquet files under data/raw/<SYMBOL>/ are tracked; everything else is yours.
+data/raw/*.csv
+data/raw/*.csv.*
+data/raw/*.parquet
+data/achievements.json
+data/journal/
+data/forward_test/
+data/buy_challenge/
+data/gamma/
+data/guardian/
+data/prop_desk/
+data/ui_prefs.json
+data/config/issue_reports.jsonl
+data/config/validation_checklist.json
+reports/*.html
+reports/*.json
+reports/*.csv
+reports/*.jsonl
+reports/full_pipeline/
+# Saved strategies are per-user. Keep the folder layout, the format docs and the four shipped examples only.
+strategies/manual/*
+!strategies/manual/.gitkeep
+strategies/**/*.meta.json
+strategies/**/.versions/
+strategies/**/searchlab_*
+strategies/**/stub.*
+strategies/**/*FULL PIPELINE*
+reports/*.head
+reports/*.lock
+data/raw/EURUSD/
