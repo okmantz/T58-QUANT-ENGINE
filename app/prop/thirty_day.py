@@ -9,7 +9,7 @@ It deliberately does NOT rank on Sharpe, profit factor, annual return, a strateg
 A strategy that passes 99% of the time given unlimited time, but takes ten months, scores ~0 here -- correctly.
 
 Design rules (each one answers a defect found in the 2026-11 audit of the NQ Gap-Aligned Opening Drive report, see
-``docs/PROP30_AUDIT.md``):
+``docs/RESEARCH_AND_AUDIT.md``):
 
 * The clock starts at the PURCHASE day, not at the first trade. ``PropRules``-level ``calendar_days_to_pass`` counts from the
   account's first trade day, which flatters a sparse strategy (it would "start" on its first signal). Here a window opens on the

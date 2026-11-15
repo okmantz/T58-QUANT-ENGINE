@@ -628,8 +628,8 @@ def run_execution(
     _bes = getattr(risk, "blocked_entry_slots", None)
     if _bes and n:
         try:
-            from app.backtest.time_slots import slot_mask_for_timestamps
-            _slot_blocked_bar = slot_mask_for_timestamps(df["timestamp"], _bes)
+            from app.backtest.time_slots import slot_clock, slot_mask_for_timestamps
+            _slot_blocked_bar = slot_mask_for_timestamps(slot_clock(df), _bes)      # D-6: exchange clock, not UTC
         except Exception as _e:  # noqa: BLE001
             import warnings
             warnings.warn(f"blocked_entry_slots could not be applied ({_e}); time filter is DISABLED for this run.", RuntimeWarning)

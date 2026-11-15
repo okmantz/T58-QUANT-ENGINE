@@ -71,6 +71,24 @@ class InstrumentJob:
     instrument: str
     timeframe: str
     csv_path: str | Path
+    companions: dict | None = None      # {role-or-SYMBOL: csv path}; attached causally as x_<key>_<field> columns (cross-market context)
+
+
+def _attach_job_companions(job, df, import_csv_fn=None):
+    """Load ``job.companions`` (role -> csv) and attach them to ``df`` causally. A companion that cannot be imported is an error, not a silent skip."""
+    comps = getattr(job, "companions", None)
+    if not comps:
+        return df
+    from app.data.importer import import_csv as _imp
+    from app.data.market_context import attach_companions
+    loaded = {}
+    for key, path in comps.items():
+        r = (import_csv_fn or _imp)(path)
+        if not r.is_valid:
+            raise ValueError(f"Could not import companion {key} ({path}): " + "; ".join(r.errors))
+        loaded[key] = r.dataframe
+    return attach_companions(df, loaded)
+
 
 
 @dataclass
@@ -140,7 +158,7 @@ def run_multi_instrument_search(
                 raise ValueError(
                     f"Could not import {job.csv_path}: " + "; ".join(import_result.errors)
                 )
-            df = import_result.dataframe
+            df = _attach_job_companions(job, import_result.dataframe)
             db_path = db_dir / f"{job.instrument}_{job.timeframe}.db"
             # v7 (2026-10-05): per-leg pip_size resolution -- the same fix as
             # app/search/cross_instrument.py. A single global RiskConfig must
@@ -278,7 +296,7 @@ def run_multi_instrument_search_loop(
                 raise ValueError(
                     f"Could not import {job.csv_path}: " + "; ".join(import_result.errors)
                 )
-            df = import_result.dataframe
+            df = _attach_job_companions(job, import_result.dataframe)
             job_loop_dir = db_dir / f"{job.instrument}_{job.timeframe}"
             log(job, f"Starting Loop Mode ({per_job_workers} worker(s))...")
             result = run_search_loop(

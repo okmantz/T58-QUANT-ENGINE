@@ -18,6 +18,61 @@ FAMILIES: dict = {
     "SF11": ("Overlay layer", ("L01", "L02", "L03", "L04", "L05", "C03"), "Adaptive"),
 }
 
+# The Unified Study's own SF table leaves five registry hypotheses out. They are assigned here (our assignment, not the study's) so every one of the
+# 60 sits in exactly one family: B04 short-term RSI reversal -> SF3 (mean reversion); G02 prior-extreme liquidity sweep -> SF3 (reversion to a level);
+# B07 post-0DTE-gamma order-flow reversal -> SF6 (order flow; not testable on bars); H01 ES-NQ two-leg spread -> SF8 (hedged form excluded, rejected
+# for this account type); J03 post-announcement drift -> SF9 (event-driven).
+FAMILY_ASSIGNMENT_EXTENSIONS: dict = {"SF3": ("B04", "G02"), "SF6": ("B07",), "SF8": ("H01",), "SF9": ("J03",)}
+for _sf, _ids in FAMILY_ASSIGNMENT_EXTENSIONS.items():
+    _n, _h, _t = FAMILIES[_sf]
+    FAMILIES[_sf] = (_n, tuple(_h) + tuple(i for i in _ids if i not in _h), _t)
+
+# Engine family name (app.search.strategy_space.FAMILIES) -> SF family, by name keywords (first match wins). Unmatched names are unclassified (weight 1).
+_ENGINE_SF_KEYWORDS = (
+    ("SF6", ("order_flow", "delta_divergence", "toxicity", "absorption")),
+    ("SF9", ("event", "economic_calendar", "fomc", "opex", "holiday", "turn_of_month", "month_end", "inflation_surprise")),
+    ("SF8", ("pairs", "leader", "intermarket", "cointegrated", "basket", "leadlag", "relative_strength", "dollar_driven", "copper", "gold_silver")),
+    ("SF11", ("throttle", "meta_label", "forecast_gated", "equity_curve", "stand_aside")),
+    ("SF10", ("hmm", "ridge", "triple_barrier", "ensemble", "analog", "changepoint", "cusum")),
+    ("SF7", ("session", "time_stop", "midday", "power_hour", "london_ny", "thin_session", "day_of_week", "seasonal", "friday", "monday", "overnight", "eod_", "power_of_three")),
+    ("SF5", ("volume",)),
+    ("SF4", ("squeeze", "contraction", "compression", "vol_regime", "vol_of_vol", "choppiness", "atr_regime", "vol_managed", "gamma", "gex", "variance")),
+    ("SF3", ("reversion", "fade", "reversal", "magnet", "rsi", "sweep", "stop_run", "bounce", "mean_")),
+    ("SF2", ("breakout", "opening_range", "orb", "donchian", "range_break", "nr_", "retest")),
+    ("SF1", ("trend", "momentum", "tsmom", "pullback", "supertrend", "sar", "ichimoku")),
+)
+
+
+def engine_family_to_sf(name: str):
+    n = str(name or "").lower()
+    for sf, keys in _ENGINE_SF_KEYWORDS:
+        if any(k in n for k in keys):
+            return sf
+    return None
+
+
+def sf_score(sf: str, objective_mode: str = "prop") -> float:
+    """Registry-derived prior for a family: mean of (priority + the objective's potential) over its RUNNABLE hypotheses, 0 when it has none.
+    Objective B (payout / prop_net) weighs funded potential; Objective A weighs evaluation potential."""
+    from .hypotheses import NOT_TESTABLE_ON_BARS, get
+    ids = FAMILIES.get(sf, ("", (), ""))[1]
+    vals = []
+    for i in ids:
+        h = get(i)
+        if not h.runnable or i in NOT_TESTABLE_ON_BARS:
+            continue
+        pot = h.funded_potential if str(objective_mode) in ("payout", "prop_net") else h.eval_potential
+        vals.append(h.priority + pot)
+    return sum(vals) / len(vals) if vals else 0.0
+
+
+def rank_engine_families(names, objective_mode: str = "prop") -> list:
+    """Stable order of ``names`` by registry prior (best first). Nothing is removed: the ordering decides who gets the candidate budget first."""
+    names = list(names)
+    sc = {n: sf_score(engine_family_to_sf(n) or "", objective_mode) for n in names}
+    return sorted(names, key=lambda n: -sc[n])
+
+
 # Gate -> requirement (Statistical_Methodology section 7; thresholds are the document's [PROPOSED] values).
 GATES: dict = {
     "G0": "Registration: hypothesis, family, grid, cost model, metrics and thresholds written before the run",

@@ -83,7 +83,8 @@ def grid_from_trades(trades) -> tuple[list, list]:
     cnt = [[0] * 24 for _ in range(7)]
     for t in trades or []:
         try:
-            ts = pd.Timestamp(t.entry_time)
+            from app.backtest.time_slots import slot_time_of
+            ts = pd.Timestamp(slot_time_of(t))
             pnl[int(ts.day_of_week)][int(ts.hour)] += float(t.pnl)
             cnt[int(ts.day_of_week)][int(ts.hour)] += 1
         except Exception:  # noqa: BLE001

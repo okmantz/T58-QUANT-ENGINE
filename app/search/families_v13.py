@@ -365,7 +365,7 @@ fam(47, "seasonal_tilt_dom_woy", S_, "Day-of-month and week-of-year tilt", "A ca
     lambda p: [c("kalman_slope_z", 50, ">", 1.0), c(p["season"], 0, ">", p["s"])], lambda p: [c("kalman_slope_z", 50, "<", -1.0), c(p["season"], 0, "<", -p["s"])])
 fam(48, "seasonal_tilt_hour_of_day", S_, "Hour-of-day return tilt", "A causally estimated hourly drift adds edge to another signal.",
     "Merged into seasonal_tilt_dom_woy (same construction, seas_tod): not run on its own.", "OHLCV", {"s": [0.5, 1.0]},
-    lambda p: [c("kalman_slope_z", 50, ">", 1.0), c("seas_tod", 0, ">", p["s"])], lambda p: [c("kalman_slope_z", 50, "<", -1.0), c("seas_tod", 0, "<", -p["s"])],
+    lambda p: [c("kalman_slope_z", 50, ">", 1.0), c("seas_tod_next", 0, ">", p["s"])], lambda p: [c("kalman_slope_z", 50, "<", -1.0), c("seas_tod_next", 0, "<", -p["s"])],
     retired_to="seasonal_tilt_dom_woy")
 
 # ============================================================================================ 5. microstructure and order flow

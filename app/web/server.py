@@ -4439,6 +4439,7 @@ def replay_rerun(replay_id):
         contract_size=(float(form.get("contract_size")) if form.get("contract_size") else old_risk.contract_size),
         commission_per_trade=(float(form.get("commission")) if form.get("commission") not in (None, "") else old_risk.commission_per_trade),
     )
+    new_risk = _fill_unposted_costs(form, new_risk, _instrument_label_from_form(form) or source.get("active_label"))   # same cost policy as every other path
     new_risk = harden_risk_config(new_risk, prop_rules=prop_rules_from_form(form), form=form)
     prop_account_size = float(form.get("account_size") or new_risk.initial_balance)
     prop_rules_form = _parse_replay_prop_rules(form)

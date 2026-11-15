@@ -134,6 +134,11 @@ def flow_absorption(f, p, c, l):
 
 
 def _aux(frame: pd.DataFrame, key: str) -> pd.DataFrame | None:
+    if f"x_{key}_close" in frame.columns:            # market_context columns: already aligned to this frame's bars (causal close-time rule)
+        d = pd.DataFrame({c: frame[f"x_{key}_{c}"].to_numpy() for c in ("open", "high", "low", "close", "volume") if f"x_{key}_{c}" in frame.columns})
+        d.insert(0, "timestamp", pd.to_datetime(frame["timestamp"]).to_numpy())
+        d.attrs["pre_aligned"] = True
+        return d
     other = frame.attrs.get(key) if hasattr(frame, "attrs") else None
     if not isinstance(other, pd.DataFrame) or other.empty:
         return None
@@ -160,11 +165,13 @@ def leader_return(f, p, c, l):
         return _zeros(f)
     try:
         n = max(1, int(p))
-        o = other.sort_values("timestamp")
+        o = other.sort_values("timestamp").copy()
         tr = (o["high"] - o["low"]).rolling(14, min_periods=3).mean().shift(1)
         o["lead_ret"] = (o["close"] - o["close"].shift(n)) / tr.replace(0, np.nan)
-        m = pd.merge_asof(base[["timestamp"]].sort_values("timestamp"), o[["timestamp", "lead_ret"]], on="timestamp", direction="backward")
-        return pd.Series(m["lead_ret"].fillna(0.0).to_numpy(), index=f.index)
+        if other.attrs.get("pre_aligned"):
+            return pd.Series(o["lead_ret"].fillna(0.0).to_numpy(), index=f.index)
+        from app.data.market_context import asof_close           # G-F4: the leader's bar must have CLOSED by this bar's close
+        return pd.Series(asof_close(base.reset_index(drop=True), o.reset_index(drop=True), "lead_ret").fillna(0.0).to_numpy(), index=f.index)
     except Exception:  # noqa: BLE001
         return _zeros(f)
 

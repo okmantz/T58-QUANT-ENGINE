@@ -248,6 +248,13 @@ def _resample_ohlcv_uncached(df: pd.DataFrame, timeframe_label: str, anchor: str
     agg = {"open": "first", "high": "max", "low": "min", "close": "last"}
     if "volume" in work.columns:
         agg["volume"] = "sum"
+    for _extra in ("bid_volume", "ask_volume", "trades"):          # G-F9: true bid/ask volume survives resampling
+        if _extra in work.columns:
+            agg[_extra] = "sum"
+    for _c in work.columns:                                       # market_context companion columns x_<SYM>_<field>
+        if isinstance(_c, str) and _c.startswith("x_"):
+            _f = _c.rsplit("_", 1)[-1]
+            agg[_c] = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}.get(_f, "last")
     agg = {k: v for k, v in agg.items() if k in work.columns}
 
     if use_session:

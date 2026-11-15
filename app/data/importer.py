@@ -42,6 +42,15 @@ STANDARD_COLUMNS = [
 ]
 
 
+# G-F9: optional order-flow columns that used to be stripped on import. When the file carries them they survive (and are summed on resample),
+# so the true bid/ask tier of the flow indicators is reachable from imported data.
+FLOW_COLUMN_ALIASES = {
+    "bid_volume": ["bid_volume", "bidvolume", "bid vol", "bid_vol", "sell_volume", "sellvolume", "volume_sell"],
+    "ask_volume": ["ask_volume", "askvolume", "ask vol", "ask_vol", "buy_volume", "buyvolume", "volume_buy"],
+    "trades": ["trades", "num_trades", "number_of_trades", "trade_count", "ticks"],
+}
+
+
 COLUMN_ALIASES = {
     "timestamp": [
         "timestamp",
@@ -884,6 +893,48 @@ def _data_shows_quarterly_roll_splices(df: pd.DataFrame) -> bool:
         return False
 
 
+_REFERENCE_PAIRS = {"es": "nq", "mes": "mnq", "nq": "es", "mnq": "mes", "ym": "es", "mym": "mes", "rty": "es", "m2k": "mes"}
+
+
+def _reference_symbol(source_name: str) -> str | None:
+    import re as _re
+    base = str(source_name or "").replace("\\", "/").rsplit("/", 1)[-1].lower()
+    m = _re.search(r"(^|[^a-z])(m?es|m?nq|m?ym|m2k|rty)(1!|2!|\.f|_|$|[^a-z])", base)
+    return _REFERENCE_PAIRS.get(m.group(2)) if m else None
+
+
+def _load_reference_frame(source_name: str, df: pd.DataFrame, raw_dir=None) -> Optional[pd.DataFrame]:
+    """Audit D-3: a correlated index future (NQ for ES, ES for NQ ...) from data/raw, used to tell a weekend-open contract SPLICE (only this
+    series jumps) from a real gap (both jump). None when no overlapping file exists -- the detector then behaves exactly as before."""
+    ref = _reference_symbol(source_name)
+    if ref is None:
+        return None
+    import re as _re
+    from pathlib import Path as _P
+    root = _P(raw_dir) if raw_dir else _P(__file__).resolve().parents[2] / "data" / "raw"
+    if not root.exists():
+        return None
+    t0, t1 = pd.to_datetime(df["timestamp"]).min(), pd.to_datetime(df["timestamp"]).max()
+    pat = _re.compile(rf"(^|[^a-z]){ref}(1!|2!|\.f|_|$|[^a-z])", _re.I)
+    for fp in sorted(root.rglob("*.csv"))[:400]:
+        if not pat.search(fp.name) or " (" in fp.name:
+            continue
+        try:
+            r = pd.read_csv(fp, nrows=None, usecols=lambda c: str(c).strip().lower() in ("timestamp", "time", "date", "datetime", "open", "close"))
+            r.columns = [str(c).strip().lower() for c in r.columns]
+            tcol = next((c for c in ("timestamp", "datetime", "time", "date") if c in r.columns), None)
+            if tcol is None or not {"open", "close"}.issubset(r.columns):
+                continue
+            r = r.rename(columns={tcol: "timestamp"})
+            r["timestamp"] = pd.to_datetime(r["timestamp"], errors="coerce")
+            r = r.dropna(subset=["timestamp"])
+            if len(r) and r["timestamp"].min() <= t1 and r["timestamp"].max() >= t0:
+                return r[["timestamp", "open", "close"]].sort_values("timestamp").reset_index(drop=True)
+        except Exception:  # noqa: BLE001 -- an unreadable candidate is simply skipped
+            continue
+    return None
+
+
 def _maybe_back_adjust_continuous(df: pd.DataFrame, source_name: str, issues: list) -> pd.DataFrame:
     """Difference-back-adjust a continuous futures frame at load (v9.5).
 
@@ -919,6 +970,9 @@ def _maybe_back_adjust_continuous(df: pd.DataFrame, source_name: str, issues: li
     import re as _re
     if _re.search(r"(^|[^a-z])(m?es|m?nq|m?ym|m2k|rty)(1!|2!|\.f|_|$|[^a-z])", _base):
         _kw = {"roll_months": (3, 6, 9, 12), "roll_days": range(4, 22)}
+        _ref = _load_reference_frame(source_name, df)
+        if _ref is not None:
+            _kw["reference"] = _ref                    # D-3: weekend-open splices are now detected against the correlated index
     adjusted, report = back_adjust_continuous(df, **_kw)
     desc = report.describe()
     _has_rolls = bool(report.rolls)
@@ -928,7 +982,7 @@ def _maybe_back_adjust_continuous(df: pd.DataFrame, source_name: str, issues: li
         # date-boundary splice to find). With no vendor-style evidence at all, keep the calendar-filtered
         # session-break heuristic exactly as it behaved before this audit.
         from app.data.continuous_contract import back_adjust, describe as _describe_legacy
-        _legacy_adj, _legacy_rolls = back_adjust(df, **_kw)
+        _legacy_adj, _legacy_rolls = back_adjust(df, **{k: v for k, v in _kw.items() if k != "reference"})
         if _legacy_rolls:
             adjusted, desc, _has_rolls = _legacy_adj, _describe_legacy(_legacy_rolls), True
     adjusted.attrs["roll_adjustment"] = desc
@@ -1101,6 +1155,12 @@ def import_csv(
         elif standard_column == "volume":
             df[standard_column] = 0.0
 
+    _lowered = {str(c).strip().lower(): c for c in raw.columns}
+    for _flow_col, _aliases in FLOW_COLUMN_ALIASES.items():
+        _hit = next((_lowered[a] for a in _aliases if a in _lowered), None)
+        if _hit is not None and _hit not in mapping.values():
+            df[_flow_col] = raw[_hit]
+
     # ---------------------------------------------------------
     # Timestamp validation
     # ---------------------------------------------------------
@@ -1189,6 +1249,9 @@ def import_csv(
     df["volume"] = df["volume"].fillna(
         0.0
     )
+    for _flow_col in FLOW_COLUMN_ALIASES:
+        if _flow_col in df.columns:
+            df[_flow_col] = pd.to_numeric(df[_flow_col], errors="coerce").fillna(0.0)
 
     # ---------------------------------------------------------
     # Sort + duplicate handling

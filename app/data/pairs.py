@@ -63,11 +63,10 @@ def merge_pair_series(
     right["timestamp"] = pd.to_datetime(right["timestamp"])
     right = right.sort_values("timestamp").rename(columns={"close": column_name})
 
-    left_sorted = left.sort_values("timestamp")
-    merged = pd.merge_asof(left_sorted, right, on="timestamp", direction="backward")
-    # merge_asof requires sorted-by-key inputs but does not itself guarantee
-    # the ORIGINAL row order is preserved for output -- restore it so every
-    # other part of the pipeline (which assumes df's original bar order)
-    # keeps working unmodified.
-    merged = merged.set_index(left_sorted.index).reindex(left.index)
-    return merged
+    # G-F4: align on CLOSE times -- a bar may only see a pair bar that had already closed by this bar's close (a 1m bar must not see
+    # the close of the 5m bar it sits inside). Identical to the old as-of join when both series use the same bar length.
+    from app.data.market_context import align_companion, infer_bar
+    left["timestamp"] = left["timestamp"]
+    vals = align_companion(left["timestamp"], right["timestamp"], right[column_name], infer_bar(left["timestamp"]), infer_bar(right["timestamp"]), None, index=left.index)
+    left[column_name] = vals
+    return left

@@ -47,7 +47,7 @@ POOL_KINDS: tuple = (
     'premium_discount', 'premium_discount_multi', 'prior_day_range_atr', 'psar_direction', 'psar_line', 'pvo', 'pwk_close_dist',
     'pwk_high_dist', 'pwk_low_dist', 'range_tod_ratio', 'range_tod_zscore', 'relative_volume', 'ridge_forecast', 'roc',
     'rogers_satchell_vol', 'roll_spread', 'round_dist_auto', 'round_dist_es', 'round_dist_gc', 'round_dist_nq', 'round_tag',
-    'rsi', 'runs_z', 'rvgi', 'rvol_tod', 'sample_entropy', 'schaff_trend_cycle', 'seas_tod', 'seasonal_cv_forecast',
+    'rsi', 'runs_z', 'rvgi', 'rvol_tod', 'sample_entropy', 'schaff_trend_cycle', 'seas_tod', 'seas_tod_next', 'seasonal_cv_forecast',
     'semivar_ratio', 'semivol_down', 'semivol_up', 'slope_tstat', 'sma', 'smi', 'spread_z', 'stdev', 'stoch_d', 'stoch_k',
     'stochrsi_d', 'stochrsi_k', 'supertrend_direction', 'supertrend_line', 'swing_bos', 'swing_choch', 't3_dist', 'td_countdown',
     'td_setup', 'tema', 'theil_sen_dist', 'theta_clock', 'tpo_poc_dist', 'tpo_poor_high', 'tpo_poor_low',

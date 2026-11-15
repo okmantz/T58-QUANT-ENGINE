@@ -613,6 +613,11 @@ def run_backtest(
             intrabar_df=intrabar_df,
         )
     execution_warnings = [str(w.message) for w in caught if issubclass(w.category, RuntimeWarning)]
+    try:                                    # D-6: heatmaps / time filters bucket on the same exchange clock the slot filter blocks on
+        from app.backtest.time_slots import annotate_slot_time
+        annotate_slot_time(trades, df)
+    except Exception:  # noqa: BLE001 -- bucketing metadata must never fail a backtest
+        pass
 
     if not compute_stats:
         return BacktestResult(

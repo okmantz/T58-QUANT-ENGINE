@@ -51,7 +51,7 @@ def _heatmap_grid(trades, equity_before: float) -> list[list[float]]:
     grid = [[0.0 for _ in range(24)] for _ in range(7)]
     for t in trades:
         try:
-            ts = t.entry_time
+            ts = getattr(t, "slot_time", None) or t.entry_time      # exchange clock when the frame declares one (audit D-6)
             weekday = int(ts.weekday())
             hour = int(ts.hour)
             grid[weekday][hour] += float(t.pnl)

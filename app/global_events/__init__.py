@@ -1,6 +1,6 @@
 """Global Events -- a cache-first market / geopolitical monitor (page: /events, sidebar: under AI Assistant).
 
-Architecture (clean-room, own code; see docs/GLOBAL_EVENTS.md):
+Architecture (clean-room, own code; see docs/ENGINES.md):
 
     poller thread --fetch--> sources.* --normalize--> classify.* --write--> SQLite (store)
     browser <--JSON-- routes (/events/api/*) <--read only-- store

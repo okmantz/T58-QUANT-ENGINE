@@ -3,8 +3,9 @@
 This is what lets the optimizer act on the Full Pipeline's "worst day/time" findings
 (e.g. "Thursday 11:00 loses the most") instead of only printing them.
 
-Clock: the DATA's own wall clock (the same clock the Full Pipeline heatmap uses to bucket trades by
-entry time), checked against the bar the trade actually FILLS on (so it matches the report exactly).
+Clock: the EXCHANGE wall clock whenever the frame declares one (imported futures data carries an ``exchange_time`` stamp; audit D-6: UTC
+stamps made "THU 11" drift an hour with DST and roll the weekday after 19:00 ET), otherwise the data's own clock. The same clock buckets the
+Full Pipeline heatmap (``Trade.slot_time``). Checked against the bar the trade actually FILLS on.
 
 Text format (stored in RiskConfig.blocked_entry_slots), tokens separated by newline, comma or ';':
     THU 11          Thursday, the 11:00-11:59 hour
@@ -130,3 +131,34 @@ def slot_mask_for_timestamps(timestamps, raw) -> np.ndarray:
     slots = parse_slots(raw)
     idx = pd.DatetimeIndex(timestamps)
     return slot_mask(idx.day_of_week.to_numpy(), idx.hour.to_numpy(), slots)
+
+
+def slot_clock(df):
+    """The per-bar clock a slot is read on: tz-naive EXCHANGE wall clock when the frame declares one, else the data's own timestamps."""
+    import pandas as pd
+    try:
+        from app.data.session_clock import frame_exchange_time, has_clock_provenance
+        if has_clock_provenance(df):
+            return pd.DatetimeIndex(frame_exchange_time(df))
+    except Exception:  # noqa: BLE001 -- fall back to the data clock
+        pass
+    return pd.DatetimeIndex(pd.to_datetime(df["timestamp"]))
+
+
+def annotate_slot_time(trades, df) -> None:
+    """Stamp every trade with ``slot_time`` (its entry on the slot clock) so heatmaps and time filters bucket exactly like the engine blocks."""
+    import pandas as pd
+    if not trades or "timestamp" not in df.columns:
+        return
+    clock = slot_clock(df)
+    ts = pd.DatetimeIndex(pd.to_datetime(df["timestamp"]))
+    if clock.equals(ts):
+        return                                       # same clock: entry_time already is the slot time
+    pos = ts.get_indexer([pd.Timestamp(t.entry_time) for t in trades])
+    for t, i in zip(trades, pos):
+        if i >= 0:
+            t.slot_time = clock[int(i)]
+
+
+def slot_time_of(trade):
+    return getattr(trade, "slot_time", None) or trade.entry_time

@@ -110,6 +110,13 @@ def is_instrument_tied(spec: dict | None, family: str | None = None, extra_marke
         return True
     if any(m in fam for m in ("gex", "gamma", "event", "pair", "calendar", "macro", "news")):
         return True
+    try:                                   # F8: the v13 registry declares which families are instrument-tied -- the name heuristics above missed them
+        from app.search.families_v13 import V13_META
+        meta = V13_META.get(family or "")
+        if meta is not None and bool(getattr(meta, "tied", False)):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from app.search import strategy_space as sps
         f = sps.FAMILIES.get(family or "")

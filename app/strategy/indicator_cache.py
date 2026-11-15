@@ -111,6 +111,44 @@ def _series_nbytes(s: pd.Series) -> int:
             return 0
 
 
+_MACRO_SIG: tuple = (0.0, ())
+
+
+def _macro_signature() -> tuple:
+    """(file name, size, mtime) of every Ext-feed CSV: replacing a macro/OI file must invalidate every cached indicator built from it (G-F3)."""
+    global _MACRO_SIG
+    import time as _t
+    now = _t.monotonic()
+    if now - _MACRO_SIG[0] < 3.0:
+        return _MACRO_SIG[1]
+    sig: tuple = ()
+    try:
+        from app.data.macro_data import MACRO_DIR
+        sig = tuple((f.name, f.stat().st_size, f.stat().st_mtime_ns) for f in sorted(MACRO_DIR.glob("*.csv")))
+    except Exception:  # noqa: BLE001 -- a missing folder is simply "no feeds"
+        sig = ()
+    _MACRO_SIG = (now, sig)
+    return sig
+
+
+def _context_signature(frame: pd.DataFrame) -> tuple:
+    """Everything a builder can read besides the OHLCV columns: market_context digest, legacy attrs companions, the symbol and the Ext files."""
+    try:
+        attrs = getattr(frame, "attrs", {}) or {}
+        parts: list = [attrs.get("ctx_digest"), attrs.get("symbol") or attrs.get("instrument") or attrs.get("market") or attrs.get("name")]
+        for k in sorted(attrs):
+            v = attrs[k]
+            if isinstance(v, pd.DataFrame):
+                parts.append((k, len(v), str(v["timestamp"].iloc[-1]) if len(v) and "timestamp" in v.columns else None,
+                              float(v["close"].iloc[-1]) if len(v) and "close" in v.columns else None))
+            elif isinstance(v, dict):
+                parts.append((k, tuple(sorted((str(kk), len(vv)) for kk, vv in v.items() if hasattr(vv, "__len__")))))
+        parts.append(_macro_signature())
+        return tuple(parts)
+    except Exception:  # noqa: BLE001 -- a signature problem must never crash a backtest
+        return ("ctx-error",)
+
+
 def _frame_fingerprint(frame: pd.DataFrame) -> tuple:
     try:
         n = len(frame)
@@ -141,9 +179,9 @@ def _frame_fingerprint(frame: pd.DataFrame) -> tuple:
             price_fingerprint = (float(frame["close"].iloc[0]), float(frame["close"].iloc[-1]))
         else:
             price_fingerprint = None
-        return (id(frame), n, str(first_ts), str(last_ts), price_fingerprint)
+        return (id(frame), n, str(first_ts), str(last_ts), price_fingerprint, _context_signature(frame))
     except Exception:  # noqa: BLE001 -- fingerprinting must never crash a backtest
-        return (id(frame), len(frame) if frame is not None else 0, None, None, None)
+        return (id(frame), len(frame) if frame is not None else 0, None, None, None, None)
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -209,6 +247,7 @@ def content_hash(frame: pd.DataFrame) -> str:
     for col in frame.columns:
         h.update(str(col).encode())
         h.update(pd.util.hash_pandas_object(frame[col], index=False).to_numpy().tobytes())
+    h.update(repr(_context_signature(frame)).encode())       # G-F3: companions / symbol / Ext files are part of the content
     digest = h.hexdigest()[:20]
     try:
         ref = weakref.ref(frame)

@@ -147,7 +147,7 @@ def per_market_r(spec: dict, frames: dict, risks: dict, cost_multiplier: float =
 
 def build_steps(*, dev_df: pd.DataFrame, sealed_df: pd.DataFrame | None, risk, frames: dict | None = None, risks: dict | None = None,
                 pool_matrix: np.ndarray | None = None, n_trials: int = 1, cfg: PromotionConfig | None = None,
-                holdout_budget=None, null_runner=None, sealed_ledger=None, prop_rules=None, honest_cfg=None) -> Steps:
+                holdout_budget=None, null_runner=None, sealed_ledger=None, prop_rules=None, honest_cfg=None, own_symbol: str | None = None) -> Steps:
     """Wire the five steps to the real engine.
 
     ``frames`` / ``risks``: {SYMBOL: DataFrame} / {SYMBOL: RiskConfig} for the pooled test (the candidate's own market should be one
@@ -230,7 +230,14 @@ def build_steps(*, dev_df: pd.DataFrame, sealed_df: pd.DataFrame | None, risk, f
 
     def pooled_edge(c, ctx):
         errs: dict = {}
-        per = per_market_r(c.get("spec"), frames or {}, risks or {}, cfg.cost_multiplier, errors=errs)
+        use = dict(frames or {})
+        if own_symbol and own_symbol != "unknown":
+            # F-4: the candidate was SELECTED on its own market's development bars, so evaluating it there again is not independent
+            # evidence. Drop the own market (and its micro/full twin) from the pool; the sealed slice is the own-market test.
+            from app.data.market_pool import underlying_symbol
+            own = underlying_symbol(own_symbol)
+            use = {k: v for k, v in use.items() if underlying_symbol(k) != own}
+        per = per_market_r(c.get("spec"), use, risks or {}, cfg.cost_multiplier, errors=errs)
         r = pooled_step(per, cfg)
         if errs:
             r.detail += " | backtest errors: " + "; ".join(f"{k}: {v}" for k, v in errs.items())

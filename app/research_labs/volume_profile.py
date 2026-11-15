@@ -215,6 +215,9 @@ def session_levels(df: pd.DataFrame, share: float = 0.70, bin_size: float | None
     rows = {}
     for d, g in df.groupby(day):
         if len(g) < 3:
+            # C-R1: a thin session keeps a NaN row instead of vanishing -- otherwise ``levels.shift(1)`` hands the NEXT session the profile of the
+            # session before the thin one, i.e. levels that are two sessions stale presented as "the prior session's".
+            rows[d] = {"poc": np.nan, "vah": np.nan, "val": np.nan, "hvn": [], "lvn": [], "volume": 0.0}
             continue
         lo = np.floor(g["low"].min() / bs) * bs
         hi = np.ceil(g["high"].max() / bs) * bs

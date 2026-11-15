@@ -53,6 +53,7 @@ class EngineRequest:
     seed: int = 42
     sealed_frac: float = 0.10                   # carved off before any backend runs; read once by the promotion sequence
     frames: dict | None = None                  # {SYMBOL: DataFrame} for the pooled cross-market test
+    companions: dict | None = None              # {role-or-SYMBOL: DataFrame} companion markets; attached causally as x_<key>_<field> columns
     risks: dict | None = None                   # {SYMBOL: RiskConfig}
     work_dir: str | Path | None = None
     overrides: dict = field(default_factory=dict)
@@ -128,7 +129,7 @@ def _rulebook_notes() -> list:
 
 
 # ---------------------------------------------------------------------------------------------------------- family guard
-def resolve_families(requested, preset: Preset, *, store=None) -> tuple[list, dict]:
+def resolve_families(requested, preset: Preset, *, store=None, objective_mode: str = "prop") -> tuple[list, dict]:
     """(families to run, {family: reason it was gated out}).
 
     ``requested`` None -> the preset's choice. "all" -> ``active_family_names()`` (v13 batches closed until the surrogate gate opens
@@ -167,6 +168,11 @@ def resolve_families(requested, preset: Preset, *, store=None) -> tuple[list, di
             out.append(n)
         else:
             gated[n] = "not pre-registered: write its kill condition first (preregister_v13_families)"
+    try:                                  # registry priors decide the ORDER (who gets the candidate budget first); nothing is added or removed
+        from app.research_knowledge import rank_engine_families
+        out = rank_engine_families(out, getattr(objective_mode, "value", objective_mode) if objective_mode else "prop")
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("registry family ranking skipped: %s: %s", type(exc).__name__, exc)
     return out, gated
 
 
@@ -185,11 +191,11 @@ class DiscoveryEngine:
 
     def promote(self, champions: list, *, dev_df, sealed_df, risk, frames=None, risks=None, pool_matrix=None, n_trials: int = 1,
                 cfg: PromotionConfig | None = None, budget: HoldoutBudget | None = None, loop: bool = False,
-                prop_rules=None, honest_cfg=None) -> list:
+                prop_rules=None, honest_cfg=None, own_symbol=None) -> list:
         cfg = cfg or PromotionConfig()
         budget = budget or HoldoutBudget()
         steps = self._steps(dev_df=dev_df, sealed_df=sealed_df, risk=risk, frames=frames, risks=risks, pool_matrix=pool_matrix,
-                            n_trials=n_trials, cfg=cfg, holdout_budget=budget, prop_rules=prop_rules, honest_cfg=honest_cfg)
+                            n_trials=n_trials, cfg=cfg, holdout_budget=budget, prop_rules=prop_rules, honest_cfg=honest_cfg, own_symbol=own_symbol)
         out = []
         for c in champions:
             res = run_promotion_sequence(c, steps, cfg, family=c.get("family"))
@@ -205,7 +211,7 @@ class DiscoveryEngine:
         log = req.progress_cb or (lambda m: None)
         run_id = uuid.uuid4().hex[:12]
         notes: list = []
-        families, gated = resolve_families(req.families, preset)
+        families, gated = resolve_families(req.families, preset, objective_mode=getattr(req, "objective_mode", "prop"))
         if gated:
             notes.append(f"{len(gated)} famil{'y' if len(gated) == 1 else 'ies'} not run: " + "; ".join(f"{k} ({v})" for k, v in list(gated.items())[:6]))
         if not families:
@@ -213,6 +219,11 @@ class DiscoveryEngine:
 
         dev_gate, _gate_empty, sealed = split_three_way(req.df, gate_frac=0.0, sealed_frac=req.sealed_frac)
         dev_gate = dev_gate if len(dev_gate) else req.df
+        if req.companions:
+            from app.data.market_context import attach_companions
+            dev_gate = attach_companions(dev_gate, req.companions)
+            if sealed is not None and len(sealed):
+                sealed = attach_companions(sealed, req.companions)
         log(f"[{preset.label}] {len(families)} families, {len(dev_gate):,} bars searchable, {len(sealed):,} bars sealed.")
         backend = self.backends.get(preset.backend)
         if backend is None:
@@ -252,7 +263,7 @@ class DiscoveryEngine:
             budget = HoldoutBudget()
             res = self.promote(champs, dev_df=dev_gate, sealed_df=sealed, risk=req.risk, frames=req.frames, risks=req.risks,
                                pool_matrix=out.pool_matrix, n_trials=ti.n_tests, cfg=cfg, budget=budget, loop=preset.loop,
-                               prop_rules=req.prop_rules, honest_cfg=getattr(req, 'honest_cfg', None))
+                               prop_rules=req.prop_rules, honest_cfg=getattr(req, 'honest_cfg', None), own_symbol=req.instrument)
             promotions = [r.to_dict() if hasattr(r, "to_dict") else r for r in res]
             # a loop-mode run FAILS when its stop-candidate fails any mandatory step
             if preset.loop and promotions and not promotions[0].get("passed"):

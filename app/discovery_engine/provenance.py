@@ -35,6 +35,7 @@ def data_fingerprint(df: pd.DataFrame | None, *, sample_rows: int = 4096) -> str
     first = str(df[ts_col].iloc[0]) if ts_col else str(df.index[0])
     last = str(df[ts_col].iloc[-1]) if ts_col else str(df.index[-1])
     h.update(f"{n}|{first}|{last}".encode())
+    h.update(str((getattr(df, "attrs", {}) or {}).get("ctx_digest", "")).encode())     # cross-market context (market_context.attach_companions)
     idx = np.unique(np.linspace(0, n - 1, num=min(n, int(sample_rows))).astype(int))
     for col in ("open", "high", "low", "close", "volume"):
         if col in df.columns:

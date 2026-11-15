@@ -62,27 +62,38 @@ def _prior_map(f, s):
 
 
 def _align_companion(f: pd.DataFrame, other: pd.DataFrame, col: str = "close") -> pd.Series:
-    """The companion's ``col`` as of each bar of ``f`` (backward as-of on timestamp); NaN where it has no bar yet."""
+    """The companion's ``col`` as KNOWN at each bar's close (audit G-F4): the latest companion bar whose own close time is <= the primary
+    bar's close time. A frame built by ``_attr_frame`` from ``x_<role>_*`` columns is already aligned and is returned as is."""
     if not isinstance(other, pd.DataFrame) or other.empty:
         return nan_like(f)
-    o = other.copy()
+    if other.attrs.get("pre_aligned"):
+        return pd.Series(pd.to_numeric(other[col], errors="coerce").to_numpy(dtype=float), index=f.index) if col in other.columns else nan_like(f)
+    o = other
     if "timestamp" not in o.columns:
         if isinstance(o.index, pd.DatetimeIndex):
             o = o.reset_index().rename(columns={o.index.name or "index": "timestamp"})
         else:
             return nan_like(f)
-    left = pd.DataFrame({"t": pd.to_datetime(f["timestamp"] if "timestamp" in f.columns else f.index).reset_index(drop=True)})
-    right = pd.DataFrame({"t": pd.to_datetime(o["timestamp"]).reset_index(drop=True), "v": pd.to_numeric(o[col], errors="coerce").reset_index(drop=True)}).sort_values("t")
-    m = pd.merge_asof(left.reset_index().sort_values("t"), right, on="t", direction="backward").sort_values("index")
-    return pd.Series(m["v"].to_numpy(dtype=float), index=f.index)
+    from app.data.market_context import asof_close
+    pf = f if "timestamp" in f.columns else f.assign(timestamp=pd.to_datetime(f.index))
+    return asof_close(pf, o, col)
 
 
 def _attr_frame(f: pd.DataFrame, key: str):
+    """The companion for ``key`` ('benchmark', 'gold', ...): the pre-aligned ``x_<key>_*`` columns when present (market_context), else the
+    legacy ``attrs`` frame."""
+    if f"x_{key}_close" in getattr(f, "columns", ()):
+        d = pd.DataFrame({c: f[f"x_{key}_{c}"].to_numpy() for c in ("open", "high", "low", "close", "volume") if f"x_{key}_{c}" in f.columns}, index=f.index)
+        d.attrs["pre_aligned"] = True
+        return d if not d.empty else None
     v = frame_attr(f, key)
     return v if isinstance(v, pd.DataFrame) and not v.empty else None
 
 
 def _basket_closes(f: pd.DataFrame) -> pd.DataFrame | None:
+    cols = {c[len("x_basket_"):-len("_close")]: pd.to_numeric(f[c], errors="coerce") for c in f.columns if c.startswith("x_basket_") and c.endswith("_close")}
+    if len(cols) >= 2:
+        return pd.DataFrame(cols, index=f.index)
     b = frame_attr(f, "basket")
     if not isinstance(b, dict) or len(b) < 2:
         return None
@@ -920,6 +931,43 @@ def seas_tod(f, p, c, l):
     v11 = _v11()
     key = v11._minute_of_day(_ts(f))
     return _expanding_t(log_ret(f) * 1e4, key, 20)
+
+
+@register("seas_tod_next", 93, "Causal time-of-day seasonality for the bar the trade will actually be held through: t-statistic of the mean 1-bar return of the NEXT bar's clock minute "
+          "(next = this bar + the last bar step), from bars up to and including this one only (>= 20 earlier occurrences). seas_tod describes the bar that just closed.",
+          soft=(-5.0, 5.0), no_period=True)
+@safe
+def seas_tod_next(f, p, c, l):
+    v11 = _v11()
+    ts = pd.DatetimeIndex(pd.to_datetime(_ts(f)))
+    n = len(ts)
+    out = np.full(n, np.nan)
+    if n < 3:
+        return pd.Series(out, index=f.index)
+    r = (log_ret(f) * 1e4).fillna(0.0).to_numpy(dtype=float)
+    own_key = np.asarray(v11._minute_of_day(_ts(f)))
+    step = np.empty(n, dtype="timedelta64[ns]")
+    step[1:] = (ts[1:] - ts[:-1]).to_numpy()
+    step[0] = step[1]
+    nxt_key = np.asarray(v11._minute_of_day(pd.Series(ts + pd.to_timedelta(step))))   # the next bar's clock minute, inferred from the LAST step only
+    pos_all = np.arange(n)
+    for k in np.unique(nxt_key):
+        pos = pos_all[own_key == k]
+        if len(pos) < 20:
+            continue
+        rk = r[pos]
+        cs, cq = np.cumsum(rk), np.cumsum(rk * rk)
+        rows = pos_all[nxt_key == k]
+        m = np.searchsorted(pos, rows, side="right")          # occurrences of minute k at positions <= t
+        ok = m >= 20
+        if not ok.any():
+            continue
+        cnt = m[ok].astype(float)
+        mean = cs[m[ok] - 1] / cnt
+        var = (cq[m[ok] - 1] - cnt * mean ** 2) / (cnt - 1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out[rows[ok]] = mean / np.sqrt(var / cnt)
+    return pd.Series(out, index=f.index)
 
 
 def _daily_seasonal(f: pd.DataFrame, keyfn, min_n: int) -> pd.Series:

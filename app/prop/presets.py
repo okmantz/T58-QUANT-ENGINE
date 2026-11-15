@@ -1230,6 +1230,53 @@ for _p in PROP_FIRM_PRESETS:
         object.__setattr__(_p, "payout_pins_floor_to_lock", True)
 del _p
 
+# 2026-11-15: rows read from the firms' own pricing / product pages (owner screenshots taken that day).
+import dataclasses as _dc
+
+
+def _find_preset(key: str) -> "PropFirmPreset":
+    return next(_q for _q in PROP_FIRM_PRESETS if _q.key == key)
+
+
+def _replace_preset(key: str, **kw) -> None:
+    for _i, _q in enumerate(PROP_FIRM_PRESETS):
+        if _q.key == key:
+            PROP_FIRM_PRESETS[_i] = _dc.replace(_q, **kw)
+            return
+    raise KeyError(key)
+
+
+_APEX_PAGE = "https://apextraderfunding.com/products/"
+_TRADEIFY_PAGE = "https://tradeify.com/pricing"
+_APEX_SHOT_NOTE = (" [2026-11-15] Rules read on apextraderfunding.com (Intraday Trail, Standard): 1 min day, 30-day evaluation that expires with no resets, "
+                   "target / max drawdown / contract cap as modelled.")
+for _k, _mc in (("apex_25k_intraday", 4), ("apex_50k_intraday", 6), ("apex_100k_intraday", 8)):
+    _q = _find_preset(_k)
+    _replace_preset(_k, min_trading_days=1, max_eval_calendar_days=30, max_contracts=_mc, as_of="2026-11-15", source_note=_q.source_note + _APEX_SHOT_NOTE)
+PROP_FIRM_PRESETS.append(_dc.replace(
+    _find_preset("apex_100k_intraday"), key="apex_150k_intraday", label="Apex - $150k Evaluation (Intraday)", account_size=150_000,
+    max_drawdown_pct=4000.0 / 150_000.0 * 100.0, max_contracts=12, as_of="2026-11-15", rules_checked_on="2026-11-15",
+    source_note=("Added 2026-11-15 from the Apex products page (owner screenshot): 150K Intraday Trail, $9,000 target (6%), $4,000 max drawdown, "
+                 "12 mini / 120 micro, 1 min day, 30-day evaluation, no resets. Funded payout gates copied from the 100k intraday row (not on the page)."),
+))
+# Tradeify "Inter Miami" (limited edition, static drawdown, Tradovate): evaluation + funded tables read on the pricing page.
+_IM = {  # size: (target, static dd, soft DLL, micro cap, min gross payout)
+    10_000: (1_000, 500, 300, 10, 200), 25_000: (2_000, 1_000, 600, 20, 400), 50_000: (3_500, 1_500, 900, 30, 600)}
+for _sz, (_tg, _dd, _dl, _mc, _mp) in _IM.items():
+    PROP_FIRM_PRESETS.append(PropFirmPreset(
+        key=f"tradeify_inter_miami_{_sz // 1000}k", firm="Tradeify", label=f"Tradeify - ${_sz // 1000}k Inter Miami", account_size=float(_sz),
+        evaluation_profit_target_pct=_tg / _sz * 100.0, daily_loss_limit_pct=_dl / _sz * 100.0, max_drawdown_pct=_dd / _sz * 100.0,
+        drawdown_type="static", drawdown_check_mode="intrabar", consistency_rule_pct=None, min_trading_days=0, funded_consistency_rule_pct=None,
+        daily_loss_action="lock_day", trailing_distance_basis="account", payout_threshold_pct=_mp / _sz * 100.0, payout_frequency_days=1,
+        max_contracts=max(1, _mc // 10), as_of="2026-11-15", rules_checked_on="2026-11-15", dd_basis="floating", daily_loss_basis="floating",
+        source_note=(f"Added 2026-11-15 from the Tradeify pricing page (owner screenshots): ${_sz // 1000}K Inter Miami, ${_tg:,} target, ${_dd:,} STATIC drawdown, "
+                     f"${_dl:,} soft daily loss (the page also offers 'None'), {_mc} micros, no minimum days, no consistency rule; funded: ${_mp} minimum gross payout, "
+                     "daily payouts, 80/10/10 split, live account after $12,000 in payouts. The page does not say whether the drawdown is checked intraday or at end of day; "
+                     "intraday (stricter) is modelled."),
+        algo_trading_allowed=False,
+        algo_policy_note="Tradeify: bots only if you are the sole owner and can prove it; HFT banned. Conservative: NOT allowed until confirmed in writing.",
+    ))
+
 # 2026-10 audit: verification stamps. Only rows whose own source_note records a direct check of the
 # firm's page are stamped; everything else stays unverified (verified_on == "") and is therefore NOT
 # READY-eligible until someone checks it and adds a row here.
@@ -1258,6 +1305,16 @@ _VERIFIED_STAMPS = {
     "fundednext_25k": ("2026-10-22", "https://help.fundednext.com/en/articles/17255124-stellar-2-step-challenge", "primary"),
     "fundednext_100k": ("2026-10-22", "https://help.fundednext.com/en/articles/17255124-stellar-2-step-challenge", "primary"),
     "e8_one_100k": ("2026-10-22", "https://e8markets.com/e8-one", "primary"),
+    # 2026-11-15: Apex Intraday Trail rows and Tradeify Inter Miami rows read on the firms' own product / pricing pages.
+    **{k: ("2026-11-15", _APEX_PAGE, "primary") for k in ("apex_25k_intraday", "apex_50k_intraday", "apex_100k_intraday", "apex_150k_intraday")},
+    **{f"tradeify_inter_miami_{n}k": ("2026-11-15", _TRADEIFY_PAGE, "primary") for n in (10, 25, 50)},
+    # 2026-11-14 audit (E report): re-read against the firms' own help centres.
+    **{k: ("2026-11-14", "https://help.topstep.com/en/articles/8284233", "primary") for k in ("topstep_50k", "topstep_100k")},
+    **{k: ("2026-11-14", "https://support.lucidtrading.com/en/articles/12890092", "primary") for k in ("lucid_50k", "lucid_100k")},
+    **{k: ("2026-11-14", "https://support.lucidtrading.com/en/articles/12945815", "primary") for k in ("lucid_flex_25k", "lucid_flex_50k", "lucid_flex_100k")},
+    **{k: ("2026-11-14", "https://help.myfundedfutures.com/en/articles/13134709", "primary") for k in ("mffu_rapid_50k", "mffu_builder_50k")},
+    **{k: ("2026-11-14", "https://ftmo.com/en/trading-objectives/", "primary") for k in ("ftmo_10k", "ftmo_100k", "ftmo_200k")},
+    **{k: ("2026-11-14", "https://help.fundednext.com/en/articles/17255124-stellar-2-step-challenge", "primary") for k in ("fundednext_25k", "fundednext_100k")},
 }
 # 2026-10-27 audit (fix 8): stamps expire after the READY age limit, so a preset the owner re-checked must be re-stampable without
 # editing code. ``data/preset_stamps.json`` ({"key": {"date": "YYYY-MM-DD", "url": "...", "tier": "primary"}}) overrides the table
@@ -1637,6 +1694,25 @@ for _k, _kw in _FEE_CORRECTIONS_2026_11_11.items():
         FIRM_FEES[_k] = _dc.replace(_old, date_checked="2026-11-11",
                                     notes=(_old.notes + " " if _old.notes else "") + "[2026-11-11 rules report] list price before promo codes; secondary source -- confirm at checkout.", **_kw)
 del _k, _kw
+
+# 2026-11-15: prices read on the firms' own pages (owner screenshots). Apex: one-time 30-day evaluation, no resets (activation figure for the
+# Standard plan is secondary). Tradeify Inter Miami: price shown per evaluation, 80/10/10 split.
+for _k, _price, _act in (("apex_25k_intraday", 167.0, 89.0), ("apex_50k_intraday", 249.0, 99.0), ("apex_100k_intraday", 790.0, 129.0)):
+    if _k in FIRM_FEES:
+        FIRM_FEES[_k] = _dc.replace(FIRM_FEES[_k], challenge_price=_price, reset_price=None, activation_fee=_act, source_tier="primary",
+                                    source_url=_APEX_PAGE, date_checked="2026-11-15",
+                                    notes="Price, 30-day expiry and no resets read on apextraderfunding.com (2026-11-15). Standard-plan activation fee is from secondary sources.")
+FIRM_FEES["apex_150k_intraday"] = FirmFeeInfo(
+    preset_key="apex_150k_intraday", challenge_price=1190.0, reset_price=None, profit_split_pct=100.0, source_url=_APEX_PAGE, date_checked="2026-11-15",
+    automation_policy=_find_preset("apex_150k_intraday").algo_policy_note, written_confirmation=False, source_tier="primary",
+    notes="Price and rules read on apextraderfunding.com (2026-11-15). Activation fee ($149) is from secondary sources.", activation_fee=149.0, monthly_subscription=False)
+for _n, _price in ((10, 79.0), (25, 153.0), (50, 263.0)):
+    _k = f"tradeify_inter_miami_{_n}k"
+    FIRM_FEES[_k] = FirmFeeInfo(
+        preset_key=_k, challenge_price=_price, reset_price=None, profit_split_pct=80.0, source_url=_TRADEIFY_PAGE, date_checked="2026-11-15",
+        automation_policy=_find_preset(_k).algo_policy_note, written_confirmation=False, source_tier="primary",
+        notes="Price read on tradeify.com (2026-11-15); 80/10/10 split (10% to Live Funds); no reset fee shown.", activation_fee=0.0, monthly_subscription=False)
+del _k
 
 
 def get_fee_info(preset_key: str) -> FirmFeeInfo | None:

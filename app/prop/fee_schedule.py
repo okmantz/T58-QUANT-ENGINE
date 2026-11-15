@@ -124,6 +124,10 @@ def _p(firm, plan, size, price, **kw) -> PlanFee:
     return PlanFee(firm, plan, int(size), price, **kw)
 
 
+_APEX_NOTE = "price, 30-day expiry and no-reset read on apextraderfunding.com products page (owner screenshots 2026-11-15); standard-plan activation fee is from secondary sources"
+_TRADEIFY_IM_NOTE = "Inter Miami (limited edition) price shown on tradeify.com pricing page (owner screenshot 2026-11-15); struck list price 113 / 219 / 376"
+
+
 PLANS: tuple[PlanFee, ...] = (
     # Alpha Futures -- monthly until pass (Direct is one-time). Activation $0 (Advanced: $0 for purchases after 2026-07-08).
     _p("alpha", "zero", 25_000, 89, monthly=True, reset=79, tier=OFFICIAL), _p("alpha", "zero", 50_000, 169, monthly=True, reset=149, tier=OFFICIAL),
@@ -140,10 +144,10 @@ PLANS: tuple[PlanFee, ...] = (
     _p("apex", "eod_standard", 100_000, 1190, activation=139, note="one source says $129 activation"), _p("apex", "eod_standard", 150_000, 2190, activation=159),
     _p("apex", "eod_no_activation", 25_000, 1090), _p("apex", "eod_no_activation", 50_000, 1190), _p("apex", "eod_no_activation", 100_000, 1590),
     _p("apex", "eod_no_activation", 150_000, 2490),
-    _p("apex", "intraday_standard", 25_000, 167, activation=89), _p("apex", "intraday_standard", 50_000, 249, activation=99),
-    _p("apex", "intraday_standard", 100_000, 790, activation=129), _p("apex", "intraday_standard", 150_000, 1190, activation=149),
-    _p("apex", "intraday_no_activation", 25_000, 690), _p("apex", "intraday_no_activation", 50_000, 799), _p("apex", "intraday_no_activation", 100_000, 999),
-    _p("apex", "intraday_no_activation", 150_000, 1890),
+    _p("apex", "intraday_standard", 25_000, 167, activation=89, tier=OFFICIAL, note=_APEX_NOTE), _p("apex", "intraday_standard", 50_000, 249, activation=99, tier=OFFICIAL, note=_APEX_NOTE),
+    _p("apex", "intraday_standard", 100_000, 790, activation=129, tier=OFFICIAL, note=_APEX_NOTE), _p("apex", "intraday_standard", 150_000, 1190, activation=149, tier=OFFICIAL, note=_APEX_NOTE),
+    _p("apex", "intraday_no_activation", 25_000, 690, reset=None, tier=OFFICIAL, note=_APEX_NOTE), _p("apex", "intraday_no_activation", 50_000, 799, reset=None, tier=OFFICIAL, note=_APEX_NOTE), _p("apex", "intraday_no_activation", 100_000, 999, reset=None, tier=OFFICIAL, note=_APEX_NOTE),
+    _p("apex", "intraday_no_activation", 150_000, 1890, reset=None, tier=OFFICIAL, note=_APEX_NOTE),
     # Topstep -- Trading Combine is a monthly subscription; $149 activation per XFA (Standard path); reset = monthly price.
     _p("topstep", "combine_standard", 50_000, 49, monthly=True, activation=149, reset=49, tier=OFFICIAL),
     _p("topstep", "combine_standard", 100_000, 99, monthly=True, activation=149, reset=99, tier=OFFICIAL),
@@ -163,6 +167,8 @@ PLANS: tuple[PlanFee, ...] = (
     _p("mffu", "rapid_eod", 50_000, 225), _p("mffu", "builder", 25_000, 105), _p("mffu", "builder", 50_000, 153), _p("mffu", "builder", 100_000, 282),
     _p("mffu", "builder", 150_000, 398), _p("mffu", "pro", 50_000, 265),
     # Tradeify (one-time since 2026-03-31)
+    _p("tradeify", "inter_miami", 10_000, 79, tier=OFFICIAL, note=_TRADEIFY_IM_NOTE), _p("tradeify", "inter_miami", 25_000, 153, tier=OFFICIAL, note=_TRADEIFY_IM_NOTE),
+    _p("tradeify", "inter_miami", 50_000, 263, tier=OFFICIAL, note=_TRADEIFY_IM_NOTE),
     _p("tradeify", "growth", 25_000, 99, reset=60), _p("tradeify", "growth", 50_000, 145, reset=95), _p("tradeify", "growth", 100_000, 255, reset=169),
     _p("tradeify", "growth", 150_000, 369, reset=229), _p("tradeify", "select", 25_000, 109), _p("tradeify", "select", 50_000, 165, reset=109),
     _p("tradeify", "select", 100_000, 265), _p("tradeify", "select", 150_000, 369),
