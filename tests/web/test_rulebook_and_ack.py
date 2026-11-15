@@ -82,5 +82,5 @@ def test_acknowledge_endpoint_stamps_for_30_days(client, tmp_path, monkeypatch):
 def test_25k_presets_exist_and_start_unverified():
     keys = {p.key for p in P.list_presets() if p.account_size == 25_000}
     assert {"ftmo_25k", "apex_25k_eod", "apex_25k_intraday", "lucid_25k", "fundednext_25k"} <= keys
-    for k in ("ftmo_25k", "apex_25k_eod", "apex_25k_intraday", "lucid_25k"):
+    for k in ("ftmo_25k", "apex_25k_eod", "lucid_25k"):      # apex_25k_intraday was read on the firm page 2026-11-15
         assert P.ack_status(k)["state"] == "unverified"

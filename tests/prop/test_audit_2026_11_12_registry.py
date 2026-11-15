@@ -30,7 +30,7 @@ def test_presets_never_allow_a_bot_the_report_bans():
 
 
 def test_new_presets_are_unstamped_and_retired_plans_listed():
-    for k in ("alpha_zero_50k", "mffu_rapid_50k", "tradeify_growth_50k", "tpt_test_50k", "bulenox_qual_50k"):
+    for k in ("alpha_zero_50k", "tradeify_growth_50k", "tpt_test_50k", "bulenox_qual_50k"):   # mffu_rapid_50k was re-read 2026-11-14 (audit E-4)
         p = P.get_preset(k)
         assert not P.is_ready_eligible(p)[0] if isinstance(P.is_ready_eligible(p), tuple) else not P.is_ready_eligible(p)
     assert "Core" in RETIRED_PLANS["MyFundedFutures"] and "Progression Ladder" in RETIRED_PLANS["Earn2Trade"]

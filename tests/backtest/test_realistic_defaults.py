@@ -38,8 +38,8 @@ def test_commission_from_mapping():
 def test_verified_presets_carry_a_dated_primary_stamp():
     stamped = [p for p in PROP_FIRM_PRESETS if p.verified_on]
     assert len(stamped) >= 14
-    today = date(2026, 10, 22)
     for p in stamped:
+        today = date.fromisoformat(str(p.verified_on)[:10])        # each stamp is dated by its own re-read (2026-10-22, 2026-11-14, 2026-11-15)
         assert p.source_url.startswith("https://")
         assert rules_stamp_age_days(p, today) == 0
         assert is_ready_eligible(p, today)

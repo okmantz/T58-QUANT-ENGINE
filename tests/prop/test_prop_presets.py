@@ -69,7 +69,8 @@ def test_apex_has_no_evaluation_stage_minimums_post_4_0():
     trading days and the evaluation-stage consistency rule."""
     for key in ("apex_50k_eod", "apex_50k_intraday", "apex_100k_eod", "apex_100k_intraday"):
         p = get_preset(key)
-        assert p.min_trading_days == 0
+        # the Intraday Trail product page (read 2026-11-15) lists "Min. Days To Pass: 1" = a same-day pass is valid; the EOD rows keep 0
+        assert p.min_trading_days == (1 if key.endswith("intraday") else 0)
         assert p.consistency_rule_pct is None
 
 

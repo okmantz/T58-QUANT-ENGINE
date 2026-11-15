@@ -305,7 +305,7 @@ def test_apex_split_values():
         assert p.winning_days_for_payout == 5, key
         assert p.min_winning_day_profit == gate, key
         assert p.funded_consistency_rule_pct == 50.0, key
-        assert p.consistency_rule_pct is None and p.min_trading_days == 0, key
+        assert p.consistency_rule_pct is None and p.min_trading_days == (1 if "intraday" in key else 0), key   # intraday: 1 day read from the Apex page 2026-11-15
 
 
 def test_ftmo_values():

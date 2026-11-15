@@ -64,3 +64,17 @@ def test_stage_view_is_derived_from_the_preset():
     f = firm_rules("lucid_50k")
     assert f.evaluation.trailing_lock and f.payout.cap_dollars == 2000.0 and f.payout.buffer_pct == 4.2
     assert f.fees.purchase is not None and f.payout.split_pct > 0
+
+
+def test_run_staged_two_step_then_funded():
+    import pandas as pd
+    from types import SimpleNamespace as T
+    from app.prop.stages import phase_plan, run_staged
+    assert [n for n, _ in phase_plan("ftmo_100k")] == ["phase_1", "phase_2", "funded"]
+    assert [n for n, _ in phase_plan("topstep_50k")] == ["phase_1", "funded"]
+    ts = pd.date_range("2024-01-02 10:00", periods=200, freq="1D")
+    tr = [T(entry_time=t, pnl=600.0 if i % 3 else -200.0) for i, t in enumerate(ts)]
+    r = run_staged(tr, "ftmo_100k")
+    assert [p.name for p in r.phases] == ["phase_1", "phase_2", "funded"] and r.passed_all_evaluation and r.funded_reached
+    bust = run_staged([T(entry_time=t, pnl=-9000.0) for t in ts[:5]], "ftmo_100k")
+    assert bust.phases[0].failed and not bust.funded_reached

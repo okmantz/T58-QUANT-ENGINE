@@ -212,7 +212,7 @@ _os.environ.setdefault("T58_SKIP_EXTRA_GATES", "1")
 # only when T58_TEST_CLEAN_LITTER=1 (files that existed before the session are
 # never touched).
 # ---------------------------------------------------------------------------
-_LITTER_DIRS = ("data/raw", "strategies/manual", "strategies/python", "data/config", "reports")
+_LITTER_DIRS = ("data", "strategies", "reports")      # everything the app writes by design; user files that pre-date the session are never touched
 _LITTER_FILES = ("account_settings.json",)
 _litter_before: set = set()
 
@@ -285,12 +285,14 @@ def pytest_sessionfinish(session, exitstatus):
         except OSError:
             pass
         _sample_generated = None
+    if hasattr(session.config, "workerinput"):
+        return                                       # xdist: only the controller cleans up, so a worker never deletes a file another worker is using
     new = sorted(_litter_snapshot() - _litter_before)
     if not new:
         return
-    clean = _os.environ.get("T58_TEST_CLEAN_LITTER") == "1"
-    print(f"\n[t58-conftest] tests created {len(new)} new file(s) in the working tree"
-          f"{' -- removing (T58_TEST_CLEAN_LITTER=1)' if clean else ' (set T58_TEST_CLEAN_LITTER=1 to remove them)'}:")
+    clean = _os.environ.get("T58_TEST_CLEAN_LITTER", "1") != "0"      # cleaning is the default; T58_TEST_CLEAN_LITTER=0 keeps the files
+    print(f"\n[t58-conftest] tests created {len(new)} new file(s) in data/, reports/ or strategies/"
+          f"{' -- removed' if clean else ' (kept: T58_TEST_CLEAN_LITTER=0)'}:")
     for p in new[:15]:
         print(f"   {p}")
     if len(new) > 15:
@@ -364,3 +366,4 @@ def pytest_collection_modifyitems(config, items):
     if dropped:
         config.hook.pytest_deselected(items=dropped)
     items[:] = keep
+

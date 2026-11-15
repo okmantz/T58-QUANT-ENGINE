@@ -40,7 +40,10 @@ def trades(n, pnl=10.0, **kw):
                                     "exitTime": f"{_recent(i)}T15:00:00+00:00", **kw})
 
 
-def test_fresh_user_starts_at_strategy_with_labelled_example(iso):
+def test_fresh_user_starts_at_strategy_with_labelled_example(iso, monkeypatch):
+    from app.reports import strategy_state as ss      # a fresh user has no current strategy; do not read this machine's saved one
+    monkeypatch.setattr(ss, "get_current_strategy", lambda: None)
+    monkeypatch.setattr(state, "_champion_inputs", lambda st: {"found": False, "tested": False, "promoted": False, "stage_title": ""})
     r = state.compute()
     assert r["current"] == "test" and r["done"] == 0 and len(r["stages"]) == 7
     assert r["dashboard"]["illustrative"] and "Example only" in r["dashboard"]["note"]
