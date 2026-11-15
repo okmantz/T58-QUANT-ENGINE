@@ -61,7 +61,7 @@ T58-Market-Data**); extract it next to the `.exe`. Tagged releases (`v*`) attach
 
 The first run creates a private `.venv`. If port 5000 is busy the app picks the next free one and prints the address and a QR code.
 For your phone, scan the QR code on the same Wi-Fi, or use [Tailscale](https://tailscale.com) away from home
-([`HOW TO OPEN ON YOUR PHONE.md`](HOW%20TO%20OPEN%20ON%20YOUR%20PHONE.md)). User data lives in `%LOCALAPPDATA%` (Windows),
+([`docs/PHONE_ACCESS.md`](docs/PHONE_ACCESS.md)). User data lives in `%LOCALAPPDATA%` (Windows),
 `~/Library/Application Support` (macOS) or `~/.local/share` (Linux) when the install folder is read-only.
 
 **Desktop GUI / headless:** `python -m app.main`, or `python -m app.main --cli --csv data/raw/EURUSD/EURUSD_5M_sample.csv --sims 10000`
@@ -122,7 +122,7 @@ signals skipped for sizing) before it is called a winner, so every winner can be
 (the 100-trade preflight floor only decides whether the run is analysed at all). Champions are promoted through a fixed sequence (reproduction, deflated
 sequence, null gate, pooled edge, sealed slice); each read of the sealed slice is booked in a lifetime ledger and the k-th read must clear a
 Bonferroni-spent confidence, so the final slice cannot be quietly re-used. The trial count feeds the Deflated Sharpe
-correction. Details: [docs/DISCOVERY_ENGINE.md](docs/DISCOVERY_ENGINE.md).
+correction. Details: [docs/ENGINES.md](docs/ENGINES.md).
 
 - **Strategy Graveyard** — searchable by market and text, with **See all** and **Revive**, which re-optimizes a dead strategy on a chosen market.
   New installs ship with 1,100+ measured failures (rebuild with `scripts/build_graveyard_seed.py`, extend with `scripts/expand_graveyard_seed.py`,
@@ -283,7 +283,7 @@ strategies to compare, and you can promote a strategy from there. See the Deploy
   API Keys, paid X plan), plus market intelligence computed locally from daily bars: **Market Regime Intelligence** (per instrument: Trending, Range-bound,
   High-vol or Event-driven, each with the exact rule and numbers that produced it), key macro releases (CPI, PPI, jobs, GDP, PCE, rates), central-bank
   decision dates, market sessions, futures stats, volatility regime, correlation matrix, cross-asset monitor and geopolitics. Context, not a signal; see
-  [docs/GLOBAL_EVENTS.md](docs/GLOBAL_EVENTS.md).
+  [docs/ENGINES.md](docs/ENGINES.md).
 - **Options Outlook** (Black-Scholes candidates with an optional AI narrative), the **AI Assistant** dashboard (news, scanner, chat) and a beginner reading list under **University → Resources**.
 
 ## Account, ranks and themes
