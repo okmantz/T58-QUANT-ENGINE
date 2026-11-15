@@ -41,9 +41,12 @@ def _es_risk(**kw):
 # ---------------------------------------------------------------- costs / sizing
 def test_cost_units_ticks_to_pips_and_round_trip():
     es = get_instrument_spec("ES")
-    assert es.default_spread_pips == pytest.approx(es.default_spread_ticks * es.tick_size / es.pip_size)
-    # 2 sides x (1 spread + 1 slip tick) x $12.50 + commission
-    assert es.round_trip_cost_dollars() == pytest.approx(2 * 2 * es.tick_value + es.default_commission_round_turn)
+    assert es.default_spread_pips == pytest.approx(es.effective_spread_ticks * es.tick_size / es.pip_size)
+    # 2026-11-14 cost policy ("realistic"): 2 sides x (0 spread + 1 slip tick) x $12.50 + the Lucid base commission ($3.50)
+    assert es.round_trip_cost_dollars() == pytest.approx(2 * 1 * es.tick_value + es.effective_commission_round_turn)
+    # the legacy convention (spread + slippage on both sides) is still reproducible
+    from app.backtest.cost_policy import costs_for
+    assert costs_for(es, "legacy").round_trip_dollars(es.tick_value) == pytest.approx(2 * 2 * es.tick_value + es.default_commission_round_turn)
 
 
 @pytest.mark.parametrize("stop", [3.0, 7.5, 11.0, 20.0])

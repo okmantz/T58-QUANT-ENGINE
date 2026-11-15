@@ -39,7 +39,10 @@ def test_live_requires_confirmation(monkeypatch, tmp_path):
     c = _client(monkeypatch, tmp_path)
     monkeypatch.setattr(md, "history", _fake_hist)
     r = c.post("/investing/api/order", json={"mode": "live", "symbol": "AAPL", "side": "buy", "dollars": 10}).get_json()
-    assert not r["ok"] and "confirmation" in r["error"]
+    assert not r["ok"] and r["needs"] == "keys"                       # no keys saved: the page shows the connect step
+    monkeypatch.setattr("app.data.alpaca_credentials.has_saved_credentials", lambda: True)
+    r = c.post("/investing/api/order", json={"mode": "live", "symbol": "AAPL", "side": "buy", "dollars": 10}).get_json()
+    assert not r["ok"] and r["needs"] == "confirm" and "turn it on" in r["error"]
 
 
 def test_sec_agent_validation(monkeypatch, tmp_path):
@@ -69,7 +72,7 @@ def test_close_rejects_unknown_holding_and_bad_fraction(monkeypatch, tmp_path):
     assert not c.post("/investing/api/close", json={"mode": "paper", "symbol": "MSFT"}).get_json()["ok"]
     assert not c.post("/investing/api/close", json={"mode": "paper", "symbol": "MSFT", "fraction": 2}).get_json()["ok"]
     live = c.post("/investing/api/close", json={"mode": "live", "symbol": "AAPL"}).get_json()
-    assert not live["ok"] and "confirmation" in live["error"]
+    assert not live["ok"] and live["needs"] in ("keys", "confirm")
 
 
 def test_page_has_position_drawer(monkeypatch, tmp_path):

@@ -18,7 +18,7 @@ def _app():
 def test_instrument_endpoint_fills_from_spec():
     d = _app().test_client().get("/api/accuracy/instrument/ES").get_json()
     assert d["ok"] and d["pip_size"] == 1.0 and d["contract_size"] == 50
-    assert 50 < d["round_trip_cost_dollars"] < 60
+    assert 25 < d["round_trip_cost_dollars"] < 35      # 2 x 1 tick slippage ($12.50 each) + $3.50 commission
 
 
 def test_sizing_mode_read_from_form_and_mismatch_blocked():

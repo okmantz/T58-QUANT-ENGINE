@@ -178,11 +178,11 @@ def test_per_contract_commission_charged_at_settle():
 
 
 def test_mgc_spec_fills_per_contract_commission_end_to_end():
-    """apply_instrument_spec('MGC') -> $1.82/contract; a 2-contract trade
-    is charged $3.20 at settle, not the old flat $1.82."""
+    """apply_instrument_spec('MGC') -> $1.60/contract (Lucid base schedule, "realistic" cost policy); a 2-contract trade
+    is charged $3.20 at settle, not the old flat $1.60."""
     risk = apply_instrument_spec(
         RiskConfig(spread_pips=0.0, slippage_pips=0.0, commission_per_trade=0.0, initial_balance=50_000.0, risk_value=1.0), "MGC")
-    assert risk.commission_per_contract == pytest.approx(1.82)
+    assert risk.commission_per_contract == pytest.approx(1.60)
     assert risk.commission_per_trade == 0.0
     rows = [
         (2000.0, 2001.0, 1999.0, 2000.5),
@@ -197,7 +197,7 @@ def test_mgc_spec_fills_per_contract_commission_end_to_end():
     trades, _ = run_execution(df, signals, risk,
                               stop_loss_pips=20, take_profit_pips=None)
     assert len(trades) == 1
-    assert trades[0].commission == pytest.approx(1.82 * 2)
+    assert trades[0].commission == pytest.approx(1.60 * 2)
 
 
 # ----------------------------------------------------------------------
@@ -342,17 +342,17 @@ def test_exit_cause_trailing_stop():
 
 
 def test_exit_cause_daily_loss_close():
-    # Daily loss limit $200: the position's floating loss breaches it
-    # intrabar on bar 2 -> forced close tagged daily_loss_close.
+    # Daily loss limit $200 (2%); planned risk is 2.5% = $250 so the account floor sits CLOSER to the entry (16 points) than the stop (20):
+    # the floating loss breaches the limit intrabar on bar 2 before the stop is touched -> forced close tagged daily_loss_close.
     rows = [
         (100.0, 100.5, 99.5, 100.2),   # 0: signal -> fill @ 100.5 open[1]
-        (100.5, 101.0, 100.0, 100.8),  # 1: entry 100.5, size = 100/20 = 5
-        (100.8, 101.0, 60.0, 61.0),    # 2: low 60 -> floating -$200+ -> forced
+        (100.5, 101.0, 100.0, 100.8),  # 1: entry 100.5
+        (100.8, 101.0, 60.0, 61.0),    # 2: low 60 -> crosses the floor (84.5) before the stop (80.5)
         (61.0, 62.0, 60.0, 61.5),      # 3
     ]
     df = _df(rows)
     signals = pd.Series([1, 1, 1, 1])
-    risk = RiskConfig(spread_pips=0.0, slippage_pips=0.0, commission_per_trade=0.0, initial_balance=10_000.0, risk_value=1.0, pip_size=1.0,
+    risk = RiskConfig(spread_pips=0.0, slippage_pips=0.0, commission_per_trade=0.0, initial_balance=10_000.0, risk_value=2.5, pip_size=1.0,
                       daily_loss_limit_pct=2.0, reentry_cooldown_bars=0)
     trades, _ = run_execution(df, signals, risk,
                               stop_loss_pips=20, take_profit_pips=None)
@@ -360,6 +360,38 @@ def test_exit_cause_daily_loss_close():
     t = trades[0]
     assert t.exit_reason == "daily_loss_limit_forced_close"
     assert t.exit_cause == "daily_loss_close"
+
+
+def test_daily_loss_close_yields_to_a_closer_resting_stop():
+    # AUDIT A_5 (1): with 1% risk the stop (20 pts, -$100) sits closer than the $200 account floor, so the STOP fills first -- the old
+    # code charged the whole floor instead of the stop loss.
+    rows = [
+        (100.0, 100.5, 99.5, 100.2),
+        (100.5, 101.0, 100.0, 100.8),
+        (100.8, 101.0, 60.0, 61.0),
+        (61.0, 62.0, 60.0, 61.5),
+    ]
+    risk = RiskConfig(spread_pips=0.0, slippage_pips=0.0, commission_per_trade=0.0, initial_balance=10_000.0, risk_value=1.0, pip_size=1.0,
+                      daily_loss_limit_pct=2.0, reentry_cooldown_bars=0)
+    trades, _ = run_execution(_df(rows), pd.Series([1, 1, 1, 1]), risk, stop_loss_pips=20, take_profit_pips=None)
+    t = trades[0]
+    assert t.exit_reason != "daily_loss_limit_forced_close"
+    assert abs(t.pnl + 100.0) < 1.0          # -$100 stop loss, not -$200
+
+
+def test_daily_loss_close_gap_fills_at_the_open():
+    # AUDIT A_5 (2): a bar that OPENS beyond the liquidation level fills at the open (worse), never at the floor price.
+    rows = [
+        (100.0, 100.5, 99.5, 100.2),
+        (100.5, 101.0, 100.0, 100.8),
+        (70.0, 71.0, 60.0, 61.0),      # gaps down through both the floor (84.5) and the stop (80.5)
+        (61.0, 62.0, 60.0, 61.5),
+    ]
+    risk = RiskConfig(spread_pips=0.0, slippage_pips=0.0, commission_per_trade=0.0, initial_balance=10_000.0, risk_value=2.5, pip_size=1.0,
+                      daily_loss_limit_pct=2.0, reentry_cooldown_bars=0)
+    trades, _ = run_execution(_df(rows), pd.Series([1, 1, 1, 1]), risk, stop_loss_pips=20, take_profit_pips=None)
+    t = trades[0]
+    assert t.exit_price <= 70.0 + 1e-9
 
 
 def test_exit_cause_session_close_on_weekend_hold():

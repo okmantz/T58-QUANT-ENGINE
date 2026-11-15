@@ -151,10 +151,13 @@ def test_fastpath_daily_loss_parity_deep_dip():
     intrabar (but closes back above the stop) must force-close at the
     floor liquidation price with reason daily_loss_limit_forced_close on
     BOTH engines -- the old fastpath had no floating check and would
-    have ridden through (or stop-exited) instead."""
+    have ridden through (or stop-exited) instead.
+
+    2026-11-14 (audit A_5): the floor must be the CLOSER level, otherwise the resting stop fills first. The daily limit here is 0.5% ($250):
+    with 20 units the floor sits 12.5 points below the entry (87.5), inside the 20-point stop (80)."""
     df = _flat_df(40)
-    # deep-dip bar: low=50 breaches the $1000 daily floor at the $60
-    # liquidation price, then recovers to 99 (above the $80 stop).
+    # deep-dip bar: low=50 breaches the $250 daily floor at the 87.5
+    # liquidation price (before the 80 stop), then recovers to 99.
     df.loc[20, ["open", "high", "low", "close"]] = [100.0, 101.0, 50.0, 99.0]
     sig = np.zeros(len(df), dtype=np.int8)
     sig[5] = 1  # long, filled at bar 6 open = 100
@@ -162,13 +165,13 @@ def test_fastpath_daily_loss_parity_deep_dip():
     # mean "flat" and trigger a signal exit before the dip)
     # fixed $500 risk, 20-point stop; costs ($1 flat) sit inside the
     # budget -> 4 whole contracts (5 would risk $501) = 20 units;
-    # daily floor $1000 -> liquidation 50 points adverse -> $50.
+    # daily floor $250 -> liquidation 12.5 points adverse -> 87.5.
     risk = RiskConfig(
         initial_balance=50_000.0, risk_mode="fixed", risk_value=500.0,
         pip_size=1.0, contract_size=5.0,
         commission_per_trade=1.0, commission_per_contract=0.0,
         spread_pips=0.0, slippage_pips=0.0,
-        daily_loss_limit_pct=2.0, max_trades_per_day=999,
+        daily_loss_limit_pct=0.5, max_trades_per_day=999,
     )
     scalar_trades, _ = run_execution(
         df, pd.Series(sig), risk, stop_loss_pips=20.0, take_profit_pips=None,
@@ -183,8 +186,8 @@ def test_fastpath_daily_loss_parity_deep_dip():
     s, v = scalar_trades[0], vec_trades[0]
     for t in (s, v):
         assert t.exit_reason == "daily_loss_limit_forced_close"
-        assert t.exit_price == pytest.approx(50.0, abs=1e-9)
-        assert t.pnl == pytest.approx((50.0 - 100.0) * 20 - 1.0, abs=1e-6)
+        assert t.exit_price == pytest.approx(87.5, abs=1e-9)
+        assert t.pnl == pytest.approx((87.5 - 100.0) * 20 - 1.0, abs=1e-6)
     assert v.exit_price == pytest.approx(s.exit_price, abs=1e-9)
     assert v.pnl == pytest.approx(s.pnl, abs=1e-6)
 
@@ -203,7 +206,7 @@ def test_fastpath_day_entry_block_after_daily_loss():
         pip_size=1.0, contract_size=5.0,
         commission_per_trade=1.0, commission_per_contract=0.0,
         spread_pips=0.0, slippage_pips=0.0,
-        daily_loss_limit_pct=2.0, max_trades_per_day=999,
+        daily_loss_limit_pct=0.5, max_trades_per_day=999,   # floor ($250) closer than the 20-pt stop, so the forced close (not the stop) fires
     )
     scalar_trades, _ = run_execution(
         df, pd.Series(sig), risk, stop_loss_pips=20.0, take_profit_pips=None,
@@ -220,11 +223,11 @@ def test_fastpath_day_entry_block_after_daily_loss():
 # ---------------------------------------------------------------------------
 
 def test_liquidate_at_floor_accounts_for_prior_day_pnl():
-    """The day is already -$400 realized; the $1000 floor leaves $600 of
-    room. A long @100 with 50 units must liquidate at 100 - 600/50 =
-    $88 -- NOT at the bar's $50 low (old behavior) and NOT at the
-    sign-flipped $76 (which would put the day at -$1400, past the
-    floor)."""
+    """The day is already -$400 realized; the $600 floor (1.2% of the account) leaves $200 of
+    room. A long @100 with 50 units must liquidate at 100 - 200/50 =
+    $96 -- NOT at the bar's $50 low (old behavior) and NOT at the
+    sign-flipped $104-side level. The floor (96) sits inside the 8-point stop (92), so it is the
+    closer level and fills first (2026-11-14 audit A_5: a closer resting stop would win)."""
     df = _flat_df(60)
     # trade 1: long, stopped out for exactly -$400 on the same day
     df.loc[3, ["open", "high", "low", "close"]] = [100.0, 101.0, 91.0, 99.0]
@@ -240,10 +243,10 @@ def test_liquidate_at_floor_accounts_for_prior_day_pnl():
         pip_size=1.0, contract_size=5.0,
         commission_per_trade=0.0, commission_per_contract=0.0,
         spread_pips=0.0, slippage_pips=0.0,
-        daily_loss_limit_pct=2.0, max_trades_per_day=999,
+        daily_loss_limit_pct=1.2, max_trades_per_day=999,
     )
     # fixed $400 risk, 8-point stop -> 50 units (10 contracts);
-    # max_trade_loss = 3x intended risk = $1200, so the $600 floor loss
+    # max_trade_loss = 3x intended risk = $1200, so the $200 floor loss
     # below is NOT clamped.
     scalar_trades, _ = run_execution(
         df, pd.Series(sig), risk, stop_loss_pips=8.0, take_profit_pips=None,
@@ -256,8 +259,8 @@ def test_liquidate_at_floor_accounts_for_prior_day_pnl():
     assert scalar_trades[0].pnl == pytest.approx(-400.0, abs=1e-6)
     for t in (scalar_trades[1], vec_trades[1]):
         assert t.exit_reason == "daily_loss_limit_forced_close"
-        assert t.exit_price == pytest.approx(88.0, abs=1e-9)
-        assert t.pnl == pytest.approx(-600.0, abs=1e-6)
+        assert t.exit_price == pytest.approx(96.0, abs=1e-9)
+        assert t.pnl == pytest.approx(-200.0, abs=1e-6)
     assert vec_trades[1].exit_price == pytest.approx(scalar_trades[1].exit_price, abs=1e-9)
 
 
@@ -341,7 +344,9 @@ def test_spec_spread_slippage_defaults_applied():
     applied = apply_instrument_spec(risk, "MGC")
     # 2026-10-07 cost-unit fix: the spec's defaults are TICKS; MGC's tick is
     # 0.10 points, so 1 tick == 0.10 pip (pip_size 1.0), not 1.0.
-    assert applied.spread_pips == pytest.approx(1.0 * spec.tick_size / spec.pip_size)
+    # 2026-11-14 cost policy ("realistic"): a listed future pays its 1-tick inside spread through the 1 tick of slippage per side, so the
+    # separate spread is 0 (charging both double-counted it).
+    assert applied.spread_pips == pytest.approx(0.0)
     assert applied.slippage_pips == pytest.approx(1.0 * spec.tick_size / spec.pip_size)
     # pip_size/contract_size/commission behavior unchanged
     assert applied.pip_size == 1.0 and applied.contract_size == 10.0
@@ -357,14 +362,14 @@ def test_spec_spread_slippage_never_overwrite_explicit():
 def test_spec_spread_defaults_all_specs():
     from app.data.instrument_specs import KNOWN_INSTRUMENTS
     for symbol, spec in KNOWN_INSTRUMENTS.items():
-        assert spec.default_spread_ticks > 0, symbol
+        assert spec.default_spread_ticks > 0, symbol          # the registry still records the quoted inside spread
         assert spec.default_slippage_ticks >= 0, symbol
         applied = apply_instrument_spec(RiskConfig(spread_pips=0.0, slippage_pips=0.0, commission_per_trade=0.0), symbol)
-        # ticks -> price via tick_size -> pips via pip_size (cost-unit fix)
+        # ticks -> price via tick_size -> pips via pip_size (cost-unit fix); the charged values come from the cost policy
         assert applied.spread_pips == pytest.approx(
-            float(spec.default_spread_ticks) * spec.tick_size / spec.pip_size), symbol
+            float(spec.effective_spread_ticks) * spec.tick_size / spec.pip_size), symbol
         assert applied.slippage_pips == pytest.approx(
-            float(spec.default_slippage_ticks) * spec.tick_size / spec.pip_size), symbol
+            float(spec.effective_slippage_ticks) * spec.tick_size / spec.pip_size), symbol
 
 
 # ---------------------------------------------------------------------------

@@ -129,11 +129,13 @@ def test_daily_loss_limit_force_closes_on_intrabar_floating_loss():
     # (no stop defined) means the position is large enough that the
     # bar-1 wick (10 points against a ~1-point fallback stop) is a
     # catastrophic move well past the $500 daily floor.
-    reasons = [t.exit_reason for t in trades]
-    assert "daily_loss_limit_forced_close" in reasons
-    forced = next(t for t in trades if t.exit_reason == "daily_loss_limit_forced_close")
-    # Forced close must happen on bar 1 (the wick bar), not later.
-    assert forced.exit_time == ts[1]
+    # Audit A_5: the engine now closes at the stop the moment it is touched (the 1%-of-price fallback stop sits well inside the
+    # daily floor), so the wick bar ends the trade at the stop rather than riding down to the daily-loss floor. Either exit is
+    # a protective close on the wick bar; what must NOT happen is the trade riding the wick and closing later.
+    first = trades[0]
+    assert first.exit_reason in ("stop_loss", "daily_loss_limit_forced_close")
+    assert first.exit_time == ts[1]
+    assert first.pnl > -500.0 - 1e-6        # never worse than the $500 daily floor
 
 
 def test_equity_curve_reflects_mark_to_market_not_only_realized():

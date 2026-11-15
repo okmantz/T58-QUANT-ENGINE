@@ -66,7 +66,7 @@ def test_apply_instrument_spec_fills_commission_when_still_at_zero_default():
     caller set it."""
     risk = RiskConfig(spread_pips=0.0, slippage_pips=0.0, commission_per_trade=0.0)  # commission_per_trade AND commission_per_contract default to 0.0
     out = apply_instrument_spec(risk, "ES")
-    assert out.commission_per_contract == KNOWN_INSTRUMENTS["ES"].default_commission_round_turn
+    assert out.commission_per_contract == KNOWN_INSTRUMENTS["ES"].effective_commission_round_turn
     assert out.commission_per_contract > 0.0
     assert out.commission_per_trade == 0.0  # no longer auto-filled (would double-charge)
 

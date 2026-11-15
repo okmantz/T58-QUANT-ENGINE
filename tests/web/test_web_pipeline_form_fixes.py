@@ -25,9 +25,10 @@ def _risk(commission=0.0):
 
 
 def test_unposted_costs_use_instrument_spec_not_fx_defaults():
-    r = server._fill_unposted_costs(MultiDict({}), _risk(4.78), "NQ1! parquet")
-    assert (r.spread_pips, r.slippage_pips) == (0.25, 0.25)           # 1 tick each side, not 1.5 points
-    assert r.commission_per_trade == 0.0 and r.commission_per_contract == 4.78   # no double billing
+    r = server._fill_unposted_costs(MultiDict({}), _risk(3.50), "NQ1! parquet")   # the instrument picker pre-fills the policy rate
+    # cost policy "realistic": 1 tick of slippage per side already pays the inside spread (no separate spread), Lucid base commission $3.50
+    assert (r.spread_pips, r.slippage_pips) == (0.0, 0.25)
+    assert r.commission_per_trade == 0.0 and r.commission_per_contract == 3.50   # no double billing
 
 
 def test_typed_costs_are_never_overridden_and_unknown_instruments_keep_legacy_defaults():

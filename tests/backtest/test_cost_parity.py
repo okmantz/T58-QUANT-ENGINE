@@ -8,7 +8,9 @@ from app.backtest.risk import RiskConfig, UntouchedDefault, describe_simulation
 from app.data.instrument_specs import apply_instrument_spec, get_instrument_spec
 from app.search.instrument_risk import resolve_leg_risk, resolve_run_costs
 
-EXPECTED_PTS = {"ES": 1.0956, "MES": 1.264, "NQ": 1.239, "MNQ": 1.660}
+# 2026-11-14 cost policy ("realistic" profile): spread folded into the 1-tick slippage, Lucid base commissions.
+# ES: 2*0.25 + 3.50/50 = 0.57 | MES: 2*0.25 + 1.00/5 = 0.70 | NQ: 2*0.25 + 3.50/20 = 0.675 | MNQ: 2*0.25 + 1.00/2 = 1.00
+EXPECTED_PTS = {"ES": 0.57, "MES": 0.70, "NQ": 0.675, "MNQ": 1.00}
 
 
 def _rt_points(r: RiskConfig) -> float:
@@ -44,4 +46,4 @@ def test_marker_survives_replace_and_behaves_like_float():
 
 def test_report_prints_round_turn_cost():
     r = apply_instrument_spec(RiskConfig(pip_size=1.0), "ES")
-    assert "Round-turn cost: 1.096 price points" in describe_simulation(r)
+    assert "Round-turn cost: 0.570 price points" in describe_simulation(r)

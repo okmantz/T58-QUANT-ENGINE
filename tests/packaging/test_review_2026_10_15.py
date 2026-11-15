@@ -29,7 +29,12 @@ def _trades(n: int, seed: int = 11, per_day: int = 2) -> list:
     return out
 
 
+# The audit E-3/E-4 corrections (floor pinned after the first payout, payout caps) change how fast funded accounts bust, which would turn
+# this test into a test of those rules. It is about the ruin WINDOW, so it keeps the original uncapped, unpinned rule set.
 _RULES = get_preset("topstep_50k").to_prop_rules()
+_RULES.payout_pins_floor_to_lock = False
+_RULES.payout_cap_pct = None
+_RULES.payout_cap_dollars = None
 
 
 # ---------------------------------------------------------------------------------------------------------

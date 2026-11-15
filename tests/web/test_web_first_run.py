@@ -54,7 +54,10 @@ def test_launcher_opens_the_dashboard():
 
     from app.web import launcher
 
-    assert 'webbrowser.open(f"http://127.0.0.1:{port}/dashboard")' in inspect.getsource(launcher.main)
+    # Opens the dashboard exactly once via the single-launch guard (never a raw webbrowser.open).
+    src = inspect.getsource(launcher.main)
+    assert 'open_browser_once(f"http://127.0.0.1:{port}/dashboard")' in src
+    assert "webbrowser.open(" not in src
 
 
 def test_tour_autostarts_on_first_dashboard_visit_then_never_again():

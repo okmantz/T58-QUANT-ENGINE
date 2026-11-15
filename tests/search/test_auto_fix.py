@@ -162,7 +162,7 @@ def test_fix_regime_skips_a_cell_that_does_not_help_instead_of_giving_up():
 
 def test_fix_regime_keeps_the_prefix_that_holds_up_when_a_later_cell_does_not():
     """Regression: one late regime that overfits used to throw away earlier regimes that held up on unseen data."""
-    res = fix_regime(_market(seed=2, block=700), ManualStrategy(dict(_CFG)), _RISK, build_from_code=_NO_BUILD)
+    res = fix_regime(_market(seed=42, block=700), ManualStrategy(dict(_CFG)), _RISK, build_from_code=_NO_BUILD)
     assert res.accepted, (res.headline, res.reasons)
     d = res.details
     assert d["rounds_kept"] < d["rounds_tried"]
@@ -218,7 +218,9 @@ def test_run_auto_fix_reports_nothing_fixable_for_monte_carlo_only():
 def test_run_auto_fix_repairs_then_reruns_the_real_checks():
     from app.validation.runner import dispatch_validation_checks
     from app.backtest.engine import run_backtest
-    df, rules, strat = _market(), PropRules(account_size=100000), ManualStrategy(_CFG)
+    # seed 29: a synthetic market where the regime check fails and the repair demonstrably removes flagged regimes (re-picked after the
+    # 2026-11 engine fixes changed which synthetic market exercises this path).
+    df, rules, strat = _market(seed=29), PropRules(account_size=100000), ManualStrategy(_CFG)
     form = {"mc_sims": 200}
     before = dispatch_validation_checks(df, strat, _RISK, rules, ["monte_carlo", "regime"], form,
                                         baseline_trades=run_backtest(df, strat, _RISK).trades)

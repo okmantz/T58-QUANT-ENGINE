@@ -83,8 +83,8 @@ def test_long_reverse_flat_cycle_pnl():
     engine.handle(r, parse_alert(_alert(position="flat", price="17990", time="4")))
     snap = PaperLedger(r.id).snapshot()
     assert snap["open"] == [] and snap["trades"] == 2
-    # NQ = $20/point, $4.20 round-turn commission: long 2 +10pt, short 1 +20pt
-    assert snap["realized"] == pytest.approx(2 * 10 * 20 - 2 * 4.78 + 1 * 20 * 20 - 4.78)
+    # NQ = $20/point, $3.50 round-turn commission (realistic cost profile): long 2 +10pt, short 1 +20pt
+    assert snap["realized"] == pytest.approx(2 * 10 * 20 - 3 * 3.50 + 1 * 20 * 20)
 
 
 def test_open_position_unrealized():

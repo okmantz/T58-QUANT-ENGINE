@@ -195,6 +195,8 @@ def test_multi_instrument_search_loop_mode_save_to_library(_isolated_raw_data_di
         return _RealRiskConfig(**kw)
 
     monkeypatch.setattr("app.web.server.RiskConfig", _frictionless_risk)
+    # The route now also applies the cost policy (B-4) when no friction is posted; keep this plumbing test frictionless.
+    monkeypatch.setattr("app.web.server._fill_unposted_costs", lambda form, risk, label: risk)
 
     _trending_csv(_isolated_raw_data_dir / "eurusd.csv", seed=1)
     _trending_csv(_isolated_raw_data_dir / "gbpusd.csv", seed=2)

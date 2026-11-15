@@ -180,14 +180,17 @@ def test_trial_ledger_ages_old_entries(tmp_path, monkeypatch):
 def test_cost_model_ticks_not_pips():
     from app.data.cost_model import compute_tick_cost_ladder, resolve_cost
     nq = resolve_cost("NQ_5m.csv")
-    assert nq.spread_ticks == 1 and nq.slippage_ticks == 1
-    assert nq.spread_pips == pytest.approx(0.25)                         # 1 tick = 0.25 points, NOT the legacy 1.0 pip
-    assert nq.round_trip_dollars() == pytest.approx(2 * 2 * 5.0 + 4.78)
-    assert nq.stress(2.0).round_trip_dollars() == pytest.approx(2 * 4 * 5.0 + 4.78)   # commission not scaled
+    # Cost policy (audit A-R1/B-4): realistic = the spec base (no quoted spread on futures, 1 tick slippage per side, Lucid commission),
+    # stress = the spec stress profile. Ticks, never legacy pips.
+    assert nq.spread_ticks == 0 and nq.slippage_ticks == 1
+    assert nq.spread_pips == pytest.approx(0.0)
+    assert nq.slippage_pips == pytest.approx(0.25)                       # 1 tick = 0.25 points, NOT the legacy 1.0 pip
+    assert nq.round_trip_dollars() == pytest.approx(2 * 1 * 5.0 + 3.5)
+    assert nq.stress(2.0).round_trip_dollars() == pytest.approx(2 * 2 * 5.0 + 3.5)   # commission not scaled
     tr = _trades([0.3] * 50, risk=10.0, size=2.0)
     lad = compute_tick_cost_ladder(tr, nq, (1.0, 2.0))
     assert lad[1]["net_profit"] < lad[0]["net_profit"]
-    assert lad[0]["net_profit"] - lad[1]["net_profit"] == pytest.approx(50 * 2 * 2 * 5.0 * 2)
+    assert lad[0]["net_profit"] - lad[1]["net_profit"] == pytest.approx(50 * 2 * 1 * 5.0 * 2)
 
 
 def test_web_forms_no_longer_default_to_legacy_pips():
