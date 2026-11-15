@@ -1,0 +1,535 @@
+//@version=6
+// ============================================================================
+//  T58 TSMOM — Prop-Firm FORWARD-TEST implementation (Pine Script v6)
+//  Family F1, Variant V1 — published-form Time-Series Momentum (TSMOM)
+// ============================================================================
+//
+//  *** HONEST STATUS — READ BEFORE USE ***
+//  This is the mission's STRONGEST candidate and it is delivered under the
+//  mission's Phase 7 fallback (strongest candidate + exact failure math).
+//  It does NOT meet the READY gate. It is NOT validated, NOT proven
+//  profitable, and NOT approved for live prop-firm capital. It is a
+//  FORWARD-TEST implementation of the published form: run it on paper /
+//  simulator accounts only, log everything, and let forward evidence —
+//  not this file — decide whether it ever deserves real money.
+//
+//  DEV EVIDENCE [OUR SIMULATION] (Python harness, DEV window only:
+//  first active day 2020-10-01 -> 2025-08-29, 1,270 trading days,
+//  59 active months, sealed data >= 2025-09-01 untouched):
+//    - Sharpe 0.563, annualised return 13.8%, realised daily vol 1.55%
+//    - Sequential Lucid-50k eval pass rate 41.6% (101 attempts, median
+//      10 trading days to pass)
+//    - Monte Carlo (5-day block bootstrap, 20,000 paths) eval pass 40.09%
+//    - GATE 1 — MC pass Wilson-95 lower bound >= 70%:  FAIL (39.42%)
+//    - GATE 2 — Prop-Firm Transfer Test: candidate must beat a size-matched
+//      sign-randomised control by >= +10pp:  FAIL (+6.46pp; candidate
+//      40.09% vs control 33.63% — roughly a third of zero-edge paths pass
+//      this eval geometry at this volatility, so most of the 40% is
+//      variance, not edge)
+//    - GATE 3 — MC breach (ruin) <= 20%:  FAIL (55.53%)
+//    - GATE 4 — >= 300 trades for full READY:  FAIL (177 position changes
+//      over 59 months — the family caps at MARGINAL on trade count alone)
+//    - 2x cost stress barely moves any figure (MC pass 40.03% at engine
+//      coded-2x costs): costs are NOT the binding constraint. The binding
+//      constraints are the $2,000 trailing floor and the 30-trading-day
+//      attempt clock (mission convention — Lucid itself has no time limit).
+//    - Edge is H2-concentrated (H1 Sharpe 0.268 / H2 Sharpe 0.794) and
+//      long-side only in DEV (longs +$45,882 / shorts -$10,914).
+//
+//  THESIS [PUBLISHED]
+//    - Moskowitz, Ooi & Pedersen (2012): time-series momentum — the sign
+//      of an asset's own trailing 12-month return predicts its next-month
+//      direction across 58 liquid futures/forwards.
+//    - Hurst, Ooi & Pedersen (2017): a century of evidence for trend
+//      following, positive in most decades and most asset classes.
+//    - Published construction: monthly rebalance, position in each market
+//      proportional to (signal x 10% target volatility) / (market's
+//      realised volatility), so every market contributes roughly equal risk.
+//
+//  EXACT RULES AS TESTED IN PYTHON (V1) [RECONSTRUCTION — 3-market basket]
+//    - Universe: ES + NQ + GC basket (published form uses 58 markets; the
+//      basket is the mission's reconstruction, so all DEV numbers above
+//      are BASKET numbers — see "Differences" below).
+//    - Signal per market: sign of trailing 12-month return (252 trading
+//      days) on roll-adjusted closes, evaluated at month-end close.
+//    - Vol scaling: weight = signal x 0.10 / sigma_ann, where sigma_ann is
+//      the 60-trading-day realised volatility of daily returns x sqrt(252)
+//      (Python: rolling std, min 40 observations).
+//    - Gross leverage cap 3.0 across the basket (never bound in DEV).
+//    - Rebalance monthly: weights decided at month-end close t earn
+//      returns from day t+1. Turnover cost charged on |change in
+//      contracts| only.
+//    - Sizing base: fixed $50,000 (no compounding) in the Python model;
+//      contracts = weight x 50,000 / (close x multiplier), FRACTIONAL
+//      (micro-equivalent) contracts. Average position was only ~0.1–0.5
+//      mini-equivalents per market — remember this when choosing a chart
+//      (see "Sizing granularity" below).
+//
+//  WHAT THIS PINE SCRIPT IS [RECONSTRUCTION — single-instrument form]
+//    The same V1 logic translated to ONE chart symbol (the published
+//    basket diversification is lost — a single-instrument run will NOT
+//    reproduce the basket DEV numbers and should be expected to be
+//    worse: no cross-market diversification, and the DEV short side lost
+//    money even inside the basket). Run one instance per instrument if
+//    you want a basket approximation; Pine cannot portfolio-size across
+//    charts, so cross-instance risk is unmanaged.
+//
+//  ANTI-LOOKAHEAD / NO-REPAINT CHOICES
+//    1. Every signal input comes from COMPLETED daily bars only: all
+//       request.security() expressions use [1]-shifted daily data
+//       (prior close, close 253 daily bars ago, vol/ATR ending at the
+//       prior close) with barmerge.lookahead_off everywhere. There is
+//       no lookahead_on anywhere in this script and no future ([-n])
+//       reference anywhere.
+//    2. Rebalance is triggered by the calendar (first daily bar of a new
+//       month — a fact known at that bar's open, from bar TIME only),
+//       while the signal itself uses only data through the PRIOR month
+//       close. This matches the Python information set exactly: decide
+//       on month-end close, earn from the next day.
+//    3. calc_on_every_tick=false and process_orders_on_close=true:
+//       orders fill at bar closes, never on intrabar ticks, so the
+//       forming bar's unconfirmed data can never trigger a fill.
+//    4. The drawdown guard's peak updates ONLY at day boundaries, from
+//       the prior bar's close equity (an end-of-day sample), mirroring
+//       the Lucid EOD-peak rule.
+//    5. Month/day keys are derived from bar time via request.security
+//       on "D" — time is known in advance and cannot repaint.
+//
+//  COMMISSION / SLIPPAGE MAPPING (read before trusting any $ figure)
+//    Engine all-in round-trip cost (T58 code spec) = Alpha-schedule
+//    commission + 1 tick spread + 1 tick slippage PER SIDE (4 ticks RT):
+//      ES $54.78 | NQ $24.78 | GC $45.22 | MES $6.32 | MNQ $3.32 | MGC —
+//    Pine cannot express that directly, so this script sets:
+//      commission_type = cash_per_contract, commission_value = 4.78 (ES)
+//      slippage = 2 (ticks, applied by Pine PER FILL)
+//    Pine charges commission_value on EACH fill (entry AND exit), so the
+//    effective Pine round trip on ES = 2 x $4.78 commission + 4 ticks of
+//    slippage = $9.56 + $50.00 = $59.56 vs the engine's $54.78 — slightly
+//    CONSERVATIVE (Pine overstates cost by ~$4.78/RT on ES). The slippage
+//    setting of 2 ticks/fill approximates the engine's spread+slippage
+//    of 2 ticks/side (1 tick spread + 1 tick slippage). When you change
+//    instrument, EDIT commission_value in the strategy() call below —
+//    Pine strategy() arguments must be compile-time constants, so this
+//    cannot be an input:  ES 4.78 | NQ 4.78 | GC 5.22 | MES 1.32 |
+//    MNQ 1.32 | MGC 1.82 (Alpha schedule). Tick values: ES 0.25 ($12.50),
+//    NQ 0.25 ($5.00), GC 0.10 ($10.00), MES 0.25 ($1.25), MNQ 0.25
+//    ($0.50), MGC 0.10 ($1.00) — slippage=2 ticks is worth very different
+//    dollars per instrument; that asymmetry is inherited from the
+//    engine's own cost model.
+//
+//  INSTRUMENT PROFILES (point value = $ per 1.00 point of price)
+//      ES  $50/point | MES $5/point  (CME E-mini / Micro S&P 500)
+//      NQ  $20/point | MNQ $2/point  (CME E-mini / Micro Nasdaq-100)
+//      GC  $100/point | MGC $10/point (COMEX Gold / Micro Gold)
+//    The script uses syminfo.pointvalue automatically when available
+//    (input toggle), with a manual point-value input as fallback.
+//    NOTE: the Python harness's cost-turnover calc used multiplier 50
+//    for NQ; the real CME NQ point value is $20. That only affected the
+//    (tiny) Python cost line, never P&L. Pine uses the TRUE point value.
+//
+//  SIZING GRANULARITY — IMPORTANT
+//    At a 10% vol target on a $50k base, the raw size is typically
+//    ~0.1 mini contracts (e.g. ES at 6,000 with 16% vol: weight 0.625,
+//    notional $31,250, raw qty ~0.10 mini / ~1.0 MES micro). The Python
+//    model traded FRACTIONAL contracts. Default qty mode here is
+//    "Round" (per the deliverable spec), which means:
+//      - On a MINI chart (ES/NQ/GC) the strategy will usually round to
+//        0 or 1 contracts and will NOT track the tested sizing.
+//      - On a MICRO chart (MES/MNQ/MGC) rounding gives live, tradable
+//        sizes closest to the tested scale. RECOMMENDED for forward test.
+//      - Select "Fractional (Python match)" to replicate the Python
+//        sizing exactly in the Strategy Tester on any chart.
+//
+//  RISK CAP — THE RECONSTRUCTION'S CAP MECHANISM (no stop in published form)
+//    The published form has NO stop loss, so the mission's <=1% ($500 on
+//    $50k) per-position risk cap has no stop distance to bite on. This
+//    script implements the cap as a POSITION-SIZE CEILING derived from
+//    realised volatility (input group "Risk cap"):
+//      per-contract 2-sigma monthly move $ = price x pointValue
+//          x (sigma_ann / sqrt(12)) x 2
+//      capQty = (baseEquity x riskCapPct/100) / that move
+//    Worked example (ES, price 6,000, sigma 16%): one mini's 2-sigma
+//    month ~= $27,700, so a strict 1% cap allows ~0.018 minis (~0.18
+//    MES) — i.e. the cap, enforced literally, nearly zeroes the position.
+//    That is the truth about this strategy at prop scale, and it is WHY
+//    the DEV run was judged uncapped: the 40% MC pass figure belongs to
+//    the uncapped published scale. Therefore enforceVolRiskCap defaults
+//    OFF (default behaviour = published form, matching the DEV test).
+//    Turning it ON is one click, is fully implemented, and creates a
+//    DIFFERENT, much smaller strategy whose pass odds collapse toward
+//    the V3a timeout profile (2.54% MC pass at a 0.50% daily-vol budget)
+//    — do not quote the DEV numbers for a capped run.
+//    Separately: if you enable the optional protective stop, a TRUE
+//    stop-based cap IS enforced automatically — qty is limited so that
+//    stopDistance x qty x pointValue <= riskCapPct% of base equity.
+//
+//  PROP-FIRM GUARDS (defaults ON where they do not alter published signals)
+//    The guards replicate the Lucid 50k eval environment the Python
+//    harness simulated; they never change a signal, they only flatten /
+//    halt the way the eval itself would end or lock the day:
+//      - Daily Loss Limit guard (default ON, $1,200): if day P&L <=
+//        -$1,200, flatten and block entries until the next day. (In the
+//        harness the DLL is a SOFT clamp — the day's loss is truncated
+//        at -$1,200 and the account survives unless the floor breaks.
+//        This guard mirrors that liquidation. If the firm's own DLL
+//        toggle is enabled it may fire first; this is a self-replica.)
+//      - Trailing drawdown guard (default ON, $2,000): floor =
+//        min(EOD peak - $2,000, $50,100); the peak ratchets ONLY on
+//        end-of-day equity samples. If equity <= floor: flatten and
+//        latch halted permanently (the eval is over). NOTE: the harness
+//        tested breach on EOD balances only (closes-only approximation,
+//        no intraday MAE). This guard checks CURRENT equity against the
+//        EOD-peak floor on every bar, so on an intraday chart it can
+//        flatten intraday where the harness would only have caught the
+//        breach at the close — stricter than the simulation, by design.
+//      - Max contracts cap (default 4, Lucid 50k): hard ceiling on |qty|.
+//        Lucid counts contracts; whether micros count 1:1 or at a
+//        mini-equivalence ratio is firm-schedule detail — the script
+//        caps RAW contract count at the input value. Verify the current
+//        Lucid schedule before relying on micro equivalence.
+//      - Flatten-at-time (default OFF): a monthly trend position is held
+//        for weeks; flattening daily would destroy the strategy. The
+//        input exists for completeness/testing only. Enabling it makes
+//        this a different strategy — the DEV numbers do not apply.
+//
+//  DIFFERENCES vs THE PYTHON / T58 MODEL (expect different results)
+//    1. Single instrument vs 3-market basket (diversification lost).
+//    2. Sizing base: Python fixed $50k, no compounding. Pine default is
+//       the same fixed base (input); an optional compounding mode exists.
+//    3. Execution: Python earns new weights from the day after month-end
+//       close. Pine fills at the close of the first bar of the new month
+//       (on a daily chart that is one trading day later than Python; on
+//       an intraday chart, at the first intraday bar's close — closer).
+//    4. Costs: Python charged commission+ticks on |delta contracts|
+//       only. Pine charges on every fill, and this script closes and
+//       re-opens when size changes at a rebalance, so Pine turnover cost
+//       is HIGHER than the Python model. Monthly cadence keeps it small;
+//       the DEV verdict was cost-insensitive anyway (see Gate notes).
+//    5. Vol window: Python used rolling std with min 40 of 60 obs; Pine
+//       ta.stdev requires the full 60 — the first possible signal comes
+//       slightly later in Pine. Immaterial after warmup.
+//    6. Price series: Python used difference-adjusted closes with
+//       roll-gap neutralisation on unadjusted splices, and excluded
+//       specific data holes (2020-02-27->03-03 etc.). TradingView
+//       continuous contracts are adjusted by TradingView's own method;
+//       signals can differ slightly around contract rolls. Pine cannot
+//       reproduce the hole exclusions.
+//    7. Breach testing: harness = EOD balances only; Pine guard = EOD
+//       peak floor vs current equity (stricter, see Guards above). Pine
+//       has no MAE-based intraday breach test equivalent to the spec's.
+//    8. Attempt clock: the 30-trading-day attempt window is a mission
+//       convention, not a Lucid rule, and is a property of the MC
+//       harness — this script does not enforce attempt windows.
+//
+//  FORWARD-TEST CONFIGURATION (recommended)
+//    - Paper / simulator ONLY. No live capital, no funded eval purchase
+//      justified by DEV evidence (MC pass ~40% vs a 70% bar, breach
+//      ~56% — buying evals on this is lighting money on fire at scale).
+//    - Instrument: ES exposure primary — run the MES (micro) chart so
+//      "Round" sizing is meaningful; optionally MNQ and MGC instances
+//      for a basket approximation. Chart timeframe: Daily for the
+//      simplest faithful run; 60m/15m if you want the DLL/DD guards to
+//      react intraday (signals are daily/monthly either way).
+//    - Log per rebalance: date, signal, sigma_ann, weight, raw qty,
+//      executed qty, which cap (if any) bound, guard events, day P&L,
+//      EOD equity vs floor. The dashboard table shows most of these.
+//    - Judge forward results against the SAME gates: MC pass LB >= 70%,
+//      Transfer excess >= +10pp, breach <= 20%. Anything less keeps
+//      this in forward-test, whatever a single good month suggests.
+//
+//  COMPILE STATUS: written for Pine Script v6 and self-reviewed line by
+//  line, but NOT compiled here (no TradingView compiler in this
+//  environment). Paste into TradingView's Pine Editor and compile-check
+//  before use. See PINE_NOTES.md for the constructs to watch.
+// ============================================================================
+
+strategy("T58 TSMOM — Prop-Firm Forward Test (V1, NOT READY)",
+     shorttitle = "T58 TSMOM V1 (FWD-TEST)",
+     overlay = true,
+     initial_capital = 50000,
+     currency = currency.USD,
+     commission_type = strategy.commission.cash_per_contract,
+     commission_value = 4.78,
+     slippage = 2,
+     pyramiding = 0,
+     calc_on_every_tick = false,
+     process_orders_on_close = true,
+     max_labels_count = 500)
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+f_clamp(float x, float lo, float hi) =>
+    math.max(lo, math.min(hi, x))
+
+f_money(float x) =>
+    na(x) ? "—" : str.tostring(math.round(x))
+
+f_pct(float x) =>
+    na(x) ? "—" : str.tostring(x * 100, "#.#") + "%"
+
+// ---------------------------------------------------------------------------
+// Inputs — TSMOM signal (published form)
+// ---------------------------------------------------------------------------
+volTargetPct   = input.float(10.0, "Vol target (% annualised)", minval = 0.5, maxval = 50.0, step = 0.5, group = "Signal (published form)", tooltip = "Published form: 10% per-market annualised vol target.")
+lookbackMonths = input.int(12, "Lookback (months)", minval = 1, maxval = 36, group = "Signal (published form)", tooltip = "12 months = 252 trading days. WARNING: changing this leaves the DEV-tested form; the DEV numbers apply only at 12.")
+volWindowDays  = input.int(60, "Vol window (trading days)", minval = 20, maxval = 250, group = "Signal (published form)", tooltip = "Python: 60d realised vol, min 40 obs. Pine ta.stdev needs the full window.")
+rebalDayOffset = input.int(0, "Rebalance day offset (trading days into month)", minval = 0, maxval = 20, group = "Signal (published form)", tooltip = "0 = first trading day of the month (Python-equivalent information set). >0 delays execution and leaves the tested form.")
+
+// ---------------------------------------------------------------------------
+// Inputs — Sizing
+// ---------------------------------------------------------------------------
+useSyminfoPV   = input.bool(true, "Use chart point value (syminfo.pointvalue)", group = "Sizing", tooltip = "ES 50, MES 5, NQ 20, MNQ 2, GC 100, MGC 10 $/point. If the chart lacks one, the manual value below is used.")
+pvInput        = input.float(50.0, "Point value fallback ($/point)", minval = 0.01, step = 0.01, group = "Sizing")
+baseCapital    = input.float(50000.0, "Sizing base / account start ($)", minval = 1000.0, step = 500.0, group = "Sizing", tooltip = "Python sized off a fixed $50,000. Also anchors the drawdown floor lock (base + lock offset).")
+compoundSizing = input.bool(false, "Compound sizing (use current equity as base)", group = "Sizing", tooltip = "OFF = fixed base, matching Python. ON leaves the tested form.")
+qtyMode        = input.string("Round", "Quantity mode", options = ["Round", "Floor", "Fractional (Python match)"], group = "Sizing", tooltip = "Round/Floor give whole contracts (use a MICRO chart). Fractional replicates the Python fractional sizing in the tester.")
+grossCap       = input.float(3.0, "Gross leverage cap (|weight|)", minval = 0.1, maxval = 10.0, step = 0.1, group = "Sizing", tooltip = "Python basket cap 3.0x, applied per-instrument here. Never bound in DEV.")
+maxContracts   = input.int(4, "Max contracts cap (Lucid 50k = 4)", minval = 1, maxval = 100, group = "Sizing", tooltip = "Raw contract count ceiling. Verify Lucid's micro/mini equivalence on the current schedule.")
+
+// ---------------------------------------------------------------------------
+// Inputs — Risk cap (reconstruction; NOT in the published form)
+// ---------------------------------------------------------------------------
+enforceVolRiskCap = input.bool(false, "Enforce vol-derived risk cap", group = "Risk cap (reconstruction)", tooltip = "Ceiling: qty so a 2-sigma adverse MONTH <= risk cap % of base. OFF by default = published form = the DEV-tested scale. At 1% on $50k this allows ~0.02 ES minis — see header.")
+riskCapPct        = input.float(1.0, "Risk cap (% of base equity)", minval = 0.05, maxval = 25.0, step = 0.05, group = "Risk cap (reconstruction)", tooltip = "Mission hard cap = 1% ($500 on $50k). Also used as the stop-based cap when the protective stop is enabled.")
+
+// ---------------------------------------------------------------------------
+// Inputs — Optional protective stop (NON-PUBLISHED; default OFF)
+// ---------------------------------------------------------------------------
+useStop     = input.bool(false, "Enable protective stop (non-published)", group = "Protective stop (non-published)", tooltip = "Default OFF = published form. When ON, qty is ALSO capped so stop risk <= risk cap % of base.")
+stopAtrMult = input.float(2.0, "Stop distance (x daily ATR)", minval = 0.25, maxval = 10.0, step = 0.25, group = "Protective stop (non-published)")
+stopAtrLen  = input.int(14, "ATR length (daily bars)", minval = 2, maxval = 100, group = "Protective stop (non-published)")
+
+// ---------------------------------------------------------------------------
+// Inputs — Prop-firm guards (Lucid 50k eval replica)
+// ---------------------------------------------------------------------------
+useGuards      = input.bool(true, "Enable prop-firm guards (master)", group = "Prop-firm guards")
+useDllGuard    = input.bool(true, "Daily loss limit guard", group = "Prop-firm guards")
+dllAmount      = input.float(1200.0, "Daily loss limit ($)", minval = 50.0, step = 50.0, group = "Prop-firm guards", tooltip = "Lucid 50k DLL $1,200 (soft lock in the harness: flatten + halt entries for the day).")
+useDdGuard     = input.bool(true, "Trailing drawdown guard", group = "Prop-firm guards")
+trailDdAmount  = input.float(2000.0, "Trailing drawdown ($)", minval = 100.0, step = 50.0, group = "Prop-firm guards", tooltip = "Lucid 50k trailing DD $2,000, EOD-peak basis.")
+floorLockOff   = input.float(100.0, "Floor lock offset ($ above base)", minval = 0.0, step = 10.0, group = "Prop-firm guards", tooltip = "Floor locks at base + $100 ($50,100) once the EOD peak reaches base + $2,100.")
+useFlatTime    = input.bool(false, "Flatten at time of day (NOT published form)", group = "Prop-firm guards", tooltip = "Default OFF: a monthly trend position must be held overnight. Enabling this destroys the tested strategy.")
+flatSession    = input.session("1555-1600", "Flatten session (intraday charts only)", group = "Prop-firm guards")
+
+// ---------------------------------------------------------------------------
+// Inputs — Display
+// ---------------------------------------------------------------------------
+showBg     = input.bool(true, "Shade background by position", group = "Display")
+showLabels = input.bool(true, "Rebalance labels", group = "Display")
+showTable  = input.bool(true, "Dashboard table", group = "Display")
+
+// ---------------------------------------------------------------------------
+// Confirmed daily data (ALL signal math lives here — completed bars only).
+// Every expression is [1]-shifted inside a lookahead_off security call, so
+// on any chart timeframe these values describe the last COMPLETED daily
+// bar. Nothing below this block may introduce other security calls inside
+// conditional branches (Pine requires consistent request history).
+// ---------------------------------------------------------------------------
+lookbackBars = lookbackMonths * 21  // 12 months x 21 trading days = 252
+
+dPrevClose = request.security(syminfo.tickerid, "D", close[1], lookahead = barmerge.lookahead_off)
+dTrailRet  = request.security(syminfo.tickerid, "D", close[1] / close[1 + lookbackBars] - 1.0, lookahead = barmerge.lookahead_off)
+dVolAnn    = request.security(syminfo.tickerid, "D", ta.stdev(close / close[1] - 1.0, volWindowDays)[1] * math.sqrt(252.0), lookahead = barmerge.lookahead_off)
+dAtr       = request.security(syminfo.tickerid, "D", ta.atr(stopAtrLen)[1], lookahead = barmerge.lookahead_off)
+dMonthKey  = request.security(syminfo.tickerid, "D", year(time) * 12 + month(time), lookahead = barmerge.lookahead_off)
+dDayKey    = request.security(syminfo.tickerid, "D", year(time) * 10000 + month(time) * 100 + dayofmonth(time), lookahead = barmerge.lookahead_off)
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+var float eodPeak        = baseCapital   // EOD-sampled equity peak (Lucid ratchet)
+var float dayStartEq     = baseCapital   // equity at prior day close (DLL basis)
+var bool  halted         = false         // latched on trailing-floor breach (eval over)
+var bool  dllHalt        = false         // latched for the day on DLL trip
+var int   curMonthKey    = na
+var int   curDayKey      = na
+var int   dayIdx         = 0             // trading days elapsed in current month
+var bool  rebalDone      = false         // one rebalance evaluation per month
+var int   sigDir         = 0             // last computed signal: -1 / 0 / +1
+var float lastWeight     = 0.0           // last computed target weight
+var float lastDesiredQty = 0.0           // last computed target signed qty
+var float entryStopDist  = na            // protective-stop distance stored at entry
+var bool  rebalEvent     = false         // plot/label markers, reset each bar
+var bool  dllEvent       = false
+var bool  ddEvent        = false
+
+rebalEvent := false
+dllEvent   := false
+ddEvent    := false
+
+float ddFloor  = math.min(eodPeak - trailDdAmount, baseCapital + floorLockOff)
+float dayPnL   = strategy.equity - dayStartEq
+float pointVal = useSyminfoPV and not na(syminfo.pointvalue) and syminfo.pointvalue > 0 ? syminfo.pointvalue : pvInput
+
+// ---------------------------------------------------------------------------
+// Day / month boundary bookkeeping (time-based; cannot repaint).
+// At the first chart bar of a new daily bar, strategy.equity[1] is the
+// prior day's close equity — that is the EOD sample for the peak ratchet
+// and the DLL baseline.
+// ---------------------------------------------------------------------------
+bool newDayBar = not na(dDayKey) and (na(curDayKey) or dDayKey != curDayKey)
+if newDayBar
+    if na(curDayKey)
+        dayStartEq := strategy.equity
+    else
+        eodPeak    := math.max(eodPeak, strategy.equity[1])
+        dayStartEq := strategy.equity[1]
+    dllHalt := false
+    if na(curMonthKey) or dMonthKey != curMonthKey
+        curMonthKey := dMonthKey
+        dayIdx      := 0
+        rebalDone   := false
+    else
+        dayIdx += 1
+    curDayKey := dDayKey
+    ddFloor   := math.min(eodPeak - trailDdAmount, baseCapital + floorLockOff)
+    dayPnL    := strategy.equity - dayStartEq
+
+// ---------------------------------------------------------------------------
+// Guards — trailing drawdown floor (flatten + permanent halt)
+// ---------------------------------------------------------------------------
+if useGuards and useDdGuard and not halted and strategy.equity <= ddFloor
+    // Equity at or through the EOD-peak floor: the eval is over whether or
+    // not a position is open (e.g. a gap through the floor at a fill).
+    // close_all() on a flat account is a harmless no-op.
+    strategy.close_all(comment = "T58 DD floor breach — eval over")
+    strategy.cancel_all()
+    halted  := true
+    ddEvent := true
+
+// ---------------------------------------------------------------------------
+// Guards — daily loss limit (flatten + halt entries until next day)
+// ---------------------------------------------------------------------------
+if useGuards and useDllGuard and not halted and not dllHalt and dayPnL <= -dllAmount
+    if strategy.position_size != 0
+        strategy.close_all(comment = "T58 DLL guard — flatten for the day")
+        strategy.cancel("TSMOM Stop")
+    dllHalt  := true
+    dllEvent := true
+
+// ---------------------------------------------------------------------------
+// Guards — optional flatten-at-time (intraday charts only; default OFF)
+// ---------------------------------------------------------------------------
+bool inFlatWindow = useFlatTime and timeframe.isintraday and not na(time(timeframe.period, flatSession))
+if inFlatWindow and strategy.position_size != 0
+    strategy.close_all(comment = "T58 flatten-time window")
+    strategy.cancel("TSMOM Stop")
+
+// ---------------------------------------------------------------------------
+// Monthly rebalance — first trading day of the month (plus optional offset),
+// signal/vol from completed daily bars only. One evaluation per month.
+// ---------------------------------------------------------------------------
+bool dataReady = not na(dTrailRet) and not na(dVolAnn) and dVolAnn > 0 and not na(dPrevClose) and dPrevClose > 0
+bool canRebal  = not rebalDone and dayIdx >= rebalDayOffset and dataReady and not halted and not dllHalt and not inFlatWindow
+
+if canRebal
+    sigDir     := dTrailRet > 0 ? 1 : dTrailRet < 0 ? -1 : 0
+    float wRaw = sigDir * (volTargetPct / 100.0) / dVolAnn
+    float w    = f_clamp(wRaw, -grossCap, grossCap)
+    lastWeight := w
+
+    float baseEq  = compoundSizing ? strategy.equity : baseCapital
+    float rawQty  = w * baseEq / (dPrevClose * pointVal)
+
+    // Cap A — vol-derived ceiling (reconstruction cap mechanism; see header).
+    if enforceVolRiskCap and sigDir != 0
+        float perCtrMonth2Sig = math.abs(dPrevClose * pointVal * dVolAnn / math.sqrt(12.0) * 2.0)
+        float capAbsQty = perCtrMonth2Sig > 0 ? (baseEq * riskCapPct / 100.0) / perCtrMonth2Sig : 0.0
+        rawQty := f_clamp(rawQty, -capAbsQty, capAbsQty)
+
+    // Cap B — true stop-based cap, only meaningful when the stop is on:
+    // stopDistance x qty x pointValue <= riskCapPct% of base equity.
+    float stopDistNow = na
+    if useStop and not na(dAtr) and dAtr > 0
+        stopDistNow := dAtr * stopAtrMult
+        if sigDir != 0
+            float qtyByStop = (baseEq * riskCapPct / 100.0) / (stopDistNow * pointVal)
+            rawQty := f_clamp(rawQty, -qtyByStop, qtyByStop)
+
+    // Cap C — max contracts (pre-rounding), then rounding mode, then re-cap.
+    rawQty := f_clamp(rawQty, -maxContracts, maxContracts)
+    float desiredQty = rawQty
+    if qtyMode == "Round"
+        desiredQty := math.round(rawQty)
+    else if qtyMode == "Floor"
+        desiredQty := math.sign(rawQty) * math.floor(math.abs(rawQty))
+    desiredQty := f_clamp(desiredQty, -maxContracts, maxContracts)
+    lastDesiredQty := desiredQty
+    rebalDone  := true
+    rebalEvent := true
+
+    float curQty = strategy.position_size
+    if desiredQty != curQty
+        if curQty != 0
+            strategy.close_all(comment = "TSMOM rebalance exit")
+        if desiredQty > 0
+            strategy.entry("TSMOM Long", strategy.long, qty = desiredQty, comment = "TSMOM rebalance long")
+        else if desiredQty < 0
+            strategy.entry("TSMOM Short", strategy.short, qty = -desiredQty, comment = "TSMOM rebalance short")
+        entryStopDist := desiredQty != 0 and useStop ? stopDistNow : na
+    else if desiredQty == 0
+        entryStopDist := na
+
+    if showLabels
+        string dirTxt = sigDir > 0 ? "LONG" : sigDir < 0 ? "SHORT" : "FLAT"
+        string lbl = "REBAL " + dirTxt + " q=" + str.tostring(desiredQty, "#.##") + "\nσ=" + f_pct(dVolAnn) + " w=" + str.tostring(w, "#.##")
+        label.new(bar_index, high, lbl, style = label.style_label_down, color = color.new(color.blue, 0), textcolor = color.white, size = size.small)
+
+// ---------------------------------------------------------------------------
+// Protective stop management (non-published; only when enabled at entry).
+// Re-issued each bar so the stop tracks the stored entry distance from the
+// actual average fill price. Stop-based risk was capped at entry (Cap B).
+// ---------------------------------------------------------------------------
+if useStop and strategy.position_size != 0 and not na(entryStopDist) and entryStopDist > 0 and not halted
+    float pdir    = math.sign(strategy.position_size)
+    float stopPx  = strategy.position_avg_price - pdir * entryStopDist
+    if stopPx > 0
+        strategy.exit("TSMOM Stop", stop = stopPx, comment = "TSMOM protective stop")
+else if strategy.position_size == 0
+    entryStopDist := na
+
+// ---------------------------------------------------------------------------
+// Visualisation
+// ---------------------------------------------------------------------------
+color posBg = strategy.position_size > 0 ? color.new(color.green, 92) : strategy.position_size < 0 ? color.new(color.red, 92) : na
+bgcolor(showBg ? posBg : na, title = "Position state (long/short)")
+
+plotshape(rebalEvent, title = "Rebalance", style = shape.diamond, location = location.belowbar, color = color.new(color.blue, 0), size = size.small)
+plotshape(dllEvent, title = "DLL guard trip", style = shape.xcross, location = location.abovebar, color = color.new(color.orange, 0), size = size.small)
+plotshape(ddEvent, title = "DD floor breach", style = shape.xcross, location = location.abovebar, color = color.new(color.red, 0), size = size.normal)
+
+// Equity-scale series cannot share the price pane on an overlay script in
+// any readable way, so peak/floor/day-P&L are published to the Data Window
+// (and the dashboard table) instead of distorting the price scale.
+plot(eodPeak, title = "EOD peak equity ($)", color = color.new(color.blue, 0), display = display.data_window)
+plot(ddFloor, title = "Trailing DD floor ($)", color = color.new(color.red, 0), display = display.data_window)
+plot(dayPnL, title = "Day P&L ($)", color = color.new(color.orange, 0), display = display.data_window)
+plot(sigDir, title = "Signal direction (-1/0/+1)", color = color.new(color.purple, 0), display = display.data_window)
+
+// ---------------------------------------------------------------------------
+// Dashboard (last bar only)
+// ---------------------------------------------------------------------------
+var table dash = table.new(position.top_right, 2, 9, bgcolor = color.new(color.black, 15), text_color = color.white, border_width = 1)
+
+if barstate.islast and showTable
+    string statusTxt = halted ? "HALTED — FLOOR BREACH" : dllHalt ? "DLL HALT (today)" : inFlatWindow ? "FLATTEN WINDOW" : "ACTIVE"
+    color  statusCol = halted ? color.new(color.red, 0) : dllHalt ? color.new(color.orange, 0) : color.new(color.green, 60)
+    table.cell(dash, 0, 0, "T58 TSMOM V1 — FWD TEST (NOT READY)", text_size = size.small)
+    table.cell(dash, 1, 0, statusTxt, bgcolor = statusCol, text_size = size.small)
+    table.cell(dash, 0, 1, "Signal / weight", text_size = size.small)
+    table.cell(dash, 1, 1, (sigDir > 0 ? "LONG" : sigDir < 0 ? "SHORT" : "FLAT") + "  w=" + str.tostring(lastWeight, "#.##"), text_size = size.small)
+    table.cell(dash, 0, 2, "Position / target qty", text_size = size.small)
+    table.cell(dash, 1, 2, str.tostring(strategy.position_size, "#.##") + " / " + str.tostring(lastDesiredQty, "#.##"), text_size = size.small)
+    table.cell(dash, 0, 3, "Trail 12m / vol ann", text_size = size.small)
+    table.cell(dash, 1, 3, f_pct(dTrailRet) + " / " + f_pct(dVolAnn), text_size = size.small)
+    table.cell(dash, 0, 4, "Equity", text_size = size.small)
+    table.cell(dash, 1, 4, "$" + f_money(strategy.equity), text_size = size.small)
+    table.cell(dash, 0, 5, "EOD peak", text_size = size.small)
+    table.cell(dash, 1, 5, "$" + f_money(eodPeak), text_size = size.small)
+    table.cell(dash, 0, 6, "DD floor", text_size = size.small)
+    table.cell(dash, 1, 6, "$" + f_money(ddFloor), text_size = size.small)
+    table.cell(dash, 0, 7, "Day P&L (DLL -$" + f_money(dllAmount) + ")", text_size = size.small)
+    table.cell(dash, 1, 7, "$" + f_money(dayPnL), text_size = size.small)
+    table.cell(dash, 0, 8, "Point value used", text_size = size.small)
+    table.cell(dash, 1, 8, "$" + str.tostring(pointVal, "#.##") + "/pt", text_size = size.small)
