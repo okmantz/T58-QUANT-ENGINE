@@ -148,6 +148,18 @@ def _num(v: Any) -> float:
         return 0.0
 
 
+BS_RATE = 0.045   # flat risk-free rate used by the Black-Scholes gamma fallback; gamma is only weakly sensitive to it
+
+
+def bs_gamma(spot: float, strike: float, t_years: float, iv: float, rate: float = BS_RATE) -> float:
+    """Black-Scholes gamma, identical for calls and puts: phi(d1) / (S * sigma * sqrt(T)). Returns 0.0 for unusable inputs."""
+    if spot <= 0 or strike <= 0 or t_years <= 0 or iv <= 0:
+        return 0.0
+    vol_t = iv * math.sqrt(t_years)
+    d1 = (math.log(spot / strike) + (rate + 0.5 * iv * iv) * t_years) / vol_t
+    return math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi) / (spot * vol_t)
+
+
 @dataclass
 class GexResult:
     instrument: str
@@ -188,6 +200,7 @@ def compute_gex(data: dict, *, instrument: str = "ES", symbol: str = "", max_dte
     notes: list[str] = []
     per: dict[float, dict] = {}
     n_used = 0
+    n_bs = 0
     for opt in data.get("options") or []:
         meta = parse_occ(opt.get("option", ""))
         if meta is None:
@@ -196,6 +209,13 @@ def compute_gex(data: dict, *, instrument: str = "ES", symbol: str = "", max_dte
         if dte < 0 or (max_dte is not None and dte > max_dte):
             continue
         oi, gamma = _num(opt.get("open_interest")), _num(opt.get("gamma"))
+        if gamma <= 0 and oi > 0:
+            # chain gave IV but no gamma (IV Walls doc, section 1): derive it from Black-Scholes
+            iv = _num(opt.get("iv") if opt.get("iv") is not None else opt.get("implied_volatility"))
+            if iv > 0:
+                gamma = bs_gamma(spot, meta["strike"], max(dte, 0.5) / 365.0, iv)
+                if gamma > 0:
+                    n_bs += 1
         if oi <= 0 or gamma <= 0:
             continue
         k = meta["strike"]
@@ -244,6 +264,8 @@ def compute_gex(data: dict, *, instrument: str = "ES", symbol: str = "", max_dte
     ranked = sorted(strikes, key=lambda r: abs(r["net_gex"]), reverse=True)[:6]
     top = [{"strike": r["strike"], "net_gex": r["net_gex"], "kind": "call-heavy (resistance/magnet)" if r["net_gex"] > 0
             else "put-heavy (support/accelerant)"} for r in ranked]
+    if n_bs:
+        notes.append(f"{n_bs} contract(s) had implied volatility but no gamma: gamma was computed with Black-Scholes (r={BS_RATE:.3f}, T floored at half a day).")
     if flip is None:
         notes.append("Net gamma never changes sign inside this window, so there is no gamma flip level.")
     sym = symbol or INSTRUMENT_MAP.get(instrument, {}).get("cboe", "")
