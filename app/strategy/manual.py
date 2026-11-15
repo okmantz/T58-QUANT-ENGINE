@@ -595,14 +595,18 @@ class ManualStrategy(Strategy):
         # has completed, preventing look-ahead bias inside the opening range.
         start_t = pd.to_datetime(session_start).time()
         end_t = pd.to_datetime(session_end).time()
+        wday = day
         if start_t <= end_t:
             opening_mask = (ts.dt.time >= start_t) & (ts.dt.time <= end_t)
             after_open = ts.dt.time > end_t
         else:
+            # AUDIT C-3: a window that wraps midnight belongs to the day it STARTED on; only bars after it ended and before the next
+            # one starts may read it (grouping by calendar day pulled the same date's evening bars into the morning's value).
             opening_mask = (ts.dt.time >= start_t) | (ts.dt.time <= end_t)
-            after_open = ts.dt.time > end_t
-        opening_high = work["high"].where(opening_mask).groupby(day).transform("max")
-        opening_low = work["low"].where(opening_mask).groupby(day).transform("min")
+            after_open = (ts.dt.time > end_t) & (ts.dt.time < start_t)
+            wday = day.where(ts.dt.time >= start_t, day - pd.Timedelta(days=1))
+        opening_high = work["high"].where(opening_mask).groupby(wday).transform("max")
+        opening_low = work["low"].where(opening_mask).groupby(wday).transform("min")
         result = opening_high if kind == "opening_range_high" else opening_low
         return result.where(after_open).ffill()
 
@@ -636,9 +640,11 @@ class ManualStrategy(Strategy):
         end_t = pd.to_datetime(session_end).time()
         if start_t <= end_t:
             ib_mask = (ts.dt.time >= start_t) & (ts.dt.time <= end_t)
-        else:
+            after_ib = ts.dt.time > end_t
+        else:   # AUDIT C-3: midnight-wrapping window -> keyed by the day it started on, readable only after it ended
             ib_mask = (ts.dt.time >= start_t) | (ts.dt.time <= end_t)
-        after_ib = ts.dt.time > end_t
+            after_ib = (ts.dt.time > end_t) & (ts.dt.time < start_t)
+            day = day.where(ts.dt.time >= start_t, day - pd.Timedelta(days=1))
 
         ib_high_by_day = work["high"].where(ib_mask).groupby(day).max()
         ib_low_by_day = work["low"].where(ib_mask).groupby(day).min()

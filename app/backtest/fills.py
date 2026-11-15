@@ -179,13 +179,21 @@ class PartialSettleMath:
 def partial_settle_math(risk, open_pos: dict, fill_price: float, direction_: int, fraction: float) -> PartialSettleMath:
     """Closes `fraction` of the ORIGINAL size: same spread/slippage/commission treatment as a full settle,
     commission pro-rata to the fraction closed."""
-    partial_size = open_pos["initial_size"] * fraction
-    filled = exit_fill_price(risk, fill_price, direction_)
-    pnl = (filled - open_pos["entry_price"]) * partial_size * direction_
     pos_cs = open_pos.get("contract_size", risk.contract_size)
     pos_cpc = open_pos.get("commission_per_contract", risk.commission_per_contract)
-    contracts_total = open_pos["initial_size"] / pos_cs if pos_cs else 0.0
-    commission = (risk.commission_per_trade + pos_cpc * contracts_total) * fraction
+    partial_size = open_pos["initial_size"] * fraction
+    if pos_cs:
+        # AUDIT A_9: futures trade in WHOLE contracts -- a 50% scale-out of 3 contracts used to close 1.5. Round down to whole
+        # contracts (never more than what is left); a position too small to split (partial_size 0) takes no partial.
+        n_part = min(math.floor(open_pos["initial_size"] / pos_cs * fraction + 1e-9), math.floor(open_pos["size"] / pos_cs + 1e-9))
+        partial_size = max(n_part, 0) * pos_cs
+    if partial_size <= 0:
+        return PartialSettleMath(0.0, float(fill_price), 0.0, 0.0)
+    filled = exit_fill_price(risk, fill_price, direction_)
+    pnl = (filled - open_pos["entry_price"]) * partial_size * direction_
+    contracts_part = partial_size / pos_cs if pos_cs else 0.0
+    # AUDIT A_9: the flat per-trade fee is a round-turn charge paid ONCE (on the final exit); only the per-contract part scales.
+    commission = pos_cpc * contracts_part
     pnl -= commission
     if not math.isfinite(pnl):
         pnl = 0.0

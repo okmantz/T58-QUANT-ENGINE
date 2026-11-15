@@ -41,7 +41,7 @@ def instrument_economics(root: str) -> tuple[float, float, str]:
 
     spec = get_instrument_spec(root)
     if spec is not None and spec.tick_size:
-        return spec.tick_value / spec.tick_size, float(spec.default_commission_round_turn or 0.0), spec.description
+        return spec.tick_value / spec.tick_size, float(spec.effective_commission_round_turn or 0.0), spec.description
     return 1.0, 0.0, "price units (symbol not in the instrument table)"
 
 

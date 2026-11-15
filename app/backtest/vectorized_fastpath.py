@@ -198,6 +198,16 @@ def risk_is_vectorizable(risk) -> bool:
         return False
     if getattr(risk, "prop_account_rules", None) is not None:
         return False
+    # AUDIT A_8: every other run_execution-only knob the fast path silently ignores (reconcile_fastpath shows the trade lists diverge):
+    # entry filters, the execution-realism stress (the Full Pipeline verdict sets these), the per-trade loss clamp and the 1-contract rescue.
+    if getattr(risk, "blocked_entry_slots", None) or getattr(risk, "news_blackout_csv", None) or getattr(risk, "news_blackout_windows", None):
+        return False
+    if float(getattr(risk, "tp_trade_through_pips", 0.0) or 0.0) > 0 or float(getattr(risk, "stop_slippage_extra_pips", 0.0) or 0.0) > 0:
+        return False
+    if getattr(risk, "max_loss_per_trade_pct", None) is not None or getattr(risk, "allow_single_contract_minimum", False):
+        return False
+    if getattr(risk, "intrabar_replay", False):
+        return False   # the scalar engine resolves stop-vs-target on the finer frame; the fast path is bar-level, stop-first
     return True
 
 
@@ -412,6 +422,7 @@ def run_vectorized_batch(
     last_close_bar = np.full(m, -10 ** 9, dtype=np.int64)
     entry_price = np.zeros(m, dtype=np.float64)
     entry_ts = np.empty(m, dtype=ts.dtype)
+    entry_bar = np.zeros(m, dtype=np.int64)         # AUDIT A_4: bar index the position FILLS on (decision bar + fill lag)
     equity_at_entry = np.zeros(m, dtype=np.float64)
     size_arr = np.zeros(m, dtype=np.float64)
     initial_risk = np.zeros(m, dtype=np.float64)
@@ -439,7 +450,7 @@ def run_vectorized_batch(
         untouched."""
         nonlocal m, live_cols, last_sig_bar
         nonlocal sl_pips, tp_pips, equity, in_pos, direction, last_close_bar
-        nonlocal entry_price, entry_ts, equity_at_entry, size_arr
+        nonlocal entry_price, entry_ts, equity_at_entry, size_arr, entry_bar
         nonlocal initial_risk, stop_price, take_price, account_blown
         nonlocal cs_arr, cpc_arr, best_price, trail_dist, be_r, be_done
         keep = np.nonzero(alive)[0]
@@ -453,6 +464,7 @@ def run_vectorized_batch(
         last_close_bar = last_close_bar[keep]
         entry_price = entry_price[keep]
         entry_ts = entry_ts[keep]
+        entry_bar = entry_bar[keep]
         equity_at_entry = equity_at_entry[keep]
         size_arr = size_arr[keep]
         initial_risk = initial_risk[keep]
@@ -536,7 +548,7 @@ def run_vectorized_batch(
         sig_i = sig_full[i, live_cols]
 
         if in_pos.any():
-            active = in_pos
+            active = in_pos & (entry_bar <= i)   # AUDIT A_4: a position whose fill bar is still in the future is not managed yet
             long_m = active & (direction == 1)
             short_m = active & (direction == -1)
 
@@ -562,6 +574,17 @@ def run_vectorized_batch(
                 _day_real = pnl_today_sum[day_idx[i], live_cols[_aw]]
                 _dl_breach = (_day_real + _float_pnl) <= -daily_limit_amount
                 if _dl_breach.any():
+                    # AUDIT A_5 (1): a resting stop closer to entry than the liquidation level fills first -> leave it to the stop logic below
+                    _bw0 = _aw[_dl_breach]
+                    _bd0 = direction[_bw0].astype(np.float64)
+                    _sz0 = np.where(size_arr[_bw0] > 0, size_arr[_bw0], np.nan)
+                    _lp0 = entry_price[_bw0] - _bd0 * ((daily_limit_amount + _day_real[_dl_breach]) / _sz0)
+                    _st0 = stop_price[_bw0]
+                    _stop_first = ~np.isnan(_st0) & np.where(_bd0 == 1, (l <= _st0) & (_st0 >= _lp0), (h >= _st0) & (_st0 <= _lp0))
+                    _keep = np.nonzero(_dl_breach)[0][~_stop_first]
+                    _dl_breach = np.zeros_like(_dl_breach)
+                    _dl_breach[_keep] = True
+                if _dl_breach.any():
                     _bw = _aw[_dl_breach]
                     _bd = direction[_bw].astype(np.float64)
                     # C3 parity: liquidate AT the floor (the first moment
@@ -579,8 +602,8 @@ def run_vectorized_batch(
                         _adv[_dl_breach],
                         np.where(
                             _bd == 1,
-                            np.maximum(_liq_price, _adv[_dl_breach]),
-                            np.minimum(_liq_price, _adv[_dl_breach]),
+                            np.maximum(np.minimum(_liq_price, o), _adv[_dl_breach]),   # AUDIT A_5 (2): gap beyond the floor fills at the open
+                            np.minimum(np.maximum(_liq_price, o), _adv[_dl_breach]),
                         ),
                     )
                     exit_price[_bw] = _liq_price
@@ -808,7 +831,8 @@ def run_vectorized_batch(
             dec_scale = np.ones(len(widx), dtype=np.float64)
             dec_capped = np.zeros(len(widx), dtype=bool)
             for _k, _w in enumerate(widx):
-                _dec = risk.size_for_stop(float(equity[_w]), float(sl_dist[_k]))
+                _dec = risk.size_for_stop(float(equity[_w]), float(sl_dist[_k]),
+                                            tp_distance=(float(tp_bar[_k]) if tp_bar_valid[_k] else None))
                 if (_dec.skip_reason is not None and risk.contract_size and equity[_w] > 0
                         and getattr(risk, "sizing_mode", "skip") == "skip"):
                     # same bounded dead-lock guard as the scalar engine
@@ -844,6 +868,7 @@ def run_vectorized_batch(
                 direction[fw] = fd.astype(np.int8)
                 entry_price[fw] = entry_fill[valid]
                 entry_ts[fw] = ts[fill_j]
+                entry_bar[fw] = fill_j
                 equity_at_entry[fw] = equity[fw]
                 size_arr[fw] = sized[valid]
                 stop_price[fw] = entry_fill[valid] - fd * sl_dist[valid]

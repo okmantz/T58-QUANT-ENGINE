@@ -295,7 +295,7 @@ class _PortfolioEngine:
         week_ends_at = np.zeros(M, dtype=bool)
         if M:
             week_ends_at[-1] = True
-            week_ends_at[:-1] = dow[1:] <= dow[:-1]
+            week_ends_at[:-1] = pd.DatetimeIndex(bar_dates).to_period("W-SUN").asi8[1:] != pd.DatetimeIndex(bar_dates).to_period("W-SUN").asi8[:-1]  # AUDIT A_3: same-weekday bars are not a week end
 
         # ---- prop account -------------------------------------------------------------------------------------------
         acct = None
@@ -343,6 +343,10 @@ class _PortfolioEngine:
                 ct = pd.DatetimeIndex(master).tz_localize("UTC").tz_convert("America/Chicago")
                 mod = (ct.hour * 60 + ct.minute).to_numpy()
                 flat_zone = (mod >= fh_ * 60 + fm_) & (mod < 17 * 60)
+                # early-close / holiday sessions end before the flatten time: the last bar of each 17:00-CT trading day also flattens
+                if M > 1:
+                    _lab = (ct + pd.Timedelta(hours=7)).normalize().to_numpy()
+                    flat_zone = flat_zone | np.r_[_lab[1:] != _lab[:-1], False]
             except Exception:  # noqa: BLE001
                 flat_zone = np.zeros(M, dtype=bool)
 
@@ -882,7 +886,21 @@ class _PortfolioEngine:
                     pos = lg.open
                     floating_adverse += (adv[lg.k] - pos["entry_price"]) * pos["size"] * pos["direction"]
                 day_realized_so_far = pnl_today_sum[bar_date]
-                if (day_realized_so_far + floating_adverse) <= -daily_limit_amount:
+                _dl_hit = (day_realized_so_far + floating_adverse) <= -daily_limit_amount
+                # AUDIT A_5 (1), mirrored from execution.py: with a single open leg, a resting stop that sits CLOSER to the entry than the
+                # liquidation level fills first, so the stop (not the whole daily-loss floor) is what the account is charged. The per-leg
+                # stop logic below then books it. (With several legs open the floor is a combined-book level, so the forced close stands.)
+                if _dl_hit and len(open_now) == 1:
+                    _lg1 = open_now[0]
+                    _p1 = _lg1.open
+                    _i1 = _lg1.bar_at[m]
+                    _st1 = _p1["stop_price"]
+                    if _i1 >= 0 and _st1 is not None and _p1["size"] and _p1["size"] > 0:
+                        _liq1 = _p1["entry_price"] - _p1["direction"] * ((daily_limit_amount + day_realized_so_far) / _p1["size"])
+                        if (_p1["direction"] == 1 and _lg1.lows[_i1] <= _st1 and _st1 >= _liq1) or \
+                           (_p1["direction"] == -1 and _lg1.highs[_i1] >= _st1 and _st1 <= _liq1):
+                            _dl_hit = False
+                if _dl_hit:
                     s = None
                     if len(open_now) > 1 and floating_adverse < 0:
                         s = (-daily_limit_amount - day_realized_so_far) / floating_adverse
@@ -898,11 +916,14 @@ class _PortfolioEngine:
                                 liq_price = adv[lg.k]
                         else:
                             liq_price = pos["entry_price"] + d_ * ((adv[lg.k] - pos["entry_price"]) * d_) * s
+                        i_ = lg.bar_at[m]
+                        # AUDIT A_5 (2), mirrored: a bar that OPENS beyond the liquidation level fills at the open, never at the better floor price.
+                        if i_ >= 0:
+                            liq_price = min(liq_price, lg.opens[i_]) if d_ == 1 else max(liq_price, lg.opens[i_])
                         if d_ == 1:
                             liq_price = max(liq_price, adv[lg.k])
                         else:
                             liq_price = min(liq_price, adv[lg.k])
-                        i_ = lg.bar_at[m]
                         bi = i_ if i_ >= 0 else lg.last_bar[m]
                         settle_exit(lg, pos, liq_price, "daily_loss_limit_forced_close", d_, bi, m)
                         lg.open = None
@@ -1260,6 +1281,8 @@ class _PortfolioEngine:
                 m_fill = int(lg.step[bi]) if lg.step[bi] >= 0 else M - 1
                 settle_exit(lg, lg.open, lg.closes[bi], "end_of_data", lg.open["direction"], bi, m_fill)
                 lg.open = None
+                if M:
+                    equity_arr[M - 1] = equity   # AUDIT A_10 mirror: last curve point carries the final exit's costs
         if prop_mode:
             prop_attempts.append({
                 "attempt_id": attempt_id, "start_time": prop_attempt_start_time,

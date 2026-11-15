@@ -78,9 +78,9 @@ def resolve_cost(symbol_or_label: str, profile: BrokerProfile | str | None = Non
     src = "registry default" if prof.name == "registry" else f"profile '{prof.name}'"
     return CostLine(
         symbol=spec.symbol,
-        spread_ticks=float(prof.spread_ticks.get(spec.symbol, spec.default_spread_ticks)),
-        slippage_ticks=float(prof.slippage_ticks.get(spec.symbol, spec.default_slippage_ticks)),
-        commission_round_turn=float(prof.commission_round_turn.get(spec.symbol, spec.default_commission_round_turn)),
+        spread_ticks=float(prof.spread_ticks.get(spec.symbol, spec.effective_spread_ticks)),
+        slippage_ticks=float(prof.slippage_ticks.get(spec.symbol, spec.effective_slippage_ticks)),
+        commission_round_turn=float(prof.commission_round_turn.get(spec.symbol, spec.effective_commission_round_turn)),
         tick_size=spec.tick_size, tick_value=spec.tick_value, pip_size=spec.pip_size, source=src,
     )
 

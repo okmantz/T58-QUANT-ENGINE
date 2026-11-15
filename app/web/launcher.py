@@ -23,9 +23,13 @@ app.web.server itself -- see that module's docstring for why running
 """
 from __future__ import annotations
 
+import json
+import os
 import sys
+import tempfile
 import threading
 import time
+import urllib.request
 import webbrowser
 from pathlib import Path
 
@@ -33,6 +37,70 @@ from app.web.network_info import (
     PORT, ensure_utf8_console, find_free_port, get_lan_ip, is_running_under_wine, print_startup_banner, qr_code_file,
     set_active_port,
 )
+
+
+# ---- single launch, single tab -------------------------------------------------------------------------------------
+# 2026-11-14 audit: double-clicking the app opened TWO browser tabs. Root cause: in a packaged .exe ``sys.executable`` IS the app,
+# so any background job that re-launches ``sys.executable -m something`` (the surrogate study did) started a second copy of this
+# launcher, and the second copy opened its own tab. Three guards, any one of which is enough on its own:
+#   1. child processes are marked (T58_CHILD_PROCESS=1) and the launcher refuses to run in them;
+#   2. if a T58 server already answers on the preferred port, a second launch just focuses it (one tab) instead of starting another;
+#   3. the browser is opened at most once per ``_BROWSER_STAMP_SECONDS`` (a stamp file), whatever starts it.
+CHILD_ENV = "T58_CHILD_PROCESS"
+NO_BROWSER_ENV = "T58_NO_BROWSER"
+_BROWSER_STAMP_SECONDS = 45.0
+
+
+def is_child_process() -> bool:
+    """True inside a worker or helper process that must never start a server or open a tab."""
+    return os.environ.get(CHILD_ENV, "") == "1"
+
+
+def child_env(base: dict | None = None) -> dict:
+    """Environment for any subprocess this app spawns: marks it as a child so a re-launched frozen exe exits at once."""
+    env = dict(os.environ if base is None else base)
+    env[CHILD_ENV] = "1"
+    env[NO_BROWSER_ENV] = "1"
+    return env
+
+
+def _stamp_path() -> Path:
+    return Path(tempfile.gettempdir()) / "t58_browser_opened.json"
+
+
+def browser_recently_opened(now: float | None = None, path: Path | None = None) -> bool:
+    now = time.time() if now is None else now
+    try:
+        data = json.loads((path or _stamp_path()).read_text(encoding="utf-8"))
+        return (now - float(data.get("t", 0.0))) < _BROWSER_STAMP_SECONDS
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def open_browser_once(url: str, *, opener=None, now: float | None = None, path: Path | None = None) -> bool:
+    """Open ``url`` in the default browser unless one was opened in the last few seconds or this is a child / headless run.
+    Returns True when it actually opened a tab."""
+    if is_child_process() or os.environ.get(NO_BROWSER_ENV, "") == "1":
+        return False
+    now = time.time() if now is None else now
+    stamp = path or _stamp_path()
+    if browser_recently_opened(now, stamp):
+        return False
+    try:
+        stamp.write_text(json.dumps({"t": now, "url": url}), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+    (opener or webbrowser.open)(url)
+    return True
+
+
+def t58_server_running(port: int, timeout: float = 1.5) -> bool:
+    """True when a T58 web server already answers on 127.0.0.1:port (identified by the /health payload, not just an open port)."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{int(port)}/health", timeout=timeout) as r:  # noqa: S310 -- loopback only
+            return json.loads(r.read().decode("utf-8", "replace")).get("app") == "t58"
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _qr_image_path(url: str) -> Path | None:
@@ -106,7 +174,14 @@ def main() -> None:
     # indistinguishable from "nothing is happening" (the exact complaint
     # this fixes) -- a person has no way to tell "it's loading" apart from
     # "it silently died."
+    if is_child_process():
+        # A re-launched copy of the frozen exe (a worker / helper job): never start a server or open a tab.
+        return
     ensure_utf8_console()
+    if t58_server_running(PORT):
+        print(f"T58 is already running on port {PORT} -- opening it (no second copy started).", flush=True)
+        open_browser_once(f"http://127.0.0.1:{PORT}/dashboard")
+        return
     print("Starting T58 Quant Algo Backtester (web/phone edition)...", flush=True)
     print("(First launch can take a little while to unpack -- please wait.)", flush=True)
 
@@ -153,7 +228,7 @@ def main() -> None:
         # The phone QR code lives inside the web app (the /mobile-access
         # page, linked from the sidebar), so we don't pop it open as its
         # own browser tab or picture-viewer window on startup.
-        webbrowser.open(f"http://127.0.0.1:{port}/dashboard")
+        open_browser_once(f"http://127.0.0.1:{port}/dashboard")
 
     threading.Thread(target=_open_things_once_server_is_up, daemon=True).start()
 

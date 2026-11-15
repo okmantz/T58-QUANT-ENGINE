@@ -157,6 +157,9 @@ def simulate_paths(
     target_balance = acct * (1 + r.evaluation_profit_target_pct / 100.0)
     required_profit = acct * (r.payout_threshold_pct / 100.0) + acct * (r.required_buffer_pct / 100.0)
     buffer_dollars = acct * (r.required_buffer_pct / 100.0)
+    thr_dollars = acct * (r.payout_threshold_pct / 100.0)
+    pin_flag = bool(getattr(r, "payout_pins_floor_to_lock", False))      # E-3
+    pinned = np.zeros(P, dtype=bool)
     adverse_mode = legacy and getattr(r, "floating_drawdown_mode", "realized") == "adverse"
 
     bal = np.full(P, acct, dtype=f64)
@@ -211,6 +214,8 @@ def simulate_paths(
         fl = pk * dd_mult if peak_basis else pk - dd_dist
         if t_lock:
             fl = np.minimum(fl, lock_level)
+        if pin_flag:
+            fl = np.where(pinned, lock_level, fl)      # E-3: first payout pins the floor at the lock level
         return fl
 
     def dd_pct(pk, level):
@@ -377,9 +382,7 @@ def simulate_paths(
         tds = sl + 1
         cond = ev & (bal >= target_balance) & (tds >= r.min_trading_days)
         if r.consistency_rule_pct is not None:
-            with np.errstate(divide="ignore", invalid="ignore"):
-                ratio = best_day / total_profit * 100.0
-            ok = np.where(total_profit > 0, ratio <= r.consistency_rule_pct, True)
+            ok = np.where(total_profit > 0, best_day * 100.0 <= r.consistency_rule_pct * total_profit + 1e-9, True)   # E-1
             cond = cond & ok
         if cond.any():
             funded = funded | cond
@@ -406,20 +409,20 @@ def simulate_paths(
         fu = cn & was_funded
         if fu.any():
             profit_since = bal - baseline
+            buf_left = np.maximum(0.0, buffer_dollars - (baseline - acct))     # E-2: buffer already inside the baseline is not re-earned
+            required_now = thr_dollars + buf_left
             best_since = np.where(fu, np.maximum(best_since, day_pnl), best_since)
             fcons = np.ones(P, dtype=bool)
             if r.funded_consistency_rule_pct is not None:
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    fr = best_since / profit_since * 100.0
-                fcons = np.where(profit_since > 0, fr <= r.funded_consistency_rule_pct, True)
-            ok = (fu & (profit_since >= required_profit)
+                fcons = np.where(profit_since > 0, best_since * 100.0 <= r.funded_consistency_rule_pct * profit_since + 1e-9, True)   # E-1
+            ok = (fu & (profit_since >= required_now)
                   & ((sl - last_payout) >= r.payout_frequency_days)
                   & ((wd_total - wd_before) >= r.winning_days_for_payout)
                   & fcons)
             if r.max_payouts is not None:
                 ok = ok & (n_pay < r.max_payouts)
             if ok.any():
-                w = profit_since - buffer_dollars
+                w = profit_since - buf_left
                 if r.payout_cap_pct is not None:
                     w = np.minimum(w, profit_since * (r.payout_cap_pct / 100.0))
                 if r.payout_cap_dollars is not None:
@@ -435,6 +438,8 @@ def simulate_paths(
                     last_payout = np.where(pay, sl, last_payout)
                     best_since = np.where(pay, 0.0, best_since)
                     peak = np.where(pay, np.maximum(peak - w, bal), peak)
+                    if pin_flag:
+                        pinned = pinned | pay
         # 2026-11-04: the first attempt's evaluation ended in a breach this step (before it ever passed)
         fa_state, fa_days = _first_bust(fa_state, fa_days, failed, was_failed, valid, passed, n_attempts, last_slot)
         # S1 (2026-10-19): reset-on-breach -- paths that breached this step start a fresh
@@ -477,6 +482,7 @@ def simulate_paths(
                 baseline[do_reset] = acct
                 last_payout[do_reset] = -10 ** 9
                 n_pay[do_reset] = 0
+                pinned[do_reset] = False
                 first_pay[do_reset] = -1
                 total_pay[do_reset] = 0.0
                 # max_dd keeps the running maximum (drawdown is path-level, not per-attempt)

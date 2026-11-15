@@ -120,7 +120,11 @@ def resample_ohlc(df: pd.DataFrame, minutes: int = 5) -> pd.DataFrame:
         d["timestamp"] = d["timestamp"].dt.tz_convert("UTC").dt.tz_localize(None)
     g = d.set_index("timestamp").resample(f"{minutes}min", label="left", closed="left")
     out = pd.DataFrame({"open": g["open"].first(), "high": g["high"].max(), "low": g["low"].min(), "close": g["close"].last()})
+    if "roll_bar" in d.columns:     # importer-detected splice bars survive resampling (a bucket is a roll bucket if any 1m bar in it is)
+        out["roll_bar"] = g["roll_bar"].max().astype(bool)
     out = out.dropna().reset_index()
+    if "roll_bar" in out.columns:
+        out["roll_bar"] = out["roll_bar"].astype(bool)
     return out
 
 
@@ -456,10 +460,14 @@ def scan(frames: dict, rules: PropRules, *, discovery_end, discovery_start=None,
             bars = bars[bars["timestamp"] >= start]
         bars = bars.reset_index(drop=True)
         roll_days = None
+        # The importer already back-adjusted this frame and flagged the splice bars (roll_bar); its detector is the audited one.
+        # The break-gap heuristic below mistakes ordinary Sunday-open gaps for rolls and misses date-boundary splices.
+        _imported_rolls = np.flatnonzero(bars["roll_bar"].to_numpy(bool)) if "roll_bar" in bars.columns else None
         if roll_policy == "adjust":
-            bars = back_adjust(bars, detect_roll_bars(bars, inst))
+            if _imported_rolls is None:
+                bars = back_adjust(bars, detect_roll_bars(bars, inst))
         elif roll_policy == "exclude":
-            roll_days = roll_session_dates(bars, detect_roll_bars(bars, inst))
+            roll_days = roll_session_dates(bars, _imported_rolls if _imported_rolls is not None else detect_roll_bars(bars, inst))
             if roll_days:
                 rep.notes.append(f"{inst}: {len(roll_days)} continuous-contract roll session(s) excluded from entries.")
         if len(bars) < 2000:

@@ -439,7 +439,7 @@ def sizing_remedy_candidates(risk, symbol=None):
             if not getattr(risk, "micro_contract_size", None):
                 upd["micro_contract_size"] = float(micro.contract_size)
             if getattr(risk, "micro_commission_per_contract", None) is None:
-                upd["micro_commission_per_contract"] = float(micro.default_commission_round_turn)
+                upd["micro_commission_per_contract"] = float(micro.effective_commission_round_turn)
             out.append(("micro_fallback",
                         {"micro_symbol": micro.symbol,
                          "micro_contract_size": float(micro.contract_size)},

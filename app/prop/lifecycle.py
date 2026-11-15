@@ -45,11 +45,17 @@ from app.prop.simulator import PropRules, precompute_day_structure, simulate_acc
 
 OBJECTIVE_PROP = "prop_lifecycle"          # default everywhere
 OBJECTIVE_NET_PROFIT = "net_profit"        # selectable: live accounts, no evaluation
-OBJECTIVE_MODES = (OBJECTIVE_PROP, OBJECTIVE_NET_PROFIT)
+OBJECTIVE_PASS = "pass"                    # Objective A: P(pass within the horizon, no breach)
+OBJECTIVE_PAYOUT = "payout"                # Objective B: P(pass AND paid) with funded survival (app.prop.objectives)
+OBJECTIVE_PROP_NET = "prop_net"            # expected trader net per purchased attempt (split x payouts - fees)
+OBJECTIVE_MODES = (OBJECTIVE_PROP, OBJECTIVE_PASS, OBJECTIVE_PAYOUT, OBJECTIVE_PROP_NET, OBJECTIVE_NET_PROFIT)
 DEFAULT_OBJECTIVE_MODE = OBJECTIVE_PROP
 
 OBJECTIVE_MODE_LABELS = {
     OBJECTIVE_PROP: "Prop-firm lifecycle (evaluation pass -> funded survival -> payout)",
+    OBJECTIVE_PASS: "Pass the evaluation (probability of reaching the target inside the time horizon without a breach)",
+    OBJECTIVE_PAYOUT: "Funded payouts (probability of passing AND getting paid, with funded survival required)",
+    OBJECTIVE_PROP_NET: "Prop net value (expected payouts after the split, minus evaluation fees)",
     OBJECTIVE_NET_PROFIT: "Net profit (live account, costs included)",
 }
 
@@ -57,7 +63,10 @@ OBJECTIVE_MODE_LABELS = {
 def normalize_objective_mode(value) -> str:
     """Map any user/form value to a known objective mode; unknown or empty means the prop-firm default."""
     key = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
-    aliases = {"prop": OBJECTIVE_PROP, "prop_firm": OBJECTIVE_PROP, "lifecycle": OBJECTIVE_PROP, "prop_lifecycle": OBJECTIVE_PROP,
+    aliases = {"pass": OBJECTIVE_PASS, "objective_a": OBJECTIVE_PASS, "evaluation": OBJECTIVE_PASS, "eval_pass": OBJECTIVE_PASS,
+               "payout": OBJECTIVE_PAYOUT, "objective_b": OBJECTIVE_PAYOUT, "funded": OBJECTIVE_PAYOUT, "first_payout": OBJECTIVE_PAYOUT,
+               "prop_net": OBJECTIVE_PROP_NET, "net_ev": OBJECTIVE_PROP_NET, "expected_value": OBJECTIVE_PROP_NET, "ev": OBJECTIVE_PROP_NET,
+               "prop": OBJECTIVE_PROP, "prop_firm": OBJECTIVE_PROP, "lifecycle": OBJECTIVE_PROP, "prop_lifecycle": OBJECTIVE_PROP,
                "net": OBJECTIVE_NET_PROFIT, "net_profit": OBJECTIVE_NET_PROFIT, "netprofit": OBJECTIVE_NET_PROFIT,
                "live": OBJECTIVE_NET_PROFIT, "profit": OBJECTIVE_NET_PROFIT}
     return aliases.get(key, DEFAULT_OBJECTIVE_MODE)
@@ -308,7 +317,7 @@ def run_lifecycle(trades, rules: PropRules, cfg: LifecycleConfig | None = None, 
             upto = sums[: (target_day if target_day is not None else ds.n_days - 1) + 1]
             total = float(upto.sum())
             cr = rules.consistency_rule_pct
-            ok = True if (cr is None or total <= 0) else (float(upto.max()) / total * 100.0 <= cr)
+            ok = True if (cr is None or total <= 0) else (float(upto.max()) * 100.0 <= cr * total + 1e-9)   # E-1
             if ok:
                 cons_ok_at_target += 1
             if not res.passed_evaluation and not failed_eval:
@@ -467,6 +476,9 @@ def lifecycle_objective_value(result: LifecycleResult, trades=None, mode: str = 
     mode = normalize_objective_mode(mode)
     if mode == OBJECTIVE_NET_PROFIT:
         return net_profit_objective(trades or [])["objective"]
+    if mode in (OBJECTIVE_PASS, OBJECTIVE_PAYOUT, OBJECTIVE_PROP_NET):
+        from app.prop.objectives import objective_value
+        return objective_value(result, mode)
     base = float(result.p_pass_and_first_payout)
     med = result.evaluation.time_to_target.get("calendar", {}).get("p50")
     speed = 0.0 if med is None else 5.0 * (30.0 / max(float(med), 30.0)) ** 0.5

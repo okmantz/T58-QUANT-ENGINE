@@ -653,8 +653,16 @@ def g4_day_behaviour(trades, rules, *, leg_of=None, n_boot_days: int = 20_000, s
 
 
 # ---- G5: lifecycle --------------------------------------------------------------------------------------------------------------
+def _prop_account_mc(trades, prop_rules, *, n_sims: int, seed: int):
+    """The exact-rules cross-check: the same day-block bootstrap, but every path is run through ``PropAccount`` (the engine's own rule
+    state machine: EOD trailing floor, lock, consistency, payout buffer/cap/winning days) instead of the lifecycle_v2 approximation."""
+    from app.monte_carlo.engine import MonteCarloConfig, run_monte_carlo
+    cfg = MonteCarloConfig(n_simulations=int(n_sims), reset_on_breach=False, random_seed=int(seed), outer_bootstrap_reps=0)
+    return run_monte_carlo(list(trades), prop_rules, cfg)
+
+
 def g5_lifecycle(trades, rules, *, n_paths: int = 20_000, seed: int = 42, n_looks: int = 1, fee: float | None = None,
-                 split_pct: float | None = None, payout=None) -> GateResult:
+                 split_pct: float | None = None, payout=None, use_prop_account: bool = True) -> GateResult:
     """Does it pass AND keep getting paid under exact rules? Real trades, day-block paths, v2 sizing, Wilson 5th percentile bars."""
     from app.prop.lifecycle_v2 import V2Rules, day_matrix_from_trades, simulate
     r2 = rules if isinstance(rules, V2Rules) else V2Rules.from_prop_rules(rules, fee=fee or 0.0, split_pct=split_pct, payout=payout)
@@ -687,6 +695,23 @@ def g5_lifecycle(trades, rules, *, n_paths: int = 20_000, seed: int = 42, n_look
     res.checks.append(Check(f"Attempts per payout <= {G5_MAX_ATTEMPTS_PER_PAYOUT:g}", ap is not None and ap <= G5_MAX_ATTEMPTS_PER_PAYOUT,
                             "no payout seen" if ap is None else f"{ap:.1f}"))
     res.checks.append(Check("EV > 0 at E_plan with payouts cut 50%", plan.ev_per_attempt_haircut > 0, f"${plan.ev_per_attempt_haircut:,.0f} per attempt (fee ${r2.fee:,.0f})"))
+    # 2026-11-14: the gate no longer rests on the lifecycle_v2 approximation alone. When the caller supplied real PropRules, the same trades
+    # are run through PropAccount (exact rules); the stricter of the two lower bounds has to clear the bar.
+    if use_prop_account and not isinstance(rules, V2Rules) and hasattr(rules, "account_size"):
+        try:
+            mc = _prop_account_mc(trades, rules, n_sims=min(int(n_paths), 2_000), seed=seed + 7)
+            pa_lb = float(mc.per_attempt_pass_ci95[0])
+            pa_paid = float(mc.first_payout_probability)
+            pa_pass = float(mc.evaluation_pass_probability)
+            res.data.update(prop_account={"p_pass": pa_pass, "p_pass_lb": pa_lb, "p_first_payout": pa_paid,
+                                          "p_fail_before_payout": float(mc.failure_before_payout_probability)})
+            res.checks.append(Check(f"PropAccount Monte Carlo: P(pass) lower bound >= {G5_MIN_PASS_LB:.0f}%", pa_lb >= G5_MIN_PASS_LB,
+                                    f"{pa_pass:.0f}% (lower bound {pa_lb:.0f}%), exact firm rules"))
+            pa_given = (100.0 * pa_paid / pa_pass) if pa_pass > 0 else 0.0
+            res.checks.append(Check(f"PropAccount Monte Carlo: P(paid | pass) >= {G5_MIN_PAID_GIVEN_PASS:.0f}%", pa_given >= G5_MIN_PAID_GIVEN_PASS,
+                                    f"{pa_given:.0f}%"))
+        except Exception as exc:  # noqa: BLE001 -- a failed cross-check is a failed check, never a silent pass
+            res.checks.append(Check("PropAccount Monte Carlo cross-check ran", False, f"{type(exc).__name__}: {str(exc)[:120]}"))
     if not r2.payout.sourced:
         res.note = "Payout terms are the report's assumption until G0 sources them."
     return res

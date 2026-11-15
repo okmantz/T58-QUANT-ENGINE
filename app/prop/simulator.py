@@ -148,6 +148,10 @@ class PropRules:
     # (+ trailing_lock_offset_pct of it). False = the floor trails forever.
     trailing_lock_offset_pct: float = 0.0
     trailing_distance_basis: str = "peak"
+    # E-3: True = the first payout PINS the trailing floor at the lock level (starting balance + trailing_lock_offset_pct). Topstep: "After your
+    # first Payout your MLL is set to $0" (help.topstep.com, MLL + payout-policy articles); LucidFlex: "When you request a payout, the MLL
+    # automatically resets to the Locked MLL Balance" (support.lucidtrading.com, LucidFlex Drawdown). Default False = unchanged.
+    payout_pins_floor_to_lock: bool = False
     # AUDIT 2026-10-12 (F-FUNDED): True = the funded stage starts as a FRESH
     # account (balance, trailing peak and payout baseline reset to
     # account_size when the evaluation is passed), which is how Topstep's

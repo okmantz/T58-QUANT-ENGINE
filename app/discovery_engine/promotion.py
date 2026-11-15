@@ -11,6 +11,9 @@ order and with no step skippable:
                          (``app.prop.thirty_day``) under the request's prop rules and must reach ``honest_min_lower_bound`` on the
                          dependence-aware 95% lower bound of P(pass) with enough independent windows, on MEASURED excursions. It is a
                          pass/fail gate, not a re-sort: a champion below the bar is never promoted however well it ranks.
+  1d. payout_lifecycle   Objective B gate (2026-11-14). Required when the objective is "payout" or "prop_net": Rulebook G5 run on the exact
+                         PropAccount rules (pass, paid-given-pass, 2+ payouts, EV) AND funded 90-day survival above the floor. For the pass
+                         objective (and net profit) it is recorded as not applicable, so Objective A never pays for Objective B's bar.
   2. sequence-deflated   Deflated Sharpe against the LIFETIME ledger count clustered to effective trials, using the Sharpe spread of
                          the whole evaluated pool
   3. null gate           beats random entry timing (``run_null_edge_gate``)
@@ -35,7 +38,7 @@ from typing import Callable
 
 import numpy as np
 
-STEP_ORDER = ("reproduction", "rulebook_g3", "honest_eval", "sequence_deflated", "null_gate", "pooled_edge", "sealed_slice")
+STEP_ORDER = ("reproduction", "rulebook_g3", "honest_eval", "payout_lifecycle", "sequence_deflated", "null_gate", "pooled_edge", "sealed_slice")
 
 # Substrings that mark a spec as tied to ONE instrument's auxiliary data (cannot be pooled across markets).
 INSTRUMENT_TIED_MARKERS = [
@@ -132,7 +135,8 @@ class PromotionConfig:
     sealed_min_trades_tied: int = 50
     sealed_max_lifetime_looks: int = 6        # reads of ONE sealed slice (per data fingerprint, across runs) before it is refused
     cost_multiplier: float = 2.0
-    objective_mode: str = "prop"              # "prop" (Rulebook v2 gates apply) | "net_profit" (no prop rules, no Rulebook gates)
+    objective_mode: str = "prop"              # "prop"/"pass" (Rulebook v2 gates) | "payout"/"prop_net" (+ payout_lifecycle gate) | "net_profit" (none)
+    payout_min_survival_pct: float = 70.0     # payout_lifecycle gate: funded 90-day survival floor
     honest_min_lower_bound: float = 0.65      # honest_eval gate: lower 95% bound of P(pass) a champion must reach
     honest_min_independent: float = 8.0       # ... measured on at least this many independent windows
     honest_allow_proxy: bool = False          # ... with measured MAE/MFE (the closed-P&L proxy hides intratrade dips)
@@ -147,6 +151,7 @@ class Steps:
     reproduction: Callable | None = None
     rulebook_g3: Callable | None = None
     honest_eval: Callable | None = None
+    payout_lifecycle: Callable | None = None
     sequence_deflated: Callable | None = None
     null_gate: Callable | None = None
     pooled_edge: Callable | None = None

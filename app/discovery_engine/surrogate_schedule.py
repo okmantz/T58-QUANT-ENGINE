@@ -107,13 +107,18 @@ def maybe_start_background_study(*, force: bool = False, now: float | None = Non
             return {"started": False, "why": f"last attempt was under {MIN_RETRY_DAYS:g} days ago"}
         log = _state_path().with_name("surrogate_study.log")
         log.parent.mkdir(parents=True, exist_ok=True)
-        env = dict(os.environ)
+        from app.web.launcher import child_env
+        env = child_env()                                  # marks the child so a re-launched frozen exe can never open a second tab
         env.pop("T58_KEEP_WORKER_PRIORITY", None)        # children lower their own priority (app/__init__.py)
         kw: dict = {"cwd": str(_ROOT), "env": env, "stdout": open(log, "ab"), "stderr": subprocess.STDOUT}
         if sys.platform.startswith("win"):
             kw["creationflags"] = 0x00004000 | 0x08000000     # BELOW_NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW
         else:
             kw["preexec_fn"] = lambda: os.nice(10)
+        if getattr(sys, "frozen", False):
+            # A packaged exe cannot run ``-m scripts...`` (sys.executable is the app itself, so this used to start a SECOND copy
+            # of the app and a second browser tab). The study runs on demand from the Discovery page instead.
+            return {"started": False, "why": "packaged build: the surrogate study runs on demand, not in the background"}
         proc = subprocess.Popen([sys.executable, "-m", "scripts.run_surrogate_study"], **kw)
         _write_state({"pid": proc.pid, "started_at": now, "last_attempt": now})
         return {"started": True, "why": "gate closed for a fixable reason: " + "; ".join(due["reasons"])}

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Deploy a strategy — T58 Quant Algo Backtester</title>
+{% include '_head_common.html' %}
+<style>
+  .dw { max-width: 860px; margin: 0 auto; padding: 8px 0 60px; }
+  .dw h1 { font-size: 26px; margin: 0 0 4px; } .dw .sub { color: var(--text-muted); margin: 0 0 18px; font-size: 14px; }
+  .dw-rail { display: flex; gap: 6px; margin: 0 0 18px; flex-wrap: wrap; }
+  .dw-pill { flex: 1; min-width: 110px; padding: 9px 12px; border-radius: 999px; border: 1px solid var(--border-light); font-size: 12.5px; color: var(--text-muted); text-align: center; }
+  .dw-pill.now { border-color: var(--teal, #00c389); color: var(--text); font-weight: 700; } .dw-pill.done { border-color: #2f7a55; color: #8fe0b0; }
+  .dw-pill.done::before { content: "\2713  "; }
+  .dw-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 16px; padding: 20px 22px; margin-bottom: 14px; }
+  .dw-card h2 { font-size: 18px; margin: 0 0 4px; text-transform: none; letter-spacing: 0; color: var(--text); }
+  .dw-help { color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0 0 12px; }
+  .dw-targets { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 12px; }
+  .dw-target { text-align: left; background: var(--panel-3); border: 1px solid var(--border-light); border-radius: 14px; padding: 16px; cursor: pointer; color: var(--text); font: inherit; }
+  .dw-target:hover, .dw-target:focus-visible { border-color: var(--teal, #00c389); outline: none; transform: translateY(-1px); }
+  .dw-target b { display: block; font-size: 15px; margin-bottom: 4px; } .dw-target span { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; display: block; }
+  .dw-target .tag { display: inline-block; margin-top: 8px; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-light); }
+  .dw-target.live .tag { border-color: #b4414a; color: #ff8d95; } .dw-target.demo .tag { border-color: #2f7a55; color: #8fe0b0; }
+  .dw-row { display: flex; gap: 12px; flex-wrap: wrap; } .dw-row > div { flex: 1; min-width: 150px; }
+  .dw label.l { display: block; font-size: 12.5px; color: var(--t-soft); margin: 10px 0 4px; }
+  .dw input[type=text], .dw input[type=number], .dw select { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--border-light); background: var(--panel-3); color: var(--text); font-size: 14px; box-sizing: border-box; }
+  .dw-btn { padding: 11px 20px; border-radius: 10px; border: 1px solid #2a8f6a; background: #00c389; color: #04231a; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .dw-btn.ghost { background: transparent; color: var(--text); border-color: var(--border-light); } .dw-btn.danger { background: #ff4444; border-color: #ff4444; color: #200; } .dw-btn[disabled] { opacity: .45; cursor: not-allowed; }
+  .dw-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .dw-check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: 10px; margin: 8px 0; font-size: 13px; }
+  .dw-check .ic { width: 20px; flex: none; text-align: center; font-weight: 700; } .dw-check.ok .ic { color: #6fd08c; } .dw-check.warn .ic { color: #f5b942; } .dw-check.block .ic { color: #ff6b73; }
+  .dw-check small { display: block; color: var(--text-muted); margin-top: 2px; }
+  .dw-acct { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: 10px; margin: 8px 0; cursor: pointer; }
+  .dw-acct.sel { border-color: var(--teal, #00c389); background: color-mix(in srgb, var(--teal, #00c389) 8%, transparent); } .dw-acct input { width: auto; }
+  .dw-copy { display: flex; gap: 8px; } .dw-copy input { flex: 1; font-family: ui-monospace, monospace; font-size: 12.5px; }
+  .dw-msg { margin-top: 10px; font-size: 13px; min-height: 18px; } .dw-msg.err { color: #ff8d95; } .dw-msg.ok { color: #8fe0b0; }
+  .dw ol.how { margin: 10px 0 0 18px; padding: 0; font-size: 13.5px; line-height: 1.7; }
+  .dw-banner { border: 1px solid #b4414a; background: color-mix(in srgb, #ff4444 8%, transparent); border-radius: 12px; padding: 12px 14px; font-size: 13px; margin-bottom: 12px; }
+  .dw-step[hidden] { display: none; }
+</style>
+</head>
+<body>
+{% set active_page = 'deploy_live' %}
+<div class="t58-shell">
+{% include '_sidebar.html' %}
+<div class="t58-main"><div class="dw">
+  <h1>Deploy <span id="dw-name">a strategy</span></h1>
+  <p class="sub">Four short steps. Nothing trades until the very last button, and every live step shows the safety checks first.</p>
+  <div class="dw-rail" id="dw-rail"></div>
+
+  <!-- 1: strategy + where -->
+  <div class="dw-step dw-card" id="st-1">
+    <h2>Where should it trade?</h2>
+    <p class="dw-help">Practise first on the T58 demo (simulated money, real prop-firm rules), or connect a real account.</p>
+    <label class="l" for="dw-strategy">Strategy</label>
+    <select id="dw-strategy"><option value="">Choose a saved strategy</option>{% for s in strategies %}<option value="{{ s.type }}::{{ s.name }}"{% if preselect == s.type ~ '::' ~ s.name %} selected{% endif %}>{{ s.name }}</option>{% endfor %}</select>
+    <div class="dw-targets">
+      <button type="button" class="dw-target demo" data-target="demo"><b>Practice on the demo</b><span>Simulated prop-firm account. TradingView alerts trade it, and it passes or fails like a real evaluation.</span><i class="tag">No real money</i></button>
+      <button type="button" class="dw-target live" data-target="mt5"><b>Live on MT5</b><span>Your MetaTrader 5 broker account, driven directly by T58.</span><i class="tag">Real money</i></button>
+      <button type="button" class="dw-target live" data-target="prop"><b>Live on a prop firm</b><span>Apex, Topstep, Lucid, FTMO and more: pick the firm, paste the login the firm emailed you.</span><i class="tag">Real money</i></button>
+    </div>
+    <div class="dw-msg err" id="m-1"></div>
+  </div>
+
+  <!-- 2 (live): unlock -->
+  <div class="dw-step dw-card" id="st-unlock" hidden>
+    <h2>Unlock live deployment</h2>
+    <p class="dw-help">Live trading is locked until three safety switches are on. Each one takes a few seconds.</p>
+    <div id="un-list"></div>
+    <div id="un-enable" hidden>
+      <label class="l" for="un-phrase">Type <b id="un-phrase-text"></b> to turn on live deployment</label>
+      <input type="text" id="un-phrase" autocomplete="off"><div class="dw-actions"><button type="button" class="dw-btn" id="un-go">Turn on</button></div>
+    </div>
+    <div class="dw-msg" id="m-un"></div>
+    <div class="dw-actions"><button type="button" class="dw-btn ghost" data-back>Back</button><button type="button" class="dw-btn ghost" id="un-refresh">Check again</button></div>
+  </div>
+
+  <!-- 2 (live): account -->
+  <div class="dw-step dw-card" id="st-acct" hidden>
+    <h2>Connect your account</h2>
+    <div class="dw-banner" id="ac-mode" hidden><b>You are in Demo mode.</b> Real accounts can only be connected in Live mode. <button type="button" class="dw-btn ghost" id="ac-live">Switch to Live mode</button></div>
+    <p class="dw-help" id="ac-help"></p>
+    <div id="ac-saved"></div>
+    <details id="ac-newwrap"><summary class="dw-help" style="cursor:pointer"><b>Add a new account</b></summary>{% include '_deploy_connect_panel.html' %}</details>
+    <div class="dw-msg" id="m-ac"></div>
+    <div class="dw-actions"><button type="button" class="dw-btn ghost" data-back>Back</button><button type="button" class="dw-btn" id="ac-next">Use this account</button></div>
+  </div>
+
+  <!-- 3 (live): risk -->
+  <div class="dw-step dw-card" id="st-risk" hidden>
+    <h2>Set the safety limits</h2>
+    <p class="dw-help">Pick your firm's rules and the limits fill in. T58 halts the day at your daily loss limit and flattens at the drawdown limit, on top of the firm's own.</p>
+    <label class="l" for="rk-preset">Firm rule set</label>
+    <select id="rk-preset"><option value="">Custom limits</option>{% for p in presets %}<option value="{{ p.key }}">{{ p.label }}</option>{% endfor %}</select>
+    <div class="dw-row"><div><label class="l" for="rk-size">Account size ($)</label><input type="number" id="rk-size" value="50000"></div><div><label class="l" for="rk-symbol">Symbol on this account</label><input type="text" id="rk-symbol" value="MNQ"></div></div>
+    <div class="dw-row"><div><label class="l" for="rk-risk">Risk per trade (% of balance)</label><input type="number" id="rk-risk" step="0.05" value="0.5"></div><div><label class="l" for="rk-tf">Bar size (minutes)</label><input type="number" id="rk-tf" value="5"></div></div>
+    <div class="dw-row"><div><label class="l" for="rk-dl">Daily loss limit (%)</label><input type="number" id="rk-dl" step="0.1" value="2.5"></div><div><label class="l" for="rk-dd">Max drawdown (%)</label><input type="number" id="rk-dd" step="0.1" value="4"></div></div>
+    <div class="dw-actions"><button type="button" class="dw-btn ghost" data-back>Back</button><button type="button" class="dw-btn" id="rk-next">Review</button></div>
+  </div>
+
+  <!-- 4 (live): review + launch -->
+  <div class="dw-step dw-card" id="st-go" hidden>
+    <h2>Review and launch</h2>
+    <p class="dw-help" id="go-sum"></p>
+    <div id="go-checks"></div>
+    <label class="l" id="go-ack-row" hidden><input type="checkbox" id="go-ack" style="width:auto"> I have this firm's written permission to run automation and accept the risk of account termination.</label>
+    <label class="l" for="go-phrase">Type <code>DEPLOY LIVE</code> to confirm this trades real money</label>
+    <input type="text" id="go-phrase" autocomplete="off" placeholder="DEPLOY LIVE">
+    <div class="dw-msg" id="m-go"></div>
+    <div class="dw-actions"><button type="button" class="dw-btn ghost" data-back>Back</button><button type="button" class="dw-btn danger" id="go-start" disabled>Deploy live</button></div>
+  </div>
+
+  <!-- running -->
+  <div class="dw-step dw-card" id="st-run" hidden>
+    <h2>It is running</h2>
+    <p class="dw-help">Your strategy is live. The Live P&amp;L pill (bottom right, on every page) tracks balance and open trades. You can stop it any time.</p>
+    <div class="dw-actions"><a class="dw-btn" href="/deploy-live">Open the live monitor</a><button type="button" class="dw-btn ghost" id="run-stop">Stop the session</button></div>
+    <div class="dw-msg" id="m-run"></div>
+  </div>
+
+  <!-- demo -->
+  <div class="dw-step dw-card" id="st-demo" hidden>
+    <h2>Practice on the T58 demo</h2>
+    <p class="dw-help">We give you a TradingView webhook URL and the alert message. Paste both into a TradingView alert and the demo account trades along.</p>
+    <div class="dw-row"><div><label class="l" for="dm-size">Demo account size</label><select id="dm-size"><option>25000</option><option selected>50000</option><option>100000</option></select></div>
+      <div><label class="l" for="dm-tick">TradingView ticker(s)</label><input type="text" id="dm-tick" placeholder="MNQ1!, NQ1!"></div></div>
+    <div class="dw-actions"><button type="button" class="dw-btn ghost" data-back>Back</button><button type="button" class="dw-btn" id="dm-go">Get my webhook</button></div>
+    <div id="dm-out" hidden>
+      <label class="l">Webhook URL</label><div class="dw-copy"><input type="text" id="dm-url" readonly><button type="button" class="dw-btn ghost" data-copy="dm-url">Copy</button></div>
+      <label class="l">Alert message</label><div class="dw-copy"><input type="text" id="dm-msg" readonly><button type="button" class="dw-btn ghost" data-copy="dm-msg">Copy</button></div>
+      <ol class="how"><li>In TradingView, open your chart and press <b>Alt+A</b> to create an alert.</li><li>Under <b>Notifications</b> tick <b>Webhook URL</b> and paste the URL above.</li><li>Paste the alert message into the <b>Message</b> box and save.</li><li>Watch trades land on the <a href="/forward-test?view=demo">demo account</a>.</li></ol>
+    </div>
+    <div class="dw-msg" id="m-dm"></div>
+  </div>
+</div></div></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); }, S = { target: '', strategy: '', account: null, accounts: [], state: null, steps: [] };
+  var PRESETS = {{ presets_json | safe }};
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+  function post(url, body, form) { return fetch(url, { method: 'POST', headers: form ? {} : { 'Content-Type': 'application/json' }, body: form || JSON.stringify(body || {}) }).then(function (r) { return r.json().then(function (j) { j._status = r.status; return j; }); }); }
+  function setMsg(id, t, cls) { var e = $(id); e.textContent = t || ''; e.className = 'dw-msg ' + (cls || ''); }
+
+  var FLOW = { demo: ['st-1', 'st-demo'], mt5: ['st-1', 'st-unlock', 'st-acct', 'st-risk', 'st-go'], prop: ['st-1', 'st-unlock', 'st-acct', 'st-risk', 'st-go'] };
+  var LABEL = { 'st-1': 'Where', 'st-unlock': 'Unlock', 'st-acct': 'Account', 'st-risk': 'Limits', 'st-go': 'Launch', 'st-demo': 'Practice' };
+  var idx = 0;
+  function show(i) {
+    idx = i; var steps = S.steps.length ? S.steps : ['st-1'];
+    document.querySelectorAll('.dw-step').forEach(function (e) { e.hidden = e.id !== steps[i] && e.id !== (S.running ? 'st-run' : ''); });
+    var railSteps = S.steps.length ? steps : FLOW.prop;
+    $('dw-rail').innerHTML = railSteps.map(function (s, n) { return '<div class="dw-pill ' + (n < i ? 'done' : n === i ? 'now' : '') + '">' + LABEL[s] + '</div>'; }).join('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (steps[i] === 'st-unlock') loadUnlock(); if (steps[i] === 'st-acct') loadAccounts(); if (steps[i] === 'st-go') loadReview();
+  }
+  function next() { show(Math.min(idx + 1, S.steps.length - 1)); }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-back]'); if (b) show(Math.max(0, idx - 1));
+    var c = e.target.closest('[data-copy]'); if (c) { var el = $(c.dataset.copy); el.select(); try { navigator.clipboard.writeText(el.value); c.textContent = 'Copied'; setTimeout(function () { c.textContent = 'Copy'; }, 1500); } catch (x) {} }
+  });
+
+  function picked() { var v = $('dw-strategy').value; if (!v) { setMsg('m-1', 'Choose a saved strategy first.', 'err'); return null; } S.strategy = v; return v; }
+  $('dw-strategy').onchange = function () { $('dw-name').textContent = this.value ? this.value.split('::')[1] : 'a strategy'; setMsg('m-1', ''); };
+  document.querySelectorAll('.dw-target').forEach(function (b) { b.onclick = function () { if (!picked()) return; S.target = b.dataset.target; S.steps = FLOW[S.target]; show(1); applyTarget(); }; });
+  if ($('dw-strategy').value) $('dw-name').textContent = $('dw-strategy').value.split('::')[1];
+
+  function applyTarget() {
+    $('ac-help').textContent = S.target === 'mt5' ? 'Use the MetaTrader 5 login your broker gave you. The MT5 terminal must be installed on this computer.' : 'Pick your prop firm, then paste the platform login the firm emailed you after you bought the account.';
+    var tryPick = function (n) { var f = $('dc-firm'), p = $('dc-platform'); if (!f || !f.options.length) { if (n < 40) setTimeout(function () { tryPick(n + 1); }, 150); return; }
+      if (S.target === 'mt5') { for (var i = 0; i < f.options.length; i++) if (/other/i.test(f.options[i].text)) f.selectedIndex = i; f.dispatchEvent(new Event('change')); setTimeout(function () { for (var j = 0; j < p.options.length; j++) if (/MT4\/MT5/.test(p.options[j].text)) p.selectedIndex = j; p.dispatchEvent(new Event('change')); }, 60); } };
+    tryPick(0);
+  }
+
+  // ---- unlock
+  function loadUnlock() {
+    fetch('/deploy/wizard/state.json').then(function (r) { return r.json(); }).then(function (st) {
+      S.state = st;
+      $('un-list').innerHTML = st.checklist.map(function (c) { return '<div class="dw-check ' + (c.ok ? 'ok' : 'block') + '"><span class="ic">' + (c.ok ? '&#10003;' : '&#9679;') + '</span><div><b>' + esc(c.title) + '</b><small>' + esc(c.detail) + '</small>' + (!c.ok && c.href ? '<br><a href="' + esc(c.href) + '">' + esc(c.label) + ' &rarr;</a>' : '') + '</div></div>'; }).join('');
+      var needEnable = st.checklist.filter(function (c) { return c.key === 'enable' && !c.ok; }).length, pwOk = st.checklist.filter(function (c) { return c.key !== 'enable' && !c.ok; }).length === 0;
+      $('un-enable').hidden = !(needEnable && pwOk); $('un-phrase-text').textContent = st.enable_phrase;
+      if (st.allowed) { setMsg('m-un', 'All set.', 'ok'); setTimeout(function () { if (S.steps[idx] === 'st-unlock') next(); }, 500); }
+    });
+  }
+  $('un-refresh').onclick = loadUnlock;
+  $('un-go').onclick = function () { post('/deploy-live/enable', { phrase: $('un-phrase').value }).then(function (j) { setMsg('m-un', j.message || (j.ok ? 'On.' : 'Could not turn on.'), j.ok ? 'ok' : 'err'); loadUnlock(); }); };
+
+  // ---- account
+  window.onDeployAccountsChanged = function (accts) { S.accounts = accts; renderAccts(); };
+  function loadAccounts() { fetch('/deploy-live/connect.json').then(function (r) { return r.json(); }).then(function (j) { S.accounts = j.accounts || []; renderAccts(); });
+    fetch('/api/demo-account').then(function (r) { return r.json(); }).then(function (d) { $('ac-mode').hidden = d.mode === 'live'; }); }
+  function renderAccts() {
+    var usable = S.accounts.filter(function (a) { return a.usable; });
+    $('ac-saved').innerHTML = usable.length ? usable.map(function (a) { return '<label class="dw-acct ' + (S.account === a.id ? 'sel' : '') + '"><input type="radio" name="dw-acct" value="' + esc(a.id) + '"' + (S.account === a.id ? ' checked' : '') + '><div><b>' + esc(a.nickname || a.login) + '</b><br><small>' + esc(a.platform) + (a.firm_name ? ' &middot; ' + esc(a.firm_name) : '') + (a.live ? ' &middot; LIVE' : ' &middot; demo') + '</small></div></label>'; }).join('') : '<p class="dw-help">No saved accounts yet. Add one below.</p>';
+    $('ac-saved').querySelectorAll('input').forEach(function (r) { r.onchange = function () { S.account = r.value; renderAccts(); }; });
+    $('ac-newwrap').open = !usable.length;
+  }
+  $('ac-live').onclick = function () { post('/settings/account/mode', { mode: 'live' }).then(function (j) { if (j.ok) $('ac-mode').hidden = true; else setMsg('m-ac', j.error || 'Could not switch.', 'err'); }); };
+  $('ac-next').onclick = function () { if (!S.account) { setMsg('m-ac', 'Select one of your saved accounts (or add one).', 'err'); return; } setMsg('m-ac', ''); next(); };
+
+  // ---- risk
+  $('rk-preset').onchange = function () { var p = PRESETS[this.value]; if (!p) return; $('rk-size').value = p.size; $('rk-dl').value = p.daily_loss; $('rk-dd').value = p.max_dd; };
+  $('rk-next').onclick = next;
+
+  // ---- review + launch
+  function loadReview() {
+    var sel = S.accounts.filter(function (a) { return a.id === S.account; })[0] || {};
+    $('go-sum').innerHTML = 'Trading <b>' + esc($('dw-strategy').value.split('::')[1]) + '</b> on <b>' + esc(sel.nickname || sel.login || '') + '</b> (' + esc(sel.platform || '') + '), symbol <b>' + esc($('rk-symbol').value) + '</b>, ' + esc($('rk-risk').value) + '% risk per trade, halt at ' + esc($('rk-dl').value) + '% daily loss / ' + esc($('rk-dd').value) + '% drawdown.';
+    post('/deploy-live/preflight', { account_id: S.account, strategy: S.strategy, preset_key: $('rk-preset').value }).then(function (j) {
+      var items = j.items || []; $('go-checks').innerHTML = items.map(function (i) { return '<div class="dw-check ' + (i.level === 'ok' ? 'ok' : i.level === 'block' ? 'block' : 'warn') + '"><span class="ic">' + (i.level === 'ok' ? '&#10003;' : i.level === 'block' ? '&#10005;' : '!') + '</span><div><b>' + esc(i.title) + '</b><small>' + esc(i.detail) + '</small></div></div>'; }).join('') || '<p class="dw-help">No issues found.</p>';
+      $('go-ack-row').hidden = !j.needs_ack; S.canDeploy = j.can_deploy !== false; sync();
+    });
+  }
+  function sync() { $('go-start').disabled = !(S.canDeploy && $('go-phrase').value.trim() === 'DEPLOY LIVE' && ($('go-ack-row').hidden || $('go-ack').checked)); }
+  $('go-phrase').oninput = sync; $('go-ack').onchange = sync;
+  $('go-start').onclick = function () {
+    var f = new FormData(), pick = S.strategy, i = pick.indexOf('::'), t = pick.slice(0, i), n = pick.slice(i + 2);
+    f.append('account_id', S.account); f.append('strategy_mode', t); f.append('existing_strategy_' + t, n); f.append('symbol', $('rk-symbol').value);
+    f.append('timeframe_minutes', $('rk-tf').value); f.append('initial_balance', $('rk-size').value); f.append('account_size', $('rk-size').value);
+    f.append('risk_mode', 'percent'); f.append('risk_value', $('rk-risk').value); f.append('daily_loss', $('rk-dl').value); f.append('max_dd', $('rk-dd').value);
+    f.append('guardian_on', '1'); f.append('enforce_news', '1'); if ($('rk-preset').value) f.append('firm_preset', $('rk-preset').value);
+    f.append('confirm_text', $('go-phrase').value.trim()); if (!$('go-ack-row').hidden && $('go-ack').checked) f.append('ack_firm_policy', '1');
+    $('go-start').disabled = true; setMsg('m-go', 'Starting...', '');
+    post('/deploy-live/start', null, f).then(function (j) { if (j.ok) { S.running = true; show(idx); document.querySelectorAll('.dw-step').forEach(function (e) { e.hidden = e.id !== 'st-run'; }); } else { setMsg('m-go', j.error || 'Could not start.', 'err'); sync(); } });
+  };
+  $('run-stop').onclick = function () { post('/deploy-live/stop', {}).then(function (j) { setMsg('m-run', j.ok === false ? (j.error || 'Could not stop.') : 'Stopped.', j.ok === false ? 'err' : 'ok'); }); };
+
+  // ---- demo
+  $('dm-go').onclick = function () {
+    post('/demo-account/deploy', { strategy: S.strategy.split('::')[1], size: +$('dm-size').value, tickers: $('dm-tick').value }).then(function (j) {
+      if (!j.ok) { setMsg('m-dm', j.error || 'Could not set up the demo.', 'err'); return; }
+      $('dm-url').value = j.webhook_url || (j.path ? location.origin + j.path : ''); $('dm-msg').value = typeof j.alert_message === 'string' ? j.alert_message : JSON.stringify(j.alert_message || j.message || ''); $('dm-out').hidden = false; setMsg('m-dm', '');
+    }).catch(function () { setMsg('m-dm', 'Could not reach the demo account.', 'err'); });
+  };
+  show(0);
+})();
+</script>
+</body>
+</html>

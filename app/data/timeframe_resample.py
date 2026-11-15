@@ -183,14 +183,33 @@ def looks_like_cme_session_data(df: pd.DataFrame) -> bool:
         ts = pd.to_datetime(df["timestamp"], errors="coerce").dropna()
         if len(ts) < 5000 or ts.diff().median() > pd.Timedelta(minutes=15):
             return False
-        if ts.dt.tz is not None:
-            ts = ts.dt.tz_convert("UTC")
+        # The halt is a fixed 16:00-16:59 Chicago hour (17:00-18:00 ET). In UTC it moves between hour 21 (summer) and 22 (winter), so on
+        # any window that spans a DST change neither UTC hour is "quiet" enough (full bundled ES history: min/median = 0.30 > 0.25) and the
+        # old UTC-hour test wrongly fell back to UTC-midnight daily bars. Test the hour on the exchange clock instead.
+        ts = (ts.dt.tz_localize("UTC") if ts.dt.tz is None else ts).dt.tz_convert(_CME_SESSION_TZ)
         wk = ts[ts.dt.day_of_week < 5]
         counts = wk.dt.hour.value_counts().reindex(range(24), fill_value=0)
         quiet = int(counts.idxmin())
-        return quiet in (21, 22) and counts.min() < 0.25 * float(counts.median())
+        return quiet == _CME_SESSION_OPEN_HOUR - 1 and counts.min() < 0.25 * float(counts.median())
     except Exception:
         return False
+
+
+def _auto_is_cme(src: pd.DataFrame, work: pd.DataFrame) -> bool:
+    """AUDIT C-2: decide the bin anchor from the INSTRUMENT when it is known (a fixed property), and only fall back to the
+    content heuristic (which depends on how many rows / which hours the frame holds, i.e. on future data) for unknown symbols."""
+    try:
+        from app.data import session_clock as sc
+        inst = (getattr(src, "attrs", {}) or {}).get("instrument")
+        if inst:
+            kind = sc.session_profile(inst).kind
+            if kind in ("equity_index", "us_future"):
+                return True
+            if kind != "unknown":
+                return False
+    except Exception:  # noqa: BLE001
+        pass
+    return looks_like_cme_session_data(work)
 
 
 def _resample_ohlcv_uncached(df: pd.DataFrame, timeframe_label: str, anchor: str = "auto") -> pd.DataFrame:
@@ -223,7 +242,7 @@ def _resample_ohlcv_uncached(df: pd.DataFrame, timeframe_label: str, anchor: str
 
     if anchor not in ("auto", "utc", "cme_session"):
         raise ValueError(f"anchor must be 'auto', 'utc' or 'cme_session', got {anchor!r}")
-    use_session = anchor == "cme_session" or (anchor == "auto" and minutes >= 120 and looks_like_cme_session_data(work))
+    use_session = anchor == "cme_session" or (anchor == "auto" and minutes >= 120 and _auto_is_cme(df, work))
 
     work = work.set_index("timestamp")
     agg = {"open": "first", "high": "max", "low": "min", "close": "last"}

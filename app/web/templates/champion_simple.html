@@ -35,6 +35,7 @@
   .lc-scope .ch-card.sel{box-shadow:0 0 0 1px var(--lc-acc) inset, 0 10px 28px rgba(var(--teal-rgb,0,212,170),.16);}
   .lc-scope .ch-assess{border-radius:18px; box-shadow:0 10px 32px rgba(0,0,0,.14);}
   @media (prefers-reduced-motion: reduce){ .lc-scope .ch-card, .lc-scope .ch-slot{transition:none;} .lc-scope .ch-card:hover{transform:none;} }
+.ch-deploy { margin-top: 10px; } .ch-deploy .lc-btn { display: inline-block; text-decoration: none; }
 </style>
 <div class="lc-run-grid">
 <div class="lc-run-main">
@@ -159,6 +160,9 @@
         <div><b>{{ '%.0f'|format(r.get('trades')) if r.get('trades') is not none else '&mdash;'|safe }}</b><span data-metric="trades">Trades</span></div>
       </div>
       <div class="ch-bar" style="margin-top:10px;"><div style="width:{{ r.promotion.stage_pct or 0 }}%"></div></div>
+      {% if r.promotion.stage in ('champion', 'forward_testing', 'production_ready') %}
+      <div class="ch-deploy"><a class="lc-btn" href="/deploy/wizard?strategy={{ pick|urlencode }}" onclick="event.stopPropagation()" title="Demo, MT5 or prop firm: a step-by-step guide">&#9889; Deploy</a></div>
+      {% endif %}
       <div class="ch-next">
         {% if r.next %}{{ r.next.text }}{% if r.next.href %} &middot; <a href="{{ r.next.href }}" onclick="event.stopPropagation()">{{ r.next.label }} &rarr;</a>{% endif %}{% endif %}
       </div>

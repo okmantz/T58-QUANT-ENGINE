@@ -13,17 +13,68 @@ investing_bp = Blueprint("investing", __name__)
 _sec = SecClient()
 
 
+class LiveSetupNeeded(ValueError):
+    """Live mode was picked but a setup step is missing. ``needs`` tells the page which step to show ("keys" or "confirm")."""
+
+    def __init__(self, needs: str, message: str):
+        super().__init__(message)
+        self.needs = needs
+
+
 def _err(e, code=400):
-    return jsonify({"ok": False, "error": str(e)}), code
+    body = {"ok": False, "error": str(e)}
+    if isinstance(e, LiveSetupNeeded):
+        body["needs"] = e.needs          # the page turns this into the guided live-account setup instead of a dead-end message
+    return jsonify(body), code
 
 
 def _broker(mode: str, confirm_live: bool = False):
     if mode == "paper":
         return PaperAccount()
+    from app.data import alpaca_credentials
     from app.investing.broker_alpaca import AlpacaBroker
+    if not alpaca_credentials.has_saved_credentials():
+        raise LiveSetupNeeded("keys", "Connect your Alpaca account first (add your API keys in the setup panel).")
     if mode == "live" and not confirm_live:
-        raise ValueError("Real-money trading needs the confirmation box ticked.")
+        raise LiveSetupNeeded("confirm", "Real-money trading is off until you turn it on in the setup panel.")
     return AlpacaBroker(live=(mode == "live"))
+
+
+@investing_bp.route("/investing/api/live/status")
+def api_live_status():
+    """What the Live tab needs next: ``keys`` (nothing saved) or ``confirm`` (keys saved, real-money switch still off)."""
+    from app.data import alpaca_credentials
+    has = alpaca_credentials.has_saved_credentials()
+    return jsonify({"ok": True, "has_keys": has, "needs": "confirm" if has else "keys"})
+
+
+@investing_bp.route("/investing/api/live/connect", methods=["POST"])
+def api_live_connect():
+    """Save Alpaca keys and prove they work with a READ-ONLY account lookup against the live endpoint. Never places an order."""
+    from app.data import alpaca_credentials
+    from app.investing.broker_alpaca import AlpacaBroker
+    b = request.get_json(silent=True) or {}
+    key, secret = str(b.get("api_key") or "").strip(), str(b.get("secret_key") or "").strip()
+    if len(key) < 8 or len(secret) < 8:
+        return _err("Paste both the API key and the secret key from your Alpaca dashboard.")
+    previous = alpaca_credentials.load_credentials()
+    alpaca_credentials.save_credentials(key, secret)
+    try:
+        st = AlpacaBroker(live=True).state()
+    except Exception as e:  # noqa: BLE001
+        if previous and previous.is_usable:                       # a failed test must not destroy keys that were working
+            alpaca_credentials.save_credentials(previous.api_key, previous.secret_key)
+        else:
+            alpaca_credentials.clear_credentials()
+        return _err(f"Alpaca did not accept those keys for a LIVE account: {e}")
+    return jsonify({"ok": True, "equity": st["equity"], "cash": st["cash"], "positions": len(st["positions"])})
+
+
+@investing_bp.route("/investing/api/live/disconnect", methods=["POST"])
+def api_live_disconnect():
+    from app.data import alpaca_credentials
+    alpaca_credentials.clear_credentials()
+    return jsonify({"ok": True})
 
 
 @investing_bp.route("/investing")

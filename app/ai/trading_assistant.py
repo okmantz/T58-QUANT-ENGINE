@@ -183,9 +183,13 @@ answering: if it's there, confirm it's supported (and which language(s));
 if it isn't, say plainly that it isn't currently supported rather than
 guessing either way."""
 
-T58_GROUP_SYSTEM_PROMPT = PERSONAL_STRATEGY_PROMPT + "\n\n" + CAPABILITY_GROUNDING_NOTE
+from app.research_knowledge import assistant_brief as _research_brief
+
+RESEARCH_BASELINE_NOTE = _research_brief()
+
+T58_GROUP_SYSTEM_PROMPT = PERSONAL_STRATEGY_PROMPT + "\n\n" + CAPABILITY_GROUNDING_NOTE + "\n\n" + RESEARCH_BASELINE_NOTE
 PERSONAL_MODE_SYSTEM_PROMPT = (
-    PERSONAL_STRATEGY_PROMPT + "\n\n" + PERSONAL_ASSISTANT_PROMPT + "\n\n" + CAPABILITY_GROUNDING_NOTE
+    PERSONAL_STRATEGY_PROMPT + "\n\n" + PERSONAL_ASSISTANT_PROMPT + "\n\n" + CAPABILITY_GROUNDING_NOTE + "\n\n" + RESEARCH_BASELINE_NOTE
 )
 
 # ---------------------------------------------------------------------------

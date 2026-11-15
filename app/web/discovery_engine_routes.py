@@ -87,6 +87,16 @@ def engine_status() -> dict:
     }
 
 
+
+def _engine_objective_mode(raw) -> str:
+    """Discovery-engine objective: "net_profit" (live account), "pass" (A), "payout" / "prop_net" (B, adds the payout_lifecycle gate), else "prop"."""
+    from app.prop.lifecycle import normalize_objective_mode
+    m = (raw or "").strip().lower()
+    if m in ("net_profit", "net", "live"):
+        return "net_profit"
+    mode = normalize_objective_mode(m) if m else "prop_lifecycle"
+    return {"pass": "pass", "payout": "payout", "prop_net": "prop_net"}.get(mode, "prop")
+
 @discovery_engine_bp.route("/api/discovery-engine/status")
 def status_json():
     return jsonify(engine_status())
@@ -348,7 +358,7 @@ def start():
         req = EngineRequest(preset=preset_name, df=df, risk=risk, prop_rules=rules, instrument=label, timeframe=tf, families=families, seed=seed,
                             frames=None, risks=None, progress_cb=lambda m: JOB_MANAGER.log(job_id, str(m)), cancel_event=cancel,
                             use_memory=(request.form.get("fresh_start") != "on"),
-                            objective_mode="net_profit" if (form.get("objective_mode") or "").strip().lower() in ("net_profit", "net", "live") else "prop")
+                            objective_mode=_engine_objective_mode(form.get("objective_mode")))
         threading.Thread(target=_run_engine_job, args=(job_id, req, JOB_DISCOVERY_ENGINE, (label, df, risk)), daemon=True).start()
         return redirect(f"/discovery-engine/job/{job_id}")
     except Exception as exc:  # noqa: BLE001

@@ -98,91 +98,32 @@
 <div class="t58-shell">
 {% include '_sidebar.html' %}
 <div class="t58-main">
-  <h1>T58 AI -- Trading Intelligence</h1>
-  <p class="lede">
-    News, best-markets ranking, and chat, all reasoning over Owen's exact strategy hierarchy.
-    The macro/EMA/liquidity/location/confirmation facts below are computed by this app, not the model --
-    Ollama only explains and answers questions against them.
-  </p>
-
-  <div class="t58-tabs" role="tablist" id="ai-tabs" style="margin:0 0 14px;">
-    <button type="button" class="t58-tab active" role="tab" data-tab="assistant">Assistant</button>
-    <button type="button" class="t58-tab" role="tab" data-tab="ask" data-frame="/research?mode=ask&embed=1">Research: Ask a question</button>
-    <button type="button" class="t58-tab" role="tab" data-tab="analyze" data-frame="/research?mode=analyze&embed=1">Research: Run analyses</button>
+  <div class="ai-hero">
+    <div><h1>AI Assistant</h1><p class="lede">Ask questions, read the market, and analyze a chart in one place. The facts (trend, liquidity, levels, news) are computed by the app; the model only explains them.</p></div>
   </div>
-  <div id="ai-pane-assistant">
-  <div class="oai-grid">
-    <div class="oai-panel">
-      <h2>News <span class="refresh" onclick="loadNews()">refresh</span></h2>
-      <div id="news-panel"><div class="news-row">Loading...</div></div>
-    </div>
+  <div class="t58-tabs ai-tabs" role="tablist" id="ai-tabs">
+    <button type="button" class="t58-tab active" role="tab" data-tab="assistant">&#128172; Assistant</button>
+    <button type="button" class="t58-tab" role="tab" data-tab="research">&#128240; Research</button>
+    <button type="button" class="t58-tab" role="tab" data-tab="analysis">&#128269; Analysis</button>
+  </div>
 
-    <div class="oai-panel">
-      <h2>Best Markets <span class="refresh" onclick="loadRankings()">refresh</span></h2>
-      <div id="rankings-panel" style="overflow-x:auto;"><div>Loading...</div></div>
-      <small id="rankings-note" style="color:var(--text-dim); margin-top:6px; display:block;"></small>
-    </div>
-
-    <div class="oai-panel oai-chat" style="grid-column: 1 / -1;">
-      <h2>AI Director <span class="refresh" onclick="loadDirector()">refresh</span></h2>
-      <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px;">
-        Surveys every strategy in the Strategy Library (pipeline stage, verdict, how long it's sat idle)
-        plus today's Best Markets scan, and ranks what's actually worth doing next -- computed by the app,
-        not guessed by the model.
-      </p>
-      <div id="director-panel"><div>Loading...</div></div>
-      <div class="chat-toolbar" style="margin-top:8px;">
-        <button class="btn" id="director-btn" onclick="generateDirectorBriefing()">Generate Director's Briefing</button>
-      </div>
-      <div id="director-reply" style="white-space:pre-wrap; font-size:13px; line-height:1.55; background:var(--panel-3); border:1px solid var(--border); border-radius:10px; padding:12px; margin-top:8px; display:none;"></div>
-    </div>
-
-    <div class="oai-panel oai-chat" style="grid-column: 1 / -1;">
-      <h2>Basic Outlook</h2>
-      <div class="chat-toolbar">
-        <button class="btn" id="outlook-btn" onclick="generateOutlook()">Generate Basic Outlook</button>
-        <small style="color:var(--text-dim);">Macro update from ForexFactory news + best forex/crypto/futures trades from the panels above -- works with Ollama off (deterministic facts only) or on (adds a narrative read).</small>
-      </div>
-      <div id="outlook-reply" style="white-space:pre-wrap; font-size:13px; line-height:1.55; background:var(--panel-3); border:1px solid var(--border); border-radius:10px; padding:12px; display:none;"></div>
-    </div>
-
-    <div class="oai-panel oai-chat" style="grid-column: 1 / -1;">
-      <h2>Analyze a Symbol</h2>
-      <div class="chat-toolbar">
-        <input type="text" id="symbol-picker-input" placeholder="e.g. ES1!, XAUUSD, BTCUSD" style="flex:1; min-width:160px; background:var(--panel); border:1px solid var(--border-light); border-radius:8px; color:var(--text); padding:8px 10px; font-size:13px;">
-        <button class="btn" id="symbol-picker-btn" onclick="analyzeSymbol()">Analyze</button>
-        <small style="color:var(--text-dim);">Any symbol your data feed knows -- pulls live bars + today's news and runs Owen's exact T58 checklist, with an exact entry/stop/target the moment (and only when) it's genuinely READY.</small>
-      </div>
-      <div id="symbol-picker-reply" style="white-space:pre-wrap; font-size:13px; line-height:1.55; background:var(--panel-3); border:1px solid var(--border); border-radius:10px; padding:12px; display:none;"></div>
-    </div>
-
-    <div class="oai-panel oai-chat" style="grid-column: 1 / -1;">
-      <h2>Screenshot Analysis</h2>
-      <div class="chat-toolbar">
-        <input type="file" id="shot-file" accept="image/*" style="color:var(--text-muted); font-size:12px;">
-        <input type="text" id="shot-notes" placeholder="Optional notes (symbol, timeframe, what happened)" style="flex:1; min-width:180px; background:var(--panel); border:1px solid var(--border-light); border-radius:8px; color:var(--text); padding:8px 10px; font-size:13px;">
-        <button class="btn" onclick="analyzeScreenshot('chart')">Chart -&gt; Trading Plan</button>
-        <button class="btn secondary" onclick="analyzeScreenshot('trade')">Trade -&gt; Session Review</button>
-      </div>
-      <small style="color:var(--text-dim);">Requires a vision-capable Ollama model (set below, e.g. `llava` or `llama3.2-vision`) -- the default chat model can't see images.</small>
-    </div>
-
-    <div class="oai-panel oai-chat">
-      <h2>
-        <span><span id="ollama-dot" class="status-dot"></span>T58 AI</span>
-      </h2>
+  <div id="ai-pane-assistant" class="ai-pane">
+    <div class="oai-panel oai-chat-main">
+      <h2><span><span id="ollama-dot" class="status-dot"></span>Ask T58 AI</span></h2>
       <div class="chat-toolbar">
         <div class="mode-toggle">
           <button id="mode-personal" class="active" onclick="setMode('personal')">Personal</button>
           <button id="mode-t58" onclick="setMode('t58')">T58 Group</button>
         </div>
-        <button class="btn secondary" onclick="runDailyBrief()">Daily Brief</button>
-        <button class="btn secondary" onclick="runTradeOfTheDay()">Trade of the Day (MES/MNQ/MGC)</button>
-        <button class="btn secondary" onclick="runWatchlist()">Watchlist</button>
+        <button class="chip" onclick="runDailyBrief()">&#9728; Daily brief</button>
+        <button class="chip" onclick="runTradeOfTheDay()">&#127919; Trade of the day</button>
+        <button class="chip" onclick="runWatchlist()">&#128065; Watchlist</button>
+        <button class="chip" onclick="aiTab('research')">&#128240; News &amp; markets</button>
+        <button class="chip" onclick="aiTab('analysis')">&#128269; Analyze a chart</button>
       </div>
       <div id="chat-log"></div>
       <div class="chat-input-row">
-        <textarea id="chat-input" placeholder="Ask about a market, request the daily brief, review a trade..."></textarea>
+        <textarea id="chat-input" placeholder="Ask anything: what should I trade today, review my last trade, explain this setup..."></textarea>
         <button class="btn" id="send-btn" onclick="sendChat()">Send</button>
       </div>
 
@@ -199,22 +140,101 @@
       </details>
     </div>
   </div>
+
+  <div id="ai-pane-research" class="ai-pane" hidden>
+    <div class="oai-grid">
+    <div class="oai-panel">
+      <h2>News <span class="refresh" onclick="loadNews()">refresh</span></h2>
+      <div id="news-panel"><div class="news-row">Loading...</div></div>
+    </div>
+    <div class="oai-panel">
+      <h2>Best Markets <span class="refresh" onclick="loadRankings()">refresh</span></h2>
+      <div id="rankings-panel" style="overflow-x:auto;"><div>Loading...</div></div>
+      <small id="rankings-note" style="color:var(--text-dim); margin-top:6px; display:block;"></small>
+    </div>
+    </div>
+    <div class="oai-stack">
+    <div class="oai-panel">
+      <h2>AI Director <span class="refresh" onclick="loadDirector()">refresh</span></h2>
+      <p style="color:var(--text-dim); font-size:12px; margin:0 0 8px;">
+        Surveys every strategy in the Strategy Library (pipeline stage, verdict, how long it's sat idle)
+        plus today's Best Markets scan, and ranks what's actually worth doing next -- computed by the app,
+        not guessed by the model.
+      </p>
+      <div id="director-panel"><div>Loading...</div></div>
+      <div class="chat-toolbar" style="margin-top:8px;">
+        <button class="btn" id="director-btn" onclick="generateDirectorBriefing()">Generate Director's Briefing</button>
+      </div>
+      <div id="director-reply" style="white-space:pre-wrap; font-size:13px; line-height:1.55; background:var(--panel-3); border:1px solid var(--border); border-radius:10px; padding:12px; margin-top:8px; display:none;"></div>
+    </div>
+    <div class="oai-panel">
+      <h2>Basic Outlook</h2>
+      <div class="chat-toolbar">
+        <button class="btn" id="outlook-btn" onclick="generateOutlook()">Generate Basic Outlook</button>
+        <small style="color:var(--text-dim);">Macro update from ForexFactory news + best forex/crypto/futures trades from the panels above -- works with Ollama off (deterministic facts only) or on (adds a narrative read).</small>
+      </div>
+      <div id="outlook-reply" style="white-space:pre-wrap; font-size:13px; line-height:1.55; background:var(--panel-3); border:1px solid var(--border); border-radius:10px; padding:12px; display:none;"></div>
+    </div>
+    <details class="oai-more"><summary>Ask a research question (data-backed answers)</summary><iframe class="ai-frame" data-src="/research?mode=ask&embed=1" title="Research: Ask a question"></iframe></details>
+    </div>
   </div>
-  <div id="ai-pane-ask" hidden><iframe class="ai-frame" title="Research: Ask a question"></iframe></div>
-  <div id="ai-pane-analyze" hidden><iframe class="ai-frame" title="Research: Run analyses"></iframe></div>
-<style>.ai-frame{width:100%;border:0;min-height:640px;background:transparent}</style>
+
+  <div id="ai-pane-analysis" class="ai-pane" hidden>
+    <div class="oai-stack">
+    <div class="oai-panel">
+      <h2>Analyze a Symbol</h2>
+      <div class="chat-toolbar">
+        <input type="text" id="symbol-picker-input" placeholder="e.g. ES1!, XAUUSD, BTCUSD" style="flex:1; min-width:160px; background:var(--panel); border:1px solid var(--border-light); border-radius:8px; color:var(--text); padding:8px 10px; font-size:13px;">
+        <button class="btn" id="symbol-picker-btn" onclick="analyzeSymbol()">Analyze</button>
+        <small style="color:var(--text-dim);">Any symbol your data feed knows -- pulls live bars + today's news and runs Owen's exact T58 checklist, with an exact entry/stop/target the moment (and only when) it's genuinely READY.</small>
+      </div>
+      <div id="symbol-picker-reply" style="white-space:pre-wrap; font-size:13px; line-height:1.55; background:var(--panel-3); border:1px solid var(--border); border-radius:10px; padding:12px; display:none;"></div>
+    </div>
+    <div class="oai-panel">
+      <h2>Screenshot Analysis</h2>
+      <div class="chat-toolbar">
+        <input type="file" id="shot-file" accept="image/*" style="color:var(--text-muted); font-size:12px;">
+        <input type="text" id="shot-notes" placeholder="Optional notes (symbol, timeframe, what happened)" style="flex:1; min-width:180px; background:var(--panel); border:1px solid var(--border-light); border-radius:8px; color:var(--text); padding:8px 10px; font-size:13px;">
+        <button class="btn" onclick="analyzeScreenshot('chart')">Chart -&gt; Trading Plan</button>
+        <button class="btn secondary" onclick="analyzeScreenshot('trade')">Trade -&gt; Session Review</button>
+      </div>
+      <small style="color:var(--text-dim);">Requires a vision-capable Ollama model (set below, e.g. `llava` or `llama3.2-vision`) -- the default chat model can't see images.</small>
+    </div>
+    <details class="oai-more"><summary>Run a full analysis (backtests, validation, studies)</summary><iframe class="ai-frame" data-src="/research?mode=analyze&embed=1" title="Research: Run analyses"></iframe></details>
+    </div>
+  </div>
+<style>
+  .ai-frame{width:100%;border:0;min-height:640px;background:transparent}
+  .ai-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:0 0 14px}
+  .ai-hero h1{font-size:28px;margin:0 0 4px;letter-spacing:-.01em} .ai-hero .lede{max-width:62ch;margin:0}
+  .ai-tabs{margin:0 0 18px;display:inline-flex;gap:4px;padding:4px;border-radius:14px;background:var(--panel-2);border:1px solid var(--border)}
+  .ai-tabs .t58-tab{border-radius:10px;padding:9px 18px;font-weight:600;border:0} .ai-tabs .t58-tab.active{background:var(--teal-dim);color:var(--text)}
+  .ai-pane[hidden]{display:none}
+  .oai-chat-main{max-width:920px;margin:0 auto;border-radius:18px;padding:18px}
+  .oai-chat-main #chat-log{min-height:340px;max-height:56vh;padding:6px 2px}
+  .oai-chat-main .chat-toolbar{align-items:center}
+  button.chip{background:var(--panel-3);border:1px solid var(--border-light);color:var(--text);border-radius:999px;padding:7px 13px;font-size:12.5px;cursor:pointer}
+  button.chip:hover{border-color:var(--teal)}
+  .oai-stack{display:flex;flex-direction:column;gap:14px;max-width:1080px;margin-top:14px} .oai-grid{max-width:1080px}
+  .oai-stack .oai-panel{border-radius:16px}
+  details.oai-more{background:var(--panel-2);border:1px solid var(--border);border-radius:16px;padding:12px 16px} details.oai-more summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--text-muted)}
+  details.oai-more[open] summary{margin-bottom:10px;color:var(--text)}
+  button.btn{min-height:38px;padding:0 18px}
+  #chat-log:empty::before{content:'Ask about a market, a setup or your last trade. The buttons above give you a daily brief, the trade of the day, or your watchlist in one click.';color:var(--text-muted);font-size:13.5px;line-height:1.6;max-width:52ch;margin:auto;text-align:center}
+  .chat-input-row textarea{border-radius:12px;min-height:52px} .chat-input-row .btn{border-radius:12px;padding:0 22px}
+</style>
 <script>
 (function(){
-  var tabs=document.querySelectorAll('#ai-tabs .t58-tab');
+  var tabs=document.querySelectorAll('#ai-tabs .t58-tab'), ALIAS={ask:'research',analyze:'analysis'};
   function show(name){
+    name=ALIAS[name]||name;
     tabs.forEach(function(t){t.classList.toggle('active',t.dataset.tab===name);});
-    ['assistant','ask','analyze'].forEach(function(n){
-      var p=document.getElementById('ai-pane-'+n); if(p) p.hidden=(n!==name);
-    });
-    var t=document.querySelector('#ai-tabs [data-tab="'+name+'"]');
-    if(t&&t.dataset.frame){var f=document.querySelector('#ai-pane-'+name+' iframe'); if(f&&!f.getAttribute('src')) f.setAttribute('src',t.dataset.frame);}
+    ['assistant','research','analysis'].forEach(function(n){var p=document.getElementById('ai-pane-'+n); if(p) p.hidden=(n!==name);});
+    try{window.history.replaceState(null,'','?tab='+name);}catch(e){}
   }
+  window.aiTab=show;
   tabs.forEach(function(t){t.addEventListener('click',function(){show(t.dataset.tab);});});
+  document.addEventListener('toggle',function(e){var d=e.target; if(d.classList&&d.classList.contains('oai-more')&&d.open){var f=d.querySelector('iframe'); if(f&&!f.getAttribute('src')) f.setAttribute('src',f.dataset.src);}},true);
   var want=new URLSearchParams(location.search).get('tab'); if(want) show(want);
   window.addEventListener('message',function(e){
     if(e.origin!==location.origin||!e.data||!e.data.t58h) return;

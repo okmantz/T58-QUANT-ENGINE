@@ -100,13 +100,32 @@ class InstrumentSpec:
         price = ticks x tick_size, pips = price / pip_size."""
         return float(ticks) * float(self.tick_size) / float(self.pip_size)
 
+    # COST POLICY (2026-11-14, audit A-R1 / B-4): the ``default_*`` fields above are the registry's raw typical-condition numbers. What a
+    # run is actually charged comes from app.backtest.cost_policy (profile "realistic" by default), so every path resolves the same friction.
+    @property
+    def effective_costs(self):
+        from app.backtest.cost_policy import costs_for
+        return costs_for(self)
+
+    @property
+    def effective_spread_ticks(self) -> float:
+        return self.effective_costs.spread_ticks
+
+    @property
+    def effective_slippage_ticks(self) -> float:
+        return self.effective_costs.slippage_ticks
+
+    @property
+    def effective_commission_round_turn(self) -> float:
+        return self.effective_costs.commission_round_turn
+
     @property
     def default_spread_pips(self) -> float:
-        return self.ticks_to_pips(self.default_spread_ticks)
+        return self.ticks_to_pips(self.effective_spread_ticks)
 
     @property
     def default_slippage_pips(self) -> float:
-        return self.ticks_to_pips(self.default_slippage_ticks)
+        return self.ticks_to_pips(self.effective_slippage_ticks)
 
     def round_trip_cost_dollars(
         self, contracts: float = 1.0, spread_ticks: float | None = None,
@@ -119,11 +138,11 @@ class InstrumentSpec:
             2 x (spread_ticks + slippage_ticks) x tick_value x contracts
               + commission_round_turn x contracts
 
-        e.g. ES with the registry defaults (1 tick + 1 tick, $4.20):
-        2 x 2 x $12.50 + $4.20 = $54.20 per contract."""
-        s = self.default_spread_ticks if spread_ticks is None else spread_ticks
-        sl = self.default_slippage_ticks if slippage_ticks is None else slippage_ticks
-        c = self.default_commission_round_turn if commission_round_turn is None else commission_round_turn
+        e.g. ES under the "realistic" cost policy (0 spread + 1 tick slippage, $3.50): 2 x 1 x $12.50 + $3.50 = $28.50 per contract;
+        under "stress" (2 ticks slippage, $4.78): $54.78; under "legacy" (1 + 1 ticks, $4.20): $54.20."""
+        s = self.effective_spread_ticks if spread_ticks is None else spread_ticks
+        sl = self.effective_slippage_ticks if slippage_ticks is None else slippage_ticks
+        c = self.effective_commission_round_turn if commission_round_turn is None else commission_round_turn
         return (2.0 * (float(s) + float(sl)) * self.tick_value + float(c)) * float(contracts)
 
 
@@ -147,8 +166,8 @@ _SPECS: tuple[InstrumentSpec, ...] = (
     InstrumentSpec("MCL", "Micro WTI crude oil futures", "NYMEX", pip_size=1.0, contract_size=100.0, tick_size=0.01, tick_value=1.00, default_commission_round_turn=1.60),
     InstrumentSpec("ZN", "10-Year T-Note futures", "CBOT", pip_size=1.0, contract_size=1000.0, tick_size=0.015625, tick_value=15.625, default_commission_round_turn=3.80),
     InstrumentSpec("ZB", "30-Year T-Bond futures", "CBOT", pip_size=1.0, contract_size=1000.0, tick_size=0.03125, tick_value=31.25, default_commission_round_turn=3.80),
-    # 6E: price is USD per EUR, 125,000 EUR per contract -> $12.50 per 0.0001 (one "pip"), tick 0.00005 = $6.25.
-    InstrumentSpec("6E", "Euro FX futures", "CME", pip_size=0.0001, contract_size=12.5, tick_size=0.00005, tick_value=6.25, default_commission_round_turn=4.50),
+    # 6E: price is USD per EUR, 125,000 EUR per contract -> engine units = EUR, so contract_size = 125,000 ($12.50 per 0.0001 "pip", tick 0.00005 = $6.25).
+    InstrumentSpec("6E", "Euro FX futures", "CME", pip_size=0.0001, contract_size=125_000.0, tick_size=0.00005, tick_value=6.25, default_commission_round_turn=4.50),
 )
 
 # dataset-folder / vendor labels that do not contain the root symbol itself
@@ -312,7 +331,7 @@ def apply_instrument_spec(risk: RiskConfig, symbol: str) -> RiskConfig:
     from app.backtest.risk import UntouchedDefault, is_untouched
     updates = {"pip_size": spec.pip_size, "contract_size": spec.contract_size}
     if risk.commission_per_contract == 0.0:
-        updates["commission_per_contract"] = spec.default_commission_round_turn
+        updates["commission_per_contract"] = spec.effective_commission_round_turn
         # The stock flat $3/trade would be charged ON TOP of the per-contract rate we just filled (double commission).
         # Only the untouched default is removed; a flat fee the user typed is theirs and stays.
         if isinstance(risk.commission_per_trade, UntouchedDefault):
@@ -471,12 +490,17 @@ def apply_any_instrument_spec(risk: RiskConfig, symbol: str) -> RiskConfig:
     """apply_instrument_spec that also accepts the retail spot/CFD symbols."""
     if symbol and str(symbol).strip().upper() in CROSS_MARKET_INSTRUMENTS:
         spec = CROSS_MARKET_INSTRUMENTS[str(symbol).strip().upper()]
+        from app.backtest.risk import UntouchedDefault, is_untouched
         updates = {"pip_size": spec.pip_size, "contract_size": spec.contract_size}
         if risk.commission_per_contract == 0.0:
-            updates["commission_per_contract"] = spec.default_commission_round_turn
-        if risk.spread_pips == 0.0:
+            updates["commission_per_contract"] = spec.effective_commission_round_turn
+            # same rule as apply_instrument_spec: the stock flat $3/trade must not be charged ON TOP of the per-contract rate
+            if isinstance(risk.commission_per_trade, UntouchedDefault):
+                updates["commission_per_trade"] = 0.0
+        # the stock 1.0 / 0.3 pip defaults are UntouchedDefault markers (not == 0.0): use is_untouched like apply_instrument_spec
+        if is_untouched(risk.spread_pips):
             updates["spread_pips"] = spec.default_spread_pips
-        if risk.slippage_pips == 0.0:
+        if is_untouched(risk.slippage_pips):
             updates["slippage_pips"] = spec.default_slippage_pips
         return replace(risk, **updates)
     return apply_instrument_spec(risk, symbol)

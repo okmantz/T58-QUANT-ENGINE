@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+import numpy as np
 import pandas as pd
 
 from app.data.importer import import_csv
@@ -121,7 +122,34 @@ def compute_file_health(path: Path, relative_name: str) -> FileHealth:
     fh.session_hours = hours
     fh.session_coverage_pct = round(100.0 * len(hours) / 24.0, 1)
 
-    if len(ts) >= MIN_BARS_FOR_GAP_CHECK:
+    # Surface the importer's own data-quality findings (OHLC rows removed, clock/timezone checks) -- they used
+    # to be visible only on the upload path, so the Data Center showed a file with a wrong clock or dropped bars as "healthy".
+    for w in result.warnings:
+        if re.search(r"time gap\(s\) larger than", w):
+            continue                                   # replaced by the session-aware gap check below
+        if re.search(r"Removed \d+ duplicate", w):
+            continue                                   # already reported above
+        if re.search(r"OHLC|Session clock|Timestamp check|Exchange-clock", w):
+            fh.issues.append(w[:300])
+
+    _futures = (getattr(df, "attrs", {}) or {}).get("session_kind") in ("equity_index", "us_future")
+    if _futures and len(ts) >= MIN_BARS_FOR_GAP_CHECK and ts.diff().median() <= pd.Timedelta(minutes=5):
+        # CME futures: every weekday has a scheduled 17:00-18:00 ET halt and a weekend close, so the generic "3x median spacing" rule
+        # below flags ~1,300 harmless breaks per 6 years and the file can never be "healthy" (while real holes are lost in the noise).
+        # Count only UNSCHEDULED holes: >= 30 minutes that do not end at the 18:00 ET (re)open.
+        _t = pd.DatetimeIndex(ts)
+        _t = _t.tz_localize("UTC") if _t.tz is None else _t
+        _et = _t.tz_convert("America/New_York")
+        _dt = np.diff(_t.tz_convert("UTC").tz_localize(None).values.astype("datetime64[ns]").astype("int64")) / 6e10   # minutes between bars
+        _end_min = (_et.hour * 60 + _et.minute).to_numpy()[1:]
+        _unsched = (_dt >= 30) & (_end_min != 18 * 60)
+        fh.gap_count = int(_unsched.sum())
+        if fh.gap_count:
+            _worst = float(_dt[_unsched].max())
+            fh.largest_gap = str(pd.Timedelta(minutes=_worst))
+            fh.issues.append(f"{fh.gap_count} unscheduled hole(s) >= 30 min inside the trading week (largest {fh.largest_gap}); "
+                             f"{int(_dt[_unsched].sum()):,} minutes missing in total")
+    elif len(ts) >= MIN_BARS_FOR_GAP_CHECK:
         diffs = ts.diff().dropna()
         positive = diffs[diffs > pd.Timedelta(0)]
         if not positive.empty:

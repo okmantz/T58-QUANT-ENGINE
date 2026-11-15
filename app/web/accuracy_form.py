@@ -305,8 +305,8 @@ def instrument_defaults(symbol: str):
         return jsonify({"ok": False, "error": f"unknown instrument {symbol!r}"}), 404
     return jsonify({
         "ok": True, "symbol": spec.symbol, "pip_size": spec.pip_size, "contract_size": spec.contract_size,
-        "tick_size": spec.tick_size, "spread_ticks": spec.default_spread_ticks,
-        "slippage_ticks": spec.default_slippage_ticks, "commission_per_contract": spec.default_commission_round_turn,
+        "tick_size": spec.tick_size, "spread_ticks": spec.effective_spread_ticks,
+        "slippage_ticks": spec.effective_slippage_ticks, "commission_per_contract": spec.effective_commission_round_turn,
         "spread_pips": spec.default_spread_pips, "slippage_pips": spec.default_slippage_pips,
         "round_trip_cost_dollars": spec.round_trip_cost_dollars(),
     })

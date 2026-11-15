@@ -8,22 +8,34 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>
   * { box-sizing: border-box; }
-  .card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
-  .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: 0 0 10px; }
-  .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px 0; }
-  .qr-wrap img { width: 220px; height: 220px; background: #fff; padding: 10px; border-radius: 10px; }
-  .url-box {
-    font-family: ui-monospace, Menlo, monospace; font-size: 15px; color: var(--teal);
-    background: var(--panel-3); border: 1px solid var(--border-light); border-radius: 8px;
-    padding: 10px 14px; word-break: break-all; text-align: center; width: 100%; max-width: 360px;
-  }
-  .warn { font-size: 13px; color: var(--amber, var(--amber)); line-height: 1.5; margin-top: 6px; }
-  .note { font-size: 12px; color: var(--t-faint); line-height: 1.6; }
+  .ma { max-width: 980px; }
+  .ma-hero h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -.01em; } .ma-hero p { color: var(--text-muted); margin: 0 0 18px; max-width: 60ch; font-size: 14px; line-height: 1.55; }
+  .ma-tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--border); margin: 0 0 18px; }
+  .ma-tab { padding: 9px 18px; border-radius: 10px; border: 0; background: none; color: var(--text-muted); cursor: pointer; font-size: 13.5px; font-weight: 600; }
+  .ma-tab.on { background: var(--teal-dim); color: var(--text); }
+  .ma-panel[hidden], .ma-route[hidden] { display: none; }
+  .card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 18px; padding: 20px 22px; margin-bottom: 14px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin: 0 0 12px; }
+  .ma-route-pick { display: inline-flex; gap: 4px; margin: 0 0 14px; } .ma-route-pick button { padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border-light); background: none; color: var(--text-muted); font-size: 12.5px; cursor: pointer; }
+  .ma-route-pick button.on { border-color: var(--teal); color: var(--text); background: var(--teal-dim); }
+  .ma-split { display: grid; grid-template-columns: 250px 1fr; gap: 28px; align-items: center; } @media (max-width: 760px) { .ma-split { grid-template-columns: 1fr; justify-items: center; } }
+  .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .qr-wrap img { width: 230px; height: 230px; background: #fff; padding: 10px; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+  .ma-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; width: 100%; }
+  .ma-steps li { display: flex; gap: 14px; align-items: flex-start; font-size: 14.5px; line-height: 1.5; }
+  .ma-steps .n { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--teal-dim); border: 1px solid var(--teal); display: grid; place-items: center; font-weight: 700; font-size: 13px; color: var(--teal); }
+  .ma-steps small { display: block; color: var(--text-muted); font-size: 12.5px; margin-top: 2px; }
+  .url-row { display: flex; gap: 8px; margin-top: 16px; width: 100%; max-width: 460px; }
+  .url-box { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 14.5px; color: var(--teal); background: var(--panel-3); border: 1px solid var(--border-light); border-radius: 10px; padding: 10px 14px; word-break: break-all; }
+  .url-box.solo { text-align: center; width: 100%; max-width: 360px; }
+  .copy-btn { padding: 0 16px; border-radius: 10px; border: 1px solid var(--border-light); background: var(--panel-3); color: var(--text); font-weight: 600; cursor: pointer; }
+  .warn { font-size: 13px; color: var(--amber, #f5b942); line-height: 1.5; margin-top: 10px; }
+  .note { font-size: 12.5px; color: var(--t-faint); line-height: 1.6; }
+  .chip-ok { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid #2f7a55; color: #8fe0b0; margin-bottom: 14px; }
+  .chip-ok::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #6fd08c; }
   ol { padding-left: 20px; color: var(--t-soft); font-size: 13px; line-height: 1.7; }
-  .ma-tabs { display: flex; gap: 8px; margin: 0 0 14px; flex-wrap: wrap; }
-  .ma-tab { padding: 9px 16px; border-radius: 9px; border: 1px solid var(--border-light); background: none; color: var(--text); cursor: pointer; font-size: 13.5px; }
-  .ma-tab.on { border-color: var(--teal); color: var(--teal); font-weight: 700; }
-  .ma-panel[hidden] { display: none; }
+  details.ma-help { background: var(--panel-2); border: 1px solid var(--border); border-radius: 18px; padding: 14px 22px; margin-bottom: 14px; } details.ma-help summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  details.ma-help[open] summary { margin-bottom: 10px; }
   .install-btn { padding: 11px 18px; border-radius: 10px; border: 1px solid var(--teal); background: var(--teal); color: var(--on-teal, #05070a); font-weight: 700; font-size: 14px; cursor: pointer; }
   .install-btn.alt { background: none; color: var(--teal); }
 </style>
@@ -33,120 +45,91 @@
 <div class="t58-shell">
 {% include '_sidebar.html' %}
 <div class="t58-main">
-<div class="t58-page-header">
-  <h1>Phone access</h1>
-  <p>Scan this on your phone (same Wi-Fi as this computer) to open the exact same app there —
-  no separate launcher, no install, this page always shows the current address.</p>
+<div class="ma">
+<div class="ma-hero">
+  <h1>Use T58 on your phone</h1>
+  <p>Scan one code and the exact same app opens on your phone. Nothing to install. This page always shows the current address.</p>
 </div>
 
 <div class="ma-tabs" role="tablist">
-  <button type="button" class="ma-tab on" role="tab" data-tab="phone" id="tab-phone">Phone access</button>
+  <button type="button" class="ma-tab on" role="tab" data-tab="phone" id="tab-phone">Connect phone</button>
   <button type="button" class="ma-tab" role="tab" data-tab="install" id="tab-install">Install app</button>
 </div>
 
 <div class="ma-panel" id="panel-phone" role="tabpanel">
+<div class="ma-route-pick" id="route-pick" role="group" aria-label="How to connect"><button type="button" class="on" data-route="wifi">Same Wi-Fi</button><button type="button" data-route="anywhere">From anywhere</button></div>
+<div class="ma-route" id="route-wifi">
 <div class="card">
-  <h2>Scan with your phone's camera</h2>
-  <div class="qr-wrap">
-    {% if qr_data_uri %}
-      <img src="{{ qr_data_uri }}" alt="QR code for {{ url }}">
-    {% else %}
-      <p class="warn">
-        Could not generate a QR code image on this machine (the optional
-        <code>qrcode</code> package may not be installed) — just type the address below
-        into your phone's browser instead.
-      </p>
-    {% endif %}
-    <div class="url-box">{{ url }}</div>
+  <span class="chip-ok">T58 is running on this computer</span>
+  <div class="ma-split">
+    <div class="qr-wrap">
+      {% if qr_data_uri %}
+        <img src="{{ qr_data_uri }}" alt="QR code for {{ url }}">
+      {% else %}
+        <p class="warn">A QR code could not be drawn on this machine (the optional <code>qrcode</code> package may be missing). Type the address into your phone's browser instead.</p>
+      {% endif %}
+    </div>
+    <div>
+      <ol class="ma-steps">
+        <li><span class="n">1</span><div>Put your phone on the <strong>same Wi-Fi</strong> as this computer<small>Not cellular data, and not a guest or hotel network.</small></div></li>
+        <li><span class="n">2</span><div>Open your phone's <strong>camera</strong> and point it at the code<small>No camera app? Type the address below into your browser.</small></div></li>
+        <li><span class="n">3</span><div>Tap the link that appears<small>To keep it handy, choose <strong>Add to Home Screen</strong> in your browser menu.</small></div></li>
+      </ol>
+      <div class="url-row"><div class="url-box" id="ma-url">{{ url }}</div><button type="button" class="copy-btn" id="ma-copy">Copy</button></div>
+    </div>
   </div>
   <p class="warn">
-    Type this EXACTLY as shown — it starts with <code>http</code>, not <code>https</code>
-    (this server doesn't speak HTTPS, so an <code>https://</code> address will always fail
-    to connect), and it is not <code>127.0.0.1</code> (that address only ever means
-    "this computer itself" — it's unreachable from any other device, including your phone).
+    Type this EXACTLY as shown: it starts with <code>http</code>, not <code>https</code> (this server doesn't speak HTTPS, so an <code>https://</code> address will always fail to connect),
+    and it is not <code>127.0.0.1</code> (that only ever means "this computer itself", so it is unreachable from your phone).
   </p>
-  <p class="note">This address only works while your phone is on the <strong>same Wi-Fi</strong>
-    as this computer. See the "Away from home" card below for anywhere-access.</p>
+</div>
 </div>
 
+<div class="ma-route" id="route-anywhere" hidden>
 <div class="card">
-  <h2>Away from home (Tailscale) — works from anywhere</h2>
+  <h2>From anywhere (Tailscale)</h2>
   {% if tailscale_url %}
-    <div class="qr-wrap">
-      {% if tailscale_qr_data_uri %}
-        <img src="{{ tailscale_qr_data_uri }}" alt="Tailscale QR code for {{ tailscale_url }}">
-      {% else %}
-        <p class="warn">
-          Tailscale is running, but a QR code couldn't be generated on this machine —
-          just type the address below into your phone's browser instead.
-        </p>
-      {% endif %}
-      <div class="url-box">{{ tailscale_url }}</div>
+    <span class="chip-ok">Tailscale is connected</span>
+    <div class="ma-split">
+      <div class="qr-wrap">
+        {% if tailscale_qr_data_uri %}
+          <img src="{{ tailscale_qr_data_uri }}" alt="Tailscale QR code for {{ tailscale_url }}">
+        {% else %}
+          <p class="warn">Tailscale is running, but a QR code couldn't be drawn. Type the address into your phone's browser.</p>
+        {% endif %}
+      </div>
+      <div>
+        <ol class="ma-steps">
+          <li><span class="n">1</span><div>Open the <strong>Tailscale app</strong> on your phone and sign in with the same account<small>Free for personal use.</small></div></li>
+          <li><span class="n">2</span><div>Scan the code, or type the address below<small>Works on cellular, other Wi-Fi, another country.</small></div></li>
+          <li><span class="n">3</span><div>Add it to your Home Screen from <strong>this</strong> address<small>A home-screen icon is tied to the address it was made from. Use this one and it works at home and away.</small></div></li>
+        </ol>
+        <div class="url-row"><div class="url-box" id="ma-ts-url">{{ tailscale_url }}</div><button type="button" class="copy-btn" id="ma-ts-copy">Copy</button></div>
+      </div>
     </div>
-    <p class="note">
-      This works on <strong>any network</strong> — cellular data, a different Wi-Fi
-      entirely, another building or country — as long as the same Tailscale account is
-      signed in on your phone's Tailscale app too. No port forwarding, nothing exposed
-      to the public internet.
-    </p>
-    <p class="warn" style="margin-top:10px;">
-      <strong>Already added this app to your phone's home screen?</strong> If you tapped
-      "Add to Home Screen" using the address in the card ABOVE this one (the one that
-      only works on this Wi-Fi), that icon is permanently tied to that address — a
-      home-screen shortcut always opens the exact address it was created from, and
-      nothing in this app can change that after the fact. That's the actual reason
-      turning Wi-Fi off breaks it, even with Tailscale connected on both devices:
-      Tailscale can't help an address it was never asked to reach.
-      <strong>Delete that shortcut and create a new one from the Tailscale address
-      above instead</strong> — the same app, but the one shortcut will then work at
-      home AND on cellular, with nothing further to configure.
-    </p>
+    <p class="note" style="margin-top:12px;">No port forwarding and nothing exposed to the public internet. Already added a shortcut from the Wi-Fi address? Delete it and make a new one from the Tailscale address above.</p>
   {% else %}
-    <p class="note">
-      Tailscale isn't detected as running on this computer. Tailscale is a free, private
-      VPN mesh that lets your phone reach this app from anywhere — not just this Wi-Fi —
-      with no port forwarding and nothing exposed publicly. To set it up:
-    </p>
-    <ol>
-      <li>Install Tailscale on <strong>this computer</strong> from
-        <a href="https://tailscale.com/download" target="_blank" rel="noopener">tailscale.com/download</a>
-        and sign in (any Google/Microsoft/GitHub/email account works — it's free for
-        personal use).</li>
-      <li>Install the Tailscale app on <strong>your phone</strong> (App Store / Play
-        Store) and sign in with the <strong>same account</strong>.</li>
-      <li>Reload this page — a QR code and address will appear here that work from
-        anywhere your phone has a signal, and this same address will also show up in the
-        console banner the next time you start this app.</li>
+    <p class="note" style="font-size:13px;">Tailscale is a free private link between your devices. Three steps and your phone can reach T58 from anywhere:</p>
+    <ol class="ma-steps">
+      <li><span class="n">1</span><div>Install Tailscale on <strong>this computer</strong><small><a href="https://tailscale.com/download" target="_blank" rel="noopener">tailscale.com/download</a>, then sign in (Google, Microsoft, GitHub or email).</small></div></li>
+      <li><span class="n">2</span><div>Install Tailscale on <strong>your phone</strong> and sign in with the same account<small>App Store or Play Store.</small></div></li>
+      <li><span class="n">3</span><div>Reload this page<small>A code and address appear here, and the console banner shows it next time you start T58.</small></div></li>
     </ol>
   {% endif %}
 </div>
-
-<div class="card">
-  <h2>If your phone says "site can't be reached"</h2>
-  <ol>
-    <li>Make sure your phone and this computer are on the <strong>same Wi-Fi network</strong>
-      (not cellular data, and not a guest/isolated Wi-Fi network — common in coffee shops,
-      offices, and hotels).</li>
-    <li>On Windows, the first time this server runs, Windows should prompt
-      <em>"Allow python.exe to communicate on Private networks?"</em> — if you clicked
-      Cancel/No, or the prompt never appeared, open <strong>Windows Security → Firewall &amp;
-      network protection → Allow an app through firewall</strong> and enable Python for
-      Private networks.</li>
-    <li>Check your PC's network is set to <strong>Private</strong>, not <strong>Public</strong>,
-      in Windows network settings — Public profiles block incoming connections like this one
-      by default.</li>
-    <li>Temporarily disable any VPN on either device — a VPN can hide LAN traffic from the
-      other device even when both are on the same physical Wi-Fi.</li>
-    <li>Not actually at home / not on this Wi-Fi at all? That's expected — this address
-      only works on the same network as this computer. Use the "Away from home
-      (Tailscale)" card above instead.</li>
-  </ol>
-  <p class="note">
-    This computer needs to stay on and this app needs to keep running for your phone to
-    reach it — closing this browser tab doesn't stop the server, but closing the terminal
-    window it was started from does.
-  </p>
 </div>
+
+<details class="ma-help">
+  <summary>Phone says "site can't be reached"?</summary>
+  <ol>
+    <li>Make sure your phone and this computer are on the <strong>same Wi-Fi network</strong> (not cellular data, and not a guest/isolated network, common in cafes, offices and hotels).</li>
+    <li>On Windows, the first time T58 runs it asks <em>"Allow python.exe to communicate on Private networks?"</em>. If you clicked Cancel, open <strong>Windows Security &rarr; Firewall &amp; network protection &rarr; Allow an app through firewall</strong> and enable it for Private networks.</li>
+    <li>Set this PC's network to <strong>Private</strong>, not Public, in Windows network settings.</li>
+    <li>Temporarily turn off any VPN on either device.</li>
+    <li>Not on this Wi-Fi at all? Use <strong>From anywhere</strong> above.</li>
+  </ol>
+  <p class="note">This computer has to stay on and T58 has to keep running. Closing this browser tab is fine; closing the window it was started from stops it.</p>
+</details>
 </div><!-- /panel-phone -->
 
 <div class="ma-panel" id="panel-install" role="tabpanel" hidden>
@@ -211,6 +194,7 @@
 
 </div><!-- /panel-install -->
 
+</div><!-- /ma -->
 </div>
 </div>
 <script>
@@ -223,6 +207,11 @@
     try { history.replaceState(null, '', name === 'install' ? '#install' : location.pathname); } catch (e) {}
     if (name === 'install' && window.t58Pwa && window.t58Pwa.paint) window.t58Pwa.paint();
   }
+  document.querySelectorAll('#route-pick button').forEach(function (b) { b.addEventListener('click', function () {
+    document.querySelectorAll('#route-pick button').forEach(function (x) { x.classList.toggle('on', x === b); });
+    document.getElementById('route-wifi').hidden = b.dataset.route !== 'wifi'; document.getElementById('route-anywhere').hidden = b.dataset.route !== 'anywhere'; }); });
+  [['ma-copy', 'ma-url'], ['ma-ts-copy', 'ma-ts-url']].forEach(function (p) { var b = document.getElementById(p[0]); if (!b) return;
+    b.addEventListener('click', function () { try { navigator.clipboard.writeText(document.getElementById(p[1]).textContent.trim()); b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); } catch (e) {} }); });
   document.getElementById('tab-phone').addEventListener('click', function () { show('phone'); });
   document.getElementById('tab-install').addEventListener('click', function () { show('install'); });
   if (location.hash === '#install') show('install');

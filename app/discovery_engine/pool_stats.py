@@ -160,7 +160,7 @@ def family_wise_tests(mat: np.ndarray, ids: list | None = None, *, benchmark: np
     # Hansen SPA: studentised statistic, recentred so clearly-poor candidates cannot inflate the null
     tstat = root_t * dbar / omega
     t_spa = float(max(np.max(tstat), 0.0))
-    a_k = 0.25 * (T ** -0.25) * omega / root_t            # threshold below which a candidate is "clearly poor"
+    a_k = 0.25 * (T ** -0.25) * omega                      # threshold below which a candidate is "clearly poor" (Hansen 2005: A = 1/4 n^-1/4 * sd(sqrt(n) dbar); in t units 1/4 n^1/4)
     g_c = dbar * (dbar >= -a_k)                            # consistent recentring (SPA_c)
     g_l = np.maximum(dbar, 0.0)                            # liberal recentring (SPA_l): poor candidates keep their negative mean
     g_u = dbar                                             # conservative recentring (SPA_u) == the Reality Check null

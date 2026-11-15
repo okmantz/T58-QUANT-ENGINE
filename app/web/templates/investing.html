@@ -100,6 +100,14 @@
   .drawer-body { flex: 1; overflow-y: auto; padding: 18px; }
   .acts { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
   .acts .btn { flex: 1; min-width: 110px; }
+  .livesetup { display: none; margin: 14px 0 0; border: 1px solid var(--down); border-radius: 16px; padding: 18px 20px; background: color-mix(in srgb, var(--down) 7%, var(--panel)); }
+  .livesetup.on { display: block; }
+  .livesetup h2 { margin: 0 0 4px; font-size: 17px; } .livesetup .steps { display: flex; gap: 8px; margin: 12px 0 14px; flex-wrap: wrap; }
+  .livesetup .step { flex: 1; min-width: 150px; border: 1px solid var(--line, #2a3340); border-radius: 12px; padding: 10px 12px; font-size: 12.5px; opacity: .55; }
+  .livesetup .step b { display: block; font-size: 13px; margin-bottom: 2px; } .livesetup .step.now { opacity: 1; border-color: var(--teal); } .livesetup .step.done { opacity: 1; border-color: var(--up, #2fb67c); }
+  .livesetup .step.done b::after { content: " \2713"; color: var(--up, #2fb67c); }
+  .livesetup .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; } @media (max-width: 640px) { .livesetup .fields { grid-template-columns: 1fr; } }
+  .livesetup .msg { font-size: 12.5px; min-height: 18px; margin-top: 6px; }
   .liveok { display: none; margin: 8px 0 0; font-size: 12.5px; } .liveok.on { display: block; }
   .liveok input { width: auto; margin-right: 6px; }
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--panel-3); border: 1px solid var(--teal); padding: 10px 16px; border-radius: 12px; font-size: 13px; display: none; z-index: 80; max-width: 92vw; }
@@ -115,6 +123,28 @@
   <div><h1>Investing</h1>
   <p>Search any stock, index or crypto, read the SEC filings behind it, then invest yourself or let an algo tuned to you do it. Starts in <b>paper</b> mode with $10,000 of practice money.</p></div>
   <div class="seg" id="mode" role="group" aria-label="Account mode"><button data-m="paper" class="on">Paper</button><button data-m="alpaca-paper">Alpaca paper</button><button data-m="live" class="live">Live</button></div>
+</div>
+
+<div class="livesetup" id="livesetup" aria-live="polite">
+  <h2>Set up live trading</h2>
+  <p class="help" style="margin:0">Live mode places REAL orders through your own Alpaca brokerage account. Three quick steps, nothing is ordered until the last one.</p>
+  <div class="steps">
+    <div class="step now" id="ls1"><b>1. Connect Alpaca</b>Paste your live API keys</div>
+    <div class="step" id="ls2"><b>2. Check the account</b>We read your balance (read-only)</div>
+    <div class="step" id="ls3"><b>3. Turn on live trading</b>One confirmation, then you trade</div>
+  </div>
+  <div id="ls-keys">
+    <div class="fields"><div><label class="l" for="ls-key">API key ID</label><input id="ls-key" autocomplete="off" spellcheck="false" placeholder="AKxxxxxxxxxxxxxxxx"></div>
+      <div><label class="l" for="ls-secret">Secret key</label><input id="ls-secret" type="password" autocomplete="off" placeholder="paste your secret key"></div></div>
+    <p class="help" style="margin:4px 0 8px">Get them at <b>alpaca.markets</b>: switch the dashboard to <b>Live</b>, then <b>API Keys &rarr; Generate</b>. Keys stay on this computer.</p>
+    <button class="btn buy" id="ls-connect">Connect and check</button>
+  </div>
+  <div id="ls-confirm" style="display:none">
+    <p style="margin:0 0 8px" id="ls-acct"></p>
+    <label class="liveok on" style="display:block"><input type="checkbox" id="ls-agree"> I understand live mode places real-money orders and I can lose money.</label>
+    <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap"><button class="btn buy" id="ls-enable" disabled>Turn on live trading</button><button class="btn ghost" id="ls-change">Use different keys</button></div>
+  </div>
+  <div class="msg" id="ls-msg"></div>
 </div>
 
 <div class="strip" id="strip" aria-live="polite">
@@ -212,15 +242,30 @@ let toastTimer;
 function toast(m) { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 3600); }
 async function api(path, body) {
   const r = await fetch('/investing/api/' + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
-  const j = await r.json(); if (!j.ok) throw new Error(j.error || 'Request failed'); return j;
+  const j = await r.json(); if (!j.ok) { const e = new Error(j.error || 'Request failed'); e.needs = j.needs; throw e; } return j;
 }
 let mode = 'paper', answers = {}, plan = null, acct = null, side = 'buy', drawerSym = null, busy = false;
 const PALETTE = ['#2fb6a8', '#4d90ff', '#9b8cff', '#f5b83d', '#e5848d', '#6bc46d', '#e58b3a', '#7fc4e8'];
 
 /* ---------- mode, tabs, side ---------- */
 function liveOn() { return mode === 'live'; }
+const LIVE = { armed: false };
+function lsStep(n) { [1, 2, 3].forEach(i => { const e = $('#ls' + i); e.classList.toggle('done', i < n); e.classList.toggle('now', i === n); }); $('#ls-keys').style.display = n === 1 ? '' : 'none'; $('#ls-confirm').style.display = n === 1 ? 'none' : ''; }
+async function liveGate() {
+  const box = $('#livesetup'); if (!liveOn() || LIVE.armed) { box.classList.remove('on'); return true; }
+  box.classList.add('on');
+  try { const s = await (await fetch('/investing/api/live/status')).json(); if (s.has_keys) { lsStep(2); $('#ls-acct').textContent = 'Alpaca keys are saved on this computer. Review, then turn live trading on.'; } else lsStep(1); } catch (x) { lsStep(1); }
+  return false;
+}
+$('#ls-connect').onclick = async () => { const m = $('#ls-msg'); m.textContent = 'Checking with Alpaca...';
+  try { const j = await api('live/connect', { api_key: $('#ls-key').value, secret_key: $('#ls-secret').value }); $('#ls-secret').value = '';
+    $('#ls-acct').innerHTML = 'Connected. Live account equity <b>' + usd(j.equity) + '</b>, cash <b>' + usd(j.cash) + '</b>, ' + j.positions + ' open position(s).'; m.textContent = ''; lsStep(2);
+  } catch (x) { m.textContent = x.message; m.style.color = 'var(--down)'; } };
+$('#ls-agree').onchange = e => { $('#ls-enable').disabled = !e.target.checked; };
+$('#ls-enable').onclick = () => { LIVE.armed = true; $('#confirm').checked = true; $('#livesetup').classList.remove('on'); toast('Live trading is on for this session.'); loadAcct(); };
+$('#ls-change').onclick = async () => { await api('live/disconnect', {}); lsStep(1); };
 function syncLive() { $('#liveconf').classList.toggle('on', liveOn()); $('#hero').classList.toggle('live', liveOn()); const d = $('#d-live'); if (d) d.classList.toggle('on', liveOn()); }
-$$('#mode button').forEach(b => b.onclick = () => { mode = b.dataset.m; $$('#mode button').forEach(x => x.classList.toggle('on', x === b)); syncLive(); loadAcct(); });
+$$('#mode button').forEach(b => b.onclick = () => { mode = b.dataset.m; $$('#mode button').forEach(x => x.classList.toggle('on', x === b)); LIVE.armed = false; $('#confirm').checked = false; syncLive(); liveGate().then(ok => { if (ok) loadAcct(); }); });
 function showTab(t) { $$('#tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === t)); $$('.pane').forEach(p => p.classList.toggle('on', p.id === 'p-' + t)); if (t === 'portfolio') loadAcct(); }
 $$('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.t));
 function setSide(s) { side = s; $$('#side button').forEach(x => x.classList.toggle('on', x.dataset.side === s)); const sb = $('#submit'); sb.textContent = s === 'buy' ? 'Buy' : 'Sell'; sb.className = 'btn ' + s; }
@@ -271,9 +316,10 @@ function paintOrders(a) {
   bindRows('#orders');
 }
 async function loadAcct() {
+  if (liveOn() && !LIVE.armed) { paintStrip(null); $('#acct').innerHTML = '<div class="empty">Finish the live account setup above to see your real holdings.</div>'; $('#orders').innerHTML = ''; liveGate(); return; }
   $('#acct').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   try { acct = await fetchAcct(); paintStrip(acct); paintHoldings(acct); paintOrders(acct); if (drawerSym && $('#drawer').classList.contains('on')) paintPosition(); }
-  catch (x) { acct = null; paintStrip(null); $('#acct').innerHTML = `<div class="banner warn">${esc(x.message)}</div>`; $('#orders').innerHTML = ''; }
+  catch (x) { acct = null; paintStrip(null); if (x.needs) { LIVE.armed = false; liveGate(); } $('#acct').innerHTML = `<div class="banner warn">${esc(x.message)}</div>`; $('#orders').innerHTML = ''; }
 }
 
 /* ---------- ticket ---------- */

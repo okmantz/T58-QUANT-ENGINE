@@ -102,6 +102,10 @@ def simulate_resting_orders(
         exit_px = None
         reason = None
         exit_bar = n - 1
+        # AUDIT A_6: on the FILL bar the target may only count when the bar OPENED at/through the limit (the fill was at the open, so the
+        # whole bar is after it). Otherwise the fill came mid-bar and the bar's high/low may have printed BEFORE it (a buy limit filled by
+        # a drop from an open above the target must not also book that target).
+        gap_fill = (o[fill_bar] <= od.price) if d == 1 else (o[fill_bar] >= od.price)
         for j in range(fill_bar, n):
             hit_stop = (l[j] <= eff_stop) if d == 1 else (h[j] >= eff_stop)
             if hit_stop:
@@ -110,7 +114,7 @@ def simulate_resting_orders(
                 exit_px = raw - d * side_cost
                 reason, exit_bar = "stop_loss", j
                 break
-            if eff_target is not None:
+            if eff_target is not None and (j > fill_bar or gap_fill):
                 hit_tp = (h[j] >= eff_target) if d == 1 else (l[j] <= eff_target)
                 if hit_tp:
                     exit_px, reason, exit_bar = eff_target, "take_profit", j

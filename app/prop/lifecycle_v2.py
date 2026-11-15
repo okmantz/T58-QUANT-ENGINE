@@ -49,6 +49,30 @@ class PayoutTerms:
     sourced: bool = False                 # True once the rules sheet has each term dated and sourced
 
 
+def payout_terms_from_rules(rules) -> PayoutTerms:
+    """Map a firm's PropRules (the preset layer) onto the lifecycle's payout terms, so each firm is simulated with ITS OWN payout rules
+    (2026-11-14: ``from_prop_rules`` used to drop all of them and fall back to the Lucid-50k assumption for every firm).
+
+    The preset's ``payout_threshold_pct`` is the profit goal ABOVE the required buffer (``PropAccount._maybe_payout`` asks for goal + buffer
+    above the baseline), so the lifecycle's ``cumulative_min`` (profit above the start) is goal + buffer and ``buffer_above_floor`` is the buffer.
+
+    Dollar terms that the preset states as a percentage of the account are converted to dollars at the rule's own account size, so the
+    result is already scaled correctly and ``V2Rules.tier`` only has to rescale when the same shape is re-used at another size."""
+    a = float(rules.account_size)
+    cum = a * float(getattr(rules, "payout_threshold_pct", 0.0) or 0.0) / 100.0
+    buf = a * float(getattr(rules, "required_buffer_pct", 0.0) or 0.0) / 100.0
+    base = PayoutTerms()
+    cap = getattr(rules, "payout_cap_dollars", None)
+    qd = int(getattr(rules, "winning_days_for_payout", 0) or 0)
+    if not (cum or buf or qd or cap):                       # preset states no payout rule at all: keep the documented assumption
+        return PayoutTerms(sourced=False, max_payouts=int(getattr(rules, "max_payouts", None) or base.max_payouts))
+    return PayoutTerms(
+        qualifying_days=qd, qualifying_day_min=float(getattr(rules, "min_winning_day_profit", 0.0) or 0.0),
+        cumulative_min=cum + buf, buffer_above_floor=buf, cap=float(cap) if cap else None,
+        max_payouts=int(getattr(rules, "max_payouts", None) or base.max_payouts), funded_days=base.funded_days, split=base.split,
+        sourced=True)
+
+
 @dataclass
 class V2Rules:
     account_size: float = 50_000.0
@@ -56,6 +80,8 @@ class V2Rules:
     profit_target: float = 3_000.0
     soft_daily_limit: float = 1_200.0     # locks the day, does not fail the account
     lock_floor_offset: float = 100.0      # the trailing floor stops moving at start + this
+    lock_floor: bool = True               # 2026-11-14: explicit flag. Was inferred from `lock_floor_offset` truthiness, so a firm that locks
+                                          # AT the starting balance (offset 0) was treated as having no lock at all.
     trailing: bool = True
     fee: float = 172.0
     consistency_best_day_pct: float | None = None   # evaluation best-day rule (50 on LucidFlex), None = none
@@ -66,14 +92,15 @@ class V2Rules:
     @classmethod
     def from_prop_rules(cls, rules, *, fee: float = 0.0, split_pct: float | None = None, payout: PayoutTerms | None = None) -> "V2Rules":
         a = float(rules.account_size)
-        pt = payout or PayoutTerms()
+        pt = payout or payout_terms_from_rules(rules)
         if split_pct is not None:
             pt = PayoutTerms(**{**asdict(pt), "split": float(split_pct) / 100.0})
-        lock = float(getattr(rules, "trailing_lock_offset_pct", 0.0) or 0.0) / 100.0 * a if getattr(rules, "trailing_lock", False) else 0.0
+        locks = bool(getattr(rules, "trailing_lock", False))
+        lock = float(getattr(rules, "trailing_lock_offset_pct", 0.0) or 0.0) / 100.0 * a if locks else 0.0
         return cls(account_size=a, loss_limit=a * float(rules.max_drawdown_pct) / 100.0,
                    profit_target=a * float(rules.evaluation_profit_target_pct) / 100.0,
                    soft_daily_limit=a * float(rules.daily_loss_limit_pct) / 100.0,
-                   lock_floor_offset=lock, trailing=str(getattr(rules, "drawdown_type", "trailing")) == "trailing",
+                   lock_floor_offset=lock, lock_floor=locks, trailing=str(getattr(rules, "drawdown_type", "trailing")) == "trailing",
                    fee=float(fee), consistency_best_day_pct=getattr(rules, "consistency_rule_pct", None), payout=pt)
 
     @classmethod
@@ -84,11 +111,12 @@ class V2Rules:
         """The same rule shape scaled to another account size (the demo tiers: 25k / 50k / 100k)."""
         k = float(account_size) / float(self.account_size)
         return V2Rules(account_size=float(account_size), loss_limit=self.loss_limit * k, profit_target=self.profit_target * k,
-                       soft_daily_limit=self.soft_daily_limit * k, lock_floor_offset=self.lock_floor_offset * k, trailing=self.trailing,
+                       soft_daily_limit=self.soft_daily_limit * k, lock_floor_offset=self.lock_floor_offset * k, lock_floor=self.lock_floor, trailing=self.trailing,
                        fee=self.fee * k, consistency_best_day_pct=self.consistency_best_day_pct, micro_risk=self.micro_risk,
                        max_eval_days=self.max_eval_days, payout=PayoutTerms(**{**asdict(self.payout),
                        "qualifying_day_min": self.payout.qualifying_day_min * k, "cumulative_min": self.payout.cumulative_min * k,
-                       "buffer_above_floor": self.payout.buffer_above_floor * k}))
+                       "buffer_above_floor": self.payout.buffer_above_floor * k,
+                       "cap": (self.payout.cap * k) if self.payout.cap else self.payout.cap}))
 
 
 # ---- Sizing policy (scalar and vector) ----------------------------------------------------------------------------------
@@ -223,7 +251,7 @@ def _floor_update(floor, max_eod, bal, rules: V2Rules, start: float):
     new_max = np.maximum(max_eod, bal)
     if rules.trailing:
         f = new_max - rules.loss_limit
-        if rules.lock_floor_offset:
+        if rules.lock_floor:
             f = np.minimum(f, start + rules.lock_floor_offset)
         floor = np.maximum(floor, f)
     return floor, new_max

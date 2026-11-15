@@ -582,8 +582,8 @@ class RunContextPanel:
         # longer end up silently backtested at $0 commission.
         commission_note = ""
         if self.r_commission.get_float(0) in (0.0, 3.0):
-            self.r_commission.var.set(str(spec.default_commission_round_turn))
-            commission_note = f", commission=${spec.default_commission_round_turn:g}/trade"
+            self.r_commission.var.set(str(spec.effective_commission_round_turn))
+            commission_note = f", commission=${spec.effective_commission_round_turn:g}/trade"
         self.pip_detect_status.config(
             text=f"Applied {spec.symbol} ({spec.description}, {spec.exchange}): "
                  f"pip_size={spec.pip_size}, ${spec.contract_size}/point per contract{commission_note}.",

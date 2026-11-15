@@ -646,7 +646,11 @@ def run_execution(
     _week_ends_at = np.zeros(n, dtype=bool)
     if n:
         _week_ends_at[-1] = True
-        _week_ends_at[:-1] = _dow[1:] <= _dow[:-1]
+        # AUDIT A_3: a week ends when the NEXT bar belongs to a different (Mon-Sun) week. The old ``_dow[1:] <= _dow[:-1]``
+        # was also True for two consecutive bars of the SAME weekday, i.e. for every bar but the last of each day on intraday data,
+        # so block_weekend_hold force-closed every position at the close of its own entry bar.
+        _wk = pd.DatetimeIndex(bar_dates).to_period("W-SUN").asi8
+        _week_ends_at[:-1] = _wk[1:] != _wk[:-1]
 
     # v9.16 (audit P1-6): futures session flatten. Firms require positions
     # closed before the session ends (Lucid: 4:45 pm ET = 15:45 CT). _flat_zone[i]
@@ -654,6 +658,7 @@ def run_execution(
     # Off (all False) unless the prop rules carry flatten_time_ct, so every
     # run without it is byte-identical to before.
     _flat_zone = np.zeros(n, dtype=bool)
+    _flat_straddle = np.zeros(n, dtype=bool)
     _flatten_str = getattr(prop_rules, "flatten_time_ct", None) if prop_mode else None
     # 2026-10 audit: RiskConfig.flatten_time_ct works without prop mode; the earlier time wins when both are set.
     _risk_flat = getattr(risk, "flatten_time_ct", None)
@@ -671,8 +676,20 @@ def run_execution(
             _ct = pd.DatetimeIndex(ts).tz_localize("UTC").tz_convert("America/Chicago")
             _mod = (_ct.hour * 60 + _ct.minute).to_numpy()
             _flat_zone = (_mod >= _fh * 60 + _fm) & (_mod < 17 * 60)
+            # D_1 (audit): early-close / holiday sessions end BEFORE the flatten time, so no bar lands in [flatten, 17:00 CT) and a
+            # position would be carried overnight / over the weekend. The LAST bar of every trading day is also a flatten bar.
+            if n > 1:
+                _flat_zone = _flat_zone | np.r_[day_idx[1:] != day_idx[:-1], False]
+            # AUDIT A_7: with bars longer than the gap between the flatten time and the session break (30m/1h/2h/4h) NO bar starts inside
+            # [flatten, 17:00) so the rule never fired and positions were carried through the close. A bar that STRADDLES the flatten
+            # time closes its position at that bar's close (the first observable price at/after the flatten time).
+            if n > 1:
+                _span_min = float(np.median(np.diff(np.asarray(ts).astype("datetime64[ns]"))) / np.timedelta64(1, "m"))
+                if 0 < _span_min <= 720:
+                    _flat_straddle = (_mod < _fh * 60 + _fm) & (_mod + _span_min > _fh * 60 + _fm)
         except Exception:  # noqa: BLE001 -- a bad time string disables the rule, never the run
             _flat_zone = np.zeros(n, dtype=bool)
+            _flat_straddle = np.zeros(n, dtype=bool)
     flatten_close_count = 0
 
     sl_dist_vals = stop_loss_distance.values if stop_loss_distance is not None else None
@@ -871,6 +888,8 @@ def run_execution(
         _pm = _fills.partial_settle_math(risk, open_pos, fill_price, direction_, partial_fraction)
         partial_size, filled_exit_price, pnl, _commission_charged = (
             _pm.partial_size, _pm.filled_exit_price, _pm.pnl, _pm.commission)
+        if partial_size <= 0:   # AUDIT A_9: position too small to scale out in whole contracts -> no partial, no trade row
+            return None
         pnl = _clamp_loss(pnl, open_pos["equity_at_entry"])
         equity += pnl
         trades.append(Trade(
@@ -1036,13 +1055,15 @@ def run_execution(
 
         # v9.16: session flatten -- close at this bar's open (the first bar at/after
         # the flatten time), before any further management of the position.
-        if open_trade is not None and _flat_zone[i]:
+        if open_trade is not None and open_trade["entry_bar_idx"] <= i and _flat_zone[i]:
             _settle_exit(open_trade, opens[i], "session_flatten_forced_close", open_trade["direction"], i)
             open_trade = None
             flatten_close_count += 1
 
         # --- manage open trade: trailing stop / break-even, then stop/take intrabar ---
-        if open_trade is not None:
+        # AUDIT A_4: with entry_fill_lag_bars >= 2 the position is created on the decision bar but only FILLS on bar i+lag; bars before
+        # the fill must not stop it out / target it / ratchet it (the old code booked exits timestamped BEFORE the entry).
+        if open_trade is not None and open_trade["entry_bar_idx"] <= i:
             direction = open_trade["direction"]
 
             favorable_extreme = highs[i] if direction == 1 else lows[i]
@@ -1136,10 +1157,12 @@ def run_execution(
             # the best_price/worst_price tracking above.)
             floating_adverse_pnl = (adverse_extreme - open_trade["entry_price"]) * open_trade["size"] * direction
             day_realized_so_far = pnl_today_sum[bar_date]
-            if (
+            _stop_first = False
+            _dl_hit = (
                 daily_limit_amount is not None
                 and (day_realized_so_far + floating_adverse_pnl) <= -daily_limit_amount
-            ):
+            )
+            if _dl_hit:
                 # C3 (liquidate AT the floor): the old code settled the
                 # forced close at the bar's adverse extreme -- but the
                 # real account is liquidated the FIRST moment cumulative
@@ -1168,10 +1191,21 @@ def run_execution(
                     _liq_price = open_trade["entry_price"] - direction * _liq_dist
                 else:
                     _liq_price = adverse_extreme
+                # AUDIT A_5 (1): a resting stop that sits CLOSER to the entry than the liquidation level fills first (the prop-mode path
+                # already does this); without it the account was charged the whole floor instead of the stop loss.
+                _rest_stop = open_trade["stop_price"]
+                _stop_first = _rest_stop is not None and (
+                    (direction == 1 and lows[i] <= _rest_stop and _rest_stop >= _liq_price)
+                    or (direction == -1 and highs[i] >= _rest_stop and _rest_stop <= _liq_price)
+                )
+                # AUDIT A_5 (2): a bar that OPENS beyond the liquidation level fills at the open, never at the (better) floor price.
                 if direction == 1:
+                    _liq_price = min(_liq_price, opens[i])
                     _liq_price = max(_liq_price, adverse_extreme)
                 else:
+                    _liq_price = max(_liq_price, opens[i])
                     _liq_price = min(_liq_price, adverse_extreme)
+            if _dl_hit and not _stop_first:
                 _settle_exit(open_trade, _liq_price, "daily_loss_limit_forced_close", direction, i)
                 open_trade = None
                 force_closed_count += 1
@@ -1280,9 +1314,9 @@ def run_execution(
                     )
                 )
                 if partial_hit and not take_before_partial:
-                    _settle_partial_exit(open_trade, partial_target, direction, i)
+                    _partial_pnl = _settle_partial_exit(open_trade, partial_target, direction, i)
                     open_trade["partial_taken"] = True
-                    if partial_move_to_breakeven:
+                    if partial_move_to_breakeven and _partial_pnl is not None:
                         candidate = open_trade["entry_price"]
                         if stop is None or (direction == 1 and candidate > stop) or (direction == -1 and candidate < stop):
                             stop = candidate
@@ -1368,6 +1402,12 @@ def run_execution(
                 weekend_close_count += 1
                 weekend_entry_block = True
 
+            # AUDIT A_7: coarse-timeframe session flatten (bar straddles the flatten time) -> close at this bar's close
+            if open_trade is not None and _flat_straddle[i]:
+                _settle_exit(open_trade, closes[i], "session_flatten_forced_close", direction, i)
+                open_trade = None
+                flatten_close_count += 1
+
         # --- mark-to-market equity curve point for this bar ---
         # Realized equity plus the floating P&L of any still-open
         # position, valued at this bar's close. This is what feeds the
@@ -1382,7 +1422,7 @@ def run_execution(
             mtm_equity = (equity - _d_pnl) + (closes[i] - _d_entry) * _d_size * _d_dir
             if open_trade is not None and open_trade["entry_bar_idx"] <= i:
                 mtm_equity += (closes[i] - open_trade["entry_price"]) * open_trade["size"] * open_trade["direction"]
-        elif open_trade is not None:
+        elif open_trade is not None and open_trade["entry_bar_idx"] <= i:
             floating_close_pnl = (
                 (closes[i] - open_trade["entry_price"]) * open_trade["size"] * open_trade["direction"]
             )
@@ -1523,7 +1563,8 @@ def run_execution(
         # while the weekend-hold block is active (weekend bars themselves
         # or the latch set by a week-end force-close, until Monday).
         news_blackout_today = bool(_news_blackout_bar[i])
-        weekend_blocked_today = (_weekend_hold and (_dow[i] >= 5 or weekend_entry_block)) or bool(_flat_zone[i])
+        weekend_blocked_today = (_weekend_hold and (_dow[i] >= 5 or weekend_entry_block)) or bool(_flat_zone[i]) \
+            or (i + fill_lag_bars < n and bool(_flat_zone[i + fill_lag_bars]))   # AUDIT A_7: an entry FILLING inside the flat zone is a zero-length costed trade
         _fi_slot = i + fill_lag_bars
         slot_blocked_today = bool(_slot_blocked_bar[_fi_slot]) if _fi_slot < n else False
         if open_trade is None and sig[i] != 0 and not daily_limit_breached and not account_blown and not cooldown_active and not news_blackout_today and not weekend_blocked_today and not slot_blocked_today:
@@ -1634,6 +1675,7 @@ def run_execution(
         i = n - 1
         direction = open_trade["direction"]
         _settle_exit(open_trade, closes[i], "end_of_data", direction, i)
+        equity_arr[i] = equity   # AUDIT A_10: the last curve point must carry the final exit's spread/slippage/commission too
 
     if prop_mode and not prop_done:
         prop_attempts.append({

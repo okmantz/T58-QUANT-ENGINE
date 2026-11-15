@@ -152,6 +152,14 @@ def pooled_edge_test(per_market: dict, *, cost_multiplier: float = DEFAULT_COST_
     elif res.ub_r < 0:
         res.status = "FAIL"
         res.notes.append("even the upper bound of the pooled mean R is below zero")
+    elif res.lb_r > 0 and (res.block_sensitivity or {}).get("lb_flips"):
+        # F-1: a lower bound above zero under one-day blocks that falls to/below zero under 3-5 day stationary blocks leans entirely on
+        # the iid-day assumption (serially dependent daily results inflate its false-pass rate 2-5x). That is not proof of an edge.
+        res.status = "UNPROVEN"
+        res.notes.append("the lower bound is above zero only under one-day blocks; it is not above zero with 3-5 day blocks -- not proven")
+        if res.mean_r > 0:
+            need = trades_needed(res.mean_r, sd_r)
+            res.trades_still_needed = max(0, int(need) - int(r.size)) if need is not None else None
     elif res.lb_r > 0:
         res.status = "PASS"
     else:

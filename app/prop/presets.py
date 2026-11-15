@@ -72,6 +72,8 @@ class PropFirmPreset:
     # 2026-11-12 audit P0-4: absolute dollar cap per payout (Lucid $1,000 on the 25k rows). Was set by the
     # correction layer but silently dropped because to_prop_rules() never forwarded it.
     payout_cap_dollars: float | None = None
+    # E-4: lifetime payout count per attempt (LucidFlex 5, MFFU 5). Was settable on PropRules but unreachable from any preset.
+    max_payouts: int | None = None
     payout_frequency_days: int = 14
     required_buffer_pct: float = 0.0
     # B10 (v6): funded-stage payout/inactivity fields, passed through to
@@ -95,6 +97,7 @@ class PropFirmPreset:
     daily_loss_action: str = "fail"      # fail | lock_day
     trailing_lock: bool = False
     trailing_lock_offset_pct: float = 0.0
+    payout_pins_floor_to_lock: bool = False   # E-3: first payout pins the trailing floor at the lock level (Topstep XFA, LucidFlex)
     max_contracts: int | None = None     # per-firm cap on mini-equivalent contracts
     rules_checked_on: str = ""      # date the dd/lock/contract fields above were checked against the firm
     # v9.16 audit fixes: three rule fields that to_prop_rules() used to drop.
@@ -141,6 +144,7 @@ class PropFirmPreset:
             payout_threshold_pct=self.payout_threshold_pct,
             payout_cap_pct=self.payout_cap_pct,
             payout_cap_dollars=self.payout_cap_dollars,
+            max_payouts=self.max_payouts,
             payout_frequency_days=self.payout_frequency_days,
             required_buffer_pct=self.required_buffer_pct,
             winning_days_for_payout=self.winning_days_for_payout,
@@ -154,6 +158,7 @@ class PropFirmPreset:
             daily_loss_action=self.daily_loss_action,
             trailing_lock=self.trailing_lock,
             trailing_lock_offset_pct=self.trailing_lock_offset_pct,
+            payout_pins_floor_to_lock=self.payout_pins_floor_to_lock,
             max_contracts=self.max_contracts,
             rules_checked_on=self.rules_checked_on,
             trailing_distance_basis=self.trailing_distance_basis,
@@ -1186,6 +1191,44 @@ try:
     del _c, _f, _v
 except NameError:
     pass
+
+# E-4: rule fields that differ from the firms' OWN help centres (read 2026-11-14; see audit E report for URLs/dates).
+_RULE_CORRECTIONS_E4: dict[str, dict] = {
+    # LucidFlex Drawdown (support.lucidtrading.com/en/articles/12945815, 2026-08-26): every size locks at initial + $100 (25,100 / 50,100 / 100,100).
+    # 0.4% was the 25k percentage copied onto the 50k / 100k rows (= $200 / $400 above start).
+    "lucid_flex_50k": {"trailing_lock_offset_pct": 0.2, "payout_cap_pct": 50.0, "payout_cap_dollars": 2000.0, "max_payouts": 5},
+    "lucid_flex_100k": {"trailing_lock_offset_pct": 0.1, "payout_cap_pct": 50.0, "payout_cap_dollars": 2500.0, "max_payouts": 5},
+    # LucidFlex Payouts (12945796, 2026-07-28): 50% of profit up to $1,000 / $2,000 / $2,500 (25k / 50k / 100k), at most 5 payouts.
+    "lucid_flex_25k": {"payout_cap_pct": 50.0, "max_payouts": 5},
+    # LucidPro Daily Loss Limit (12890122, 2026-07-26): 25K has NO daily loss limit (50K $1,200, 100K $1,800).
+    "lucid_25k": {"daily_loss_limit_pct": 100.0},
+    # LucidPro Payouts (12890092): first-payout caps $2,000 (50K) / $2,500 (100K); later payouts are higher (conservative first cap used).
+    "lucid_50k": {"payout_cap_dollars": 2000.0},
+    "lucid_100k": {"payout_cap_dollars": 2500.0},
+    # Topstep XFA payout policy (help.topstep.com/en/articles/8284233): standard path = up to 50% of balance, capped $2,000 (50K) / $3,000 (100K).
+    "topstep_50k": {"payout_cap_pct": 50.0, "payout_cap_dollars": 2000.0},
+    "topstep_100k": {"payout_cap_pct": 50.0, "payout_cap_dollars": 3000.0},
+    # MFFU Rapid 50K (help.myfundedfutures.com/en/articles/13134709, 2026-08-24): $2,100 realized-profit buffer, $500 minimum request, daily payouts.
+    "mffu_rapid_50k": {"required_buffer_pct": 4.2, "payout_threshold_pct": 1.0, "payout_frequency_days": 1},
+    # MFFU Builder 50K (14290805): $2,100 buffer + $500 above it, $500 minimum, $2,000 cap per cycle, 5 sim payouts, 2 qualifying days per cycle.
+    "mffu_builder_50k": {"required_buffer_pct": 4.2, "payout_threshold_pct": 1.0, "payout_cap_dollars": 2000.0, "max_payouts": 5,
+                         "winning_days_for_payout": 2, "payout_frequency_days": 1},
+}
+for _p in PROP_FIRM_PRESETS:
+    for _f, _v in _RULE_CORRECTIONS_E4.get(_p.key, {}).items():
+        object.__setattr__(_p, _f, _v)
+    if _p.key in _RULE_CORRECTIONS_E4:
+        object.__setattr__(_p, "source_note", ((_p.source_note + " ") if _p.source_note else "") + "[2026-11-14 audit E-4] fields corrected to the firm help centre; see audit E report.")
+try:
+    del _p, _f, _v
+except NameError:
+    pass
+
+# E-3: Topstep (MLL -> $0 after the first payout) and LucidFlex (MLL -> Locked MLL Balance on a payout request), per the firms' own help centres.
+for _p in PROP_FIRM_PRESETS:
+    if _p.key in ("topstep_50k", "topstep_100k", "lucid_flex_25k", "lucid_flex_50k", "lucid_flex_100k"):
+        object.__setattr__(_p, "payout_pins_floor_to_lock", True)
+del _p
 
 # 2026-10 audit: verification stamps. Only rows whose own source_note records a direct check of the
 # firm's page are stamped; everything else stays unverified (verified_on == "") and is therefore NOT

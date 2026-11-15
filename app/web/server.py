@@ -859,7 +859,7 @@ _license_ok_cached: bool | None = None
 # /lock. If /lock were license-gated it would bounce straight back to /activate and the browser would loop
 # forever (ERR_TOO_MANY_REDIRECTS) for anyone who is BOTH unlicensed AND has a lock password. The lock page
 # reveals nothing; once unlocked, the person lands on /activate as normal.
-_LICENSE_GATE_EXEMPT_PREFIXES = ("/activate", "/lock", "/static/", "/manifest.json", "/sw.js", "/favicon.ico", "/webhook/tradingview/")
+_LICENSE_GATE_EXEMPT_PREFIXES = ("/health", "/activate", "/lock", "/static/", "/manifest.json", "/sw.js", "/favicon.ico", "/webhook/tradingview/")
 
 
 def _license_ok_for_webhook() -> bool:
@@ -1013,7 +1013,7 @@ def activate_submit():
 # password is set the gate is a no-op anyway, so a first-time "set a
 # password" is still open -- nothing is locked yet.)
 _LOCK_GATE_EXEMPT_PREFIXES = (
-    "/lock", "/activate", "/static/", "/manifest.json", "/sw.js", "/favicon.ico",
+    "/health", "/lock", "/activate", "/static/", "/manifest.json", "/sw.js", "/favicon.ico",
     "/settings/account", "/webhook/tradingview/",
 )
 
@@ -1850,7 +1850,7 @@ def data_detect_pip_size():
             resp.update({
                 "symbol": symbol,
                 "contract_size": spec.contract_size if spec else None,
-                "commission": spec.default_commission_round_turn if spec else None,
+                "commission": spec.effective_commission_round_turn if spec else None,
             })
         else:
             resp["warning"] = warning
@@ -1875,7 +1875,7 @@ def data_instrument_specs():
              "category": instrument_category(s),
              "pip_size": spec.pip_size, "contract_size": spec.contract_size,
              "tick_size": spec.tick_size, "tick_value": spec.tick_value,
-             "default_commission_round_turn": spec.default_commission_round_turn}
+             "default_commission_round_turn": spec.effective_commission_round_turn}
             for s, spec in sorted(KNOWN_INSTRUMENTS.items())
         ],
     })
@@ -2549,7 +2549,7 @@ def _fill_unposted_costs(form, risk, instrument_label):
                 # round-turn rate. Charging that flat AND the spec's per-contract rate would double-bill, and a
                 # flat fee also under-charges multi-contract positions -- so the picker's value becomes the
                 # per-contract rate; any other typed number is respected as the user's own flat fee.
-                rt = float(spec.default_commission_round_turn)
+                rt = float(spec.effective_commission_round_turn)
                 if abs(typed_flat - rt) < 1e-9:
                     risk = _replace(risk, commission_per_trade=0.0, commission_per_contract=rt)
                 else:
@@ -4363,6 +4363,7 @@ def replay_prepare():
             pip_size=float(form.get("pip_size", 0.0001) or 0.0001), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         # UPGRADE (Interactive Replay: prop-firm presets): optional -- an
         # account-size/risk panel for the same right-hand running-balance
         # display below, using the same preset dropdown (app.web.static.
@@ -5871,7 +5872,8 @@ def notification_settings_test():
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    # "app" lets the launcher tell a running T58 server from some other program that happens to hold the port.
+    return jsonify({"status": "ok", "app": "t58"})
 
 
 # ---------------------------------------------------------------------------
@@ -6508,6 +6510,7 @@ def multi_market_start():
             pip_size=float(form.get("pip_size", 0.0001) or 0.0001), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = _apply_posted_preset(form, PropRules(
             account_size=float(form.get("account_size", 100000) or 100000),
             evaluation_profit_target_pct=float(form.get("profit_target", 8) or 8),
@@ -8253,6 +8256,7 @@ def portfolio_run():
             pip_size=float(form.get("pip_size", 0.0001)), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         risk = harden_risk_config(risk, prop_rules=prop_rules_from_form(form), form=form)
 
         legs: list[InstrumentLeg] = []
@@ -8433,6 +8437,7 @@ def regime_matrix_run():
             pip_size=float(form.get("pip_size", 0.0001)), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         risk = harden_risk_config(risk, prop_rules=prop_rules_from_form(form), form=form)
 
         dim_a = form.get("dimension_a", "volatility")
@@ -8593,6 +8598,7 @@ def payout_probability_run():
             pip_size=float(form.get("pip_size", 0.0001)), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = _apply_posted_preset(form, PropRules(
             account_size=float(form.get("account_size", 100000)),
             evaluation_profit_target_pct=float(form.get("profit_target", 8)),
@@ -8729,6 +8735,7 @@ def prop_firm_recommender_run():
             pip_size=float(form.get("pip_size", 0.0001)), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
 
         risk = harden_risk_config(risk, prop_rules=prop_rules_from_form(form), form=form)
         bt_result = run_backtest(df, strategy, risk)
@@ -8807,6 +8814,7 @@ def ensemble_run():
         _ens_kw.update(full_risk_kwargs(form))
         _ens_kw["initial_balance"] = balance
         risk = RiskConfig(**_ens_kw)
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         _ens_rules = prop_rules_from_form(form) or PropRules(account_size=balance)
         risk = harden_risk_config(risk, prop_rules=_ens_rules, form=form)
         mode = form.get("ensemble_mode", "blend")
@@ -8943,6 +8951,7 @@ def cpcv_start():
             pip_size=float(form.get("pip_size", 0.0001)), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         prop_rules = prop_rules_from_form(form) or PropRules(account_size=float(form.get("account_size", form.get("initial_balance", 100000)) or 100000))
         risk = harden_risk_config(risk, prop_rules=prop_rules, form=form)
         initial_log = [f"Loaded {len(df)} bars from {active_label}."]
@@ -9120,6 +9129,8 @@ def pbo_start():
             pip_size=float(form.get("pip_size", 0.0001)), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         prop_rules = prop_rules_from_form(form) or PropRules(account_size=float(form.get("account_size", form.get("initial_balance", 100000)) or 100000))
         risk = harden_risk_config(risk, prop_rules=prop_rules, form=form)
         initial_log = [f"Loaded {len(df)} bars from {active_label}.", f"Candidate pool: {len(specs)} ({1} form strategy + {len(pool_specs)} library + {len(variant_specs)} perturbed)."]
@@ -9281,6 +9292,7 @@ def sensitivity_start():
         _sens_kw = {"initial_balance": 100000.0, "pip_size": 0.0001}
         _sens_kw.update(full_risk_kwargs(form))
         risk = RiskConfig(**_sens_kw)
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = prop_rules_from_form(form) or PropRules(account_size=float(form.get("account_size", 100000)))
         risk = harden_risk_config(risk, prop_rules=rules, form=form)
         mc_cfg = MonteCarloConfig(n_simulations=int(form.get("mc_sims", 500) or 500))
@@ -9463,6 +9475,7 @@ def parameter_robustness_start():
         _pr_kw = {"initial_balance": 100000.0, "pip_size": 0.0001}
         _pr_kw.update(full_risk_kwargs(form))
         risk = RiskConfig(**_pr_kw)
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = prop_rules_from_form(form) or PropRules(account_size=float(form.get("account_size", 100000)))
         risk = harden_risk_config(risk, prop_rules=rules, form=form)
         mc_cfg = MonteCarloConfig(n_simulations=int(form.get("mc_sims", 500) or 500))
@@ -9666,6 +9679,7 @@ def quickopt_start():
             return render_template("quick_optimize.html", error=dataset_error, stored_datasets=list_stored_datasets(), dataset_groups=list_datasets_by_instrument(), saved_strategies_json=_saved_strategies_json(), fitness_metrics=FITNESS_METRICS, optimizer_modes=OPTIMIZER_MODES, **_alpaca_template_context()), 400
         strategy, library_ref = _build_strategy(form.get("strategy_mode", "manual"), form, request.files)
         risk = RiskConfig(initial_balance=float(form.get("initial_balance", 100000)), pip_size=float(form.get("pip_size", 0.0001)), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None), commission_per_trade=_commission_from_form(form))
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = PropRules(account_size=float(form.get("account_size", 100000)))
 
         # T58 BACKTEST INTEGRITY CHECK -- same pre-flight gate as Run &
@@ -10808,6 +10822,7 @@ def research_agent_start():
 
         strategy, _library_ref = _build_strategy(form.get("strategy_mode", "manual"), form, request.files)
         risk = RiskConfig(initial_balance=float(form.get("initial_balance", 100000) or 100000), pip_size=float(form.get("pip_size", 0.0001) or 0.0001), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None), commission_per_trade=_commission_from_form(form))
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = PropRules(account_size=float(form.get("account_size", 100000) or 100000))
         risk = harden_risk_config(risk, prop_rules=rules, form=form)
         question = (form.get("question") or "").strip()
@@ -10944,6 +10959,8 @@ def research_loop_start():
             pip_size=float(form.get("pip_size", 0.0001) or 0.0001), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = PropRules(account_size=float(form.get("account_size", 100000) or 100000))
         risk = harden_risk_config(risk, prop_rules=rules, form=form)
         settings = OllamaSettings(
@@ -11142,6 +11159,7 @@ def forward_test_start():
             pip_size=float(form.get("pip_size", 0.0001) or 0.0001), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         log = []
         if not form.get("pip_size"):
             # The page has no pip-size box. Take pip size / contract size from the built-in instrument table (the same one the
@@ -11297,6 +11315,25 @@ def deploy_live_info():
         running = _LIVE_DEPLOY_SESSION["session"] is not None and _LIVE_DEPLOY_SESSION["session"].status.running
     return render_template("deploy_live.html", broker_accounts=load_accounts(), running=running,
                            strategies=_simple_strategy_options(), **_alpaca_template_context())
+
+
+@app.route("/deploy/wizard")
+def deploy_wizard():
+    """One-click Deploy (2026-11-14): a guided path from a champion to a running session -- demo, live on MT5, or live on a prop firm.
+    It only composes the existing, individually guarded routes (/deploy-live/connect/*, /preflight, /start, /demo-account/deploy)."""
+    from app.prop.presets import list_presets
+    presets = [p for p in list_presets() if p.account_size]
+    pj = {p.key: {"size": p.account_size, "daily_loss": p.daily_loss_limit_pct, "max_dd": p.max_drawdown_pct} for p in presets}
+    return render_template("deploy_wizard.html", strategies=_simple_strategy_options(), preselect=(request.args.get("strategy") or "").strip(),
+                           presets=[{"key": p.key, "label": p.label} for p in presets], presets_json=json.dumps(pj))
+
+
+@app.route("/deploy/wizard/state.json")
+def deploy_wizard_state():
+    from app.live_deploy.web_deploy_config import ENABLE_PHRASE, setup_checklist
+    has_password, unlocked = _deploy_auth_state()
+    checklist = setup_checklist(has_password, unlocked)
+    return jsonify({"checklist": checklist, "enable_phrase": ENABLE_PHRASE, "allowed": all(c["ok"] for c in checklist)})
 
 
 @app.route("/deploy-live/connect.json")
@@ -11510,6 +11547,7 @@ def deploy_live_start():
             # daily-loss halt at all. "0" disables (None).
             daily_loss_limit_pct=(float(form.get("daily_loss", 5) or 5) or None),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         # v7 P0-1/P0-2: sizing conversion factors + hard-wired
         # futures-prop-safe guardrails (no per-widget overrides on the web
         # route -- the enforced values are shown on deploy_live.html).
@@ -11981,6 +12019,7 @@ def search_start():
             pip_size=float(form.get("pip_size", 0.0001) or 0.0001), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = _prop_rules_from_search_evo_form(form)
 
         # v6 (2026-10-04, B11a): multi-firm champion comparison -- 2+
@@ -12653,6 +12692,7 @@ def research_run():
             pip_size=float(form.get("pip_size", 0.0001) or 0.0001), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = _apply_posted_preset(form, PropRules(
             account_size=float(form.get("account_size", 100000) or 100000),
             evaluation_profit_target_pct=float(form.get("profit_target", 8) or 8),
@@ -12825,6 +12865,7 @@ def forge_start():
             pip_size=float(form.get("pip_size", 0.0001) or 0.0001), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = _apply_posted_preset(form, PropRules(
             account_size=float(form.get("account_size", 100000) or 100000),
             evaluation_profit_target_pct=float(form.get("profit_target", 8) or 8),
@@ -13278,6 +13319,7 @@ def rescue_start():
         kw = {"initial_balance": 100000.0, "pip_size": 0.0001}
         kw.update(full_risk_kwargs(form))
         risk = RiskConfig(**kw)
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
     except Exception as exc:  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 400
     job_id = JOB_MANAGER.create(tool="Rescue", page_template="/rescue", log=[f"Loaded {len(df)} bars from {active_label}."], instrument=active_label)
@@ -13639,6 +13681,7 @@ def search_multi_instrument_start():
             pip_size=float(form.get("pip_size", 0.0001) or 0.0001), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = PropRules(
             account_size=float(form.get("initial_balance", 100000) or 100000),
         )
@@ -13905,6 +13948,8 @@ def speed_run_start():
             pip_size=float(form.get("pip_size", 0.0001)), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = _apply_posted_preset(form, PropRules(
             account_size=float(form.get("account_size", 100000)),
             evaluation_profit_target_pct=float(form.get("profit_target", 8)),
@@ -14172,6 +14217,8 @@ def overnight_autopilot_start():
             pip_size=float(form.get("pip_size", 0.0001)), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = _apply_posted_preset(form, PropRules(
             account_size=float(form.get("account_size", 100000)),
             evaluation_profit_target_pct=float(form.get("profit_target", 8)),
@@ -14387,6 +14434,8 @@ def speed_run_multi_instrument_start():
             pip_size=float(form.get("pip_size", 0.0001) or 0.0001), contract_size=(float(form.get("contract_size")) if form.get("contract_size") else None),
             commission_per_trade=_commission_from_form(form),
         )
+
+        risk = _fill_unposted_costs(form, risk, _instrument_label_from_form(form))   # 2026-11-14 B-4: same cost policy as every other path
         rules = _apply_posted_preset(form, PropRules(
             account_size=float(form.get("account_size", 100000) or 100000),
             evaluation_profit_target_pct=float(form.get("profit_target", 8) or 8),

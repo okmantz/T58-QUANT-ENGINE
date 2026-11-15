@@ -160,6 +160,7 @@ class PropAccount:
         self.balance = float(rules.account_size)
         self.trailing_peak = float(rules.account_size)
         self.static_floor = rules.account_size * (1 - rules.max_drawdown_pct / 100.0)
+        self.floor_pinned = False      # E-3: set by the first payout when rules.payout_pins_floor_to_lock
 
         # -- outcome -----------------------------------------------------
         self.stage = "evaluation"
@@ -244,6 +245,8 @@ class PropAccount:
         if getattr(r, "trailing_lock", False):
             lock_level = r.account_size * (1 + float(getattr(r, "trailing_lock_offset_pct", 0.0) or 0.0) / 100.0)
             fl = min(fl, lock_level)
+        if self.floor_pinned:          # E-3: the floor is now permanently the lock level
+            fl = r.account_size * (1 + float(getattr(r, "trailing_lock_offset_pct", 0.0) or 0.0) / 100.0)
         return fl
 
     def daily_limit_dollars(self, day_index: int | None = None) -> float:
@@ -542,9 +545,10 @@ class PropAccount:
             if self.balance >= target_balance and trading_days_so_far >= r.min_trading_days:
                 consistency_ok = True
                 if r.consistency_rule_pct is not None and self.total_profit_since_start > 0:
+                    # E-1: cross-multiplied so an exact-boundary ratio (1650/3000 = 55%) is not lost to 0.55*100 == 55.00000000000001
                     consistency_ok = (
-                        self.best_day_profit / self.total_profit_since_start * 100.0
-                    ) <= r.consistency_rule_pct
+                        self.best_day_profit * 100.0 <= r.consistency_rule_pct * self.total_profit_since_start + 1e-9
+                    )
                 if consistency_ok:
                     self.stage = "funded"
                     self.passed_evaluation = True
@@ -584,16 +588,20 @@ class PropAccount:
     def _maybe_payout(self, cur: int) -> None:
         r = self.rules
         profit_since_baseline = self.balance - self.payout_baseline_balance
-        required_profit = r.account_size * (r.payout_threshold_pct / 100.0) \
-            + r.account_size * (r.required_buffer_pct / 100.0)
+        # E-2: the buffer is a BALANCE LEVEL above the starting balance (Lucid: initial MLL + $100; Apex safety net; MFFU $2,100), not an
+        # amount re-earned every cycle. After a payout the baseline already sits at (or above) that level, so only the part of the buffer
+        # still missing from the baseline is required again. Identical to the old code for the first payout of a fresh account.
+        _buf = r.account_size * (r.required_buffer_pct / 100.0)
+        _buf_left = max(0.0, _buf - (self.payout_baseline_balance - r.account_size))
+        required_profit = r.account_size * (r.payout_threshold_pct / 100.0) + _buf_left
         self.best_day_since_baseline = max(
             self.best_day_since_baseline, self.day_profit_history.get(cur, 0.0)
         )
         funded_consistency_ok = True
         if r.funded_consistency_rule_pct is not None and profit_since_baseline > 0:
             funded_consistency_ok = (
-                self.best_day_since_baseline / profit_since_baseline * 100.0
-            ) <= r.funded_consistency_rule_pct
+                self.best_day_since_baseline * 100.0 <= r.funded_consistency_rule_pct * profit_since_baseline + 1e-9
+            )
         days_since_last_payout = cur - self.last_payout_day_index
         funded_from = self.funded_start_day_index if self.funded_start_day_index is not None else cur
         # v9.13: identical count to the full-history scan this replaces
@@ -608,7 +616,7 @@ class PropAccount:
                 and winning_days >= r.winning_days_for_payout
                 and funded_consistency_ok
                 and (r.max_payouts is None or len(self.payouts) < r.max_payouts)):
-            withdrawable = profit_since_baseline - r.account_size * (r.required_buffer_pct / 100.0)
+            withdrawable = profit_since_baseline - _buf_left
             if r.payout_cap_pct is not None:
                 withdrawable = min(withdrawable, profit_since_baseline * (r.payout_cap_pct / 100.0))
             if r.payout_cap_dollars is not None:
@@ -626,6 +634,8 @@ class PropAccount:
                 # a withdrawal nets out of the trailing peak so being paid
                 # can never push the account toward its own floor.
                 self.trailing_peak = max(self.trailing_peak - withdrawable, self.balance)
+                if getattr(r, "payout_pins_floor_to_lock", False):
+                    self.floor_pinned = True
 
     # ------------------------------------------------------------------
     @property

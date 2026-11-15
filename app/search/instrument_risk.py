@@ -112,16 +112,16 @@ def resolve_leg_risk(
             filled.append(f"contract ${spec.contract_size:g}/point")
         from app.backtest.risk import UntouchedDefault, is_untouched
         if base_risk.commission_per_contract == 0.0:
-            updates["commission_per_contract"] = spec.default_commission_round_turn
-            filled.append(f"commission ${spec.default_commission_round_turn:g}/contract")
+            updates["commission_per_contract"] = spec.effective_commission_round_turn
+            filled.append(f"commission ${spec.effective_commission_round_turn:g}/contract")
             if isinstance(base_risk.commission_per_trade, UntouchedDefault):
                 updates["commission_per_trade"] = 0.0   # no double commission on top of the per-contract rate
         if is_untouched(base_risk.spread_pips):
             updates["spread_pips"] = spec.default_spread_pips  # ticks -> pips via tick_size (2026-10-07 cost-unit fix)
-            filled.append(f"spread {spec.default_spread_ticks} tick(s)")
+            filled.append(f"spread {spec.effective_spread_ticks:g} tick(s)")
         if is_untouched(base_risk.slippage_pips):
             updates["slippage_pips"] = spec.default_slippage_pips  # ticks -> pips via tick_size (2026-10-07 cost-unit fix)
-            filled.append(f"slippage {spec.default_slippage_ticks} tick(s)")
+            filled.append(f"slippage {spec.effective_slippage_ticks:g} tick(s)")
         resolved = replace(base_risk, **updates) if updates else base_risk
         notes.append(
             f"[v7 pip_size backstop] {label}: kept your explicit "
@@ -163,13 +163,13 @@ def resolve_run_costs(base_risk: RiskConfig, instrument_label: str | None) -> tu
         if is_untouched(base_risk.slippage_pips):
             updates["slippage_pips"] = spec.default_slippage_pips
         if base_risk.commission_per_contract == 0.0:
-            updates["commission_per_contract"] = spec.default_commission_round_turn
+            updates["commission_per_contract"] = spec.effective_commission_round_turn
             if isinstance(base_risk.commission_per_trade, UntouchedDefault):
                 updates["commission_per_trade"] = 0.0
         if updates:
             notes.append(f"[costs] {spec.symbol}: untouched friction replaced by the registry costs "
-                         f"({spec.default_spread_ticks:g} tick spread + {spec.default_slippage_ticks:g} tick slippage per side, "
-                         f"${spec.default_commission_round_turn:g}/contract round-turn).")
+                         f"({spec.effective_spread_ticks:g} tick spread + {spec.effective_slippage_ticks:g} tick slippage per side, "
+                         f"${spec.effective_commission_round_turn:g}/contract round-turn; cost profile: {spec.effective_costs.profile}).")
             return replace(base_risk, **updates), notes
     except Exception as exc:  # noqa: BLE001 -- never sink a run on cost resolution
         notes.append(f"[costs] cost resolution failed ({exc}); kept the shared settings.")

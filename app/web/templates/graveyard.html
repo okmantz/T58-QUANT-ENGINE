@@ -92,6 +92,13 @@
     .gy-count { margin-left: 0; width: 100%; }
   }
   @media (prefers-reduced-motion: reduce) { .gy-panel, .gy-scrim { transition: none; } }
+
+  .gv-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin: 0 0 12px; }
+  .gv-head h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -.01em; } .gv-sub { margin: 0; color: var(--text-muted); max-width: 66ch; font-size: 14px; line-height: 1.55; }
+  .gv-actions { display: flex; gap: 8px; } .gv-btn { padding: 9px 16px; border-radius: 999px; border: 1px solid var(--teal); background: var(--teal-dim); color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none; }
+  .gv-btn.ghost { background: none; border-color: var(--border-light); color: var(--text-muted); } .gv-btn:hover { border-color: var(--text); }
+  details.gv-how { margin: 0 0 16px; font-size: 13px; color: var(--text-muted); } details.gv-how summary { cursor: pointer; width: max-content; font-weight: 600; } details.gv-how p { margin: 8px 0 0; max-width: 80ch; line-height: 1.6; }
+  .card { border-radius: 18px; } .mem-stat { border-radius: 14px; }
 </style>
 </head>
 <body>
@@ -99,12 +106,19 @@
 <div class="t58-shell">
 {% include '_sidebar.html' %}
 <div class="t58-main">
-<div class="t58-page-header">
-  <h1>Strategy Graveyard</h1>
-  <p style="margin:2px 0 8px"><a href="/family-map">Open the Strategy Family Map: which kinds of strategy have worked</a></p>
-  <p>Every strategy that was tested hard and then rejected, with the reason. Click any row to see its scores and an equity curve.
-     The Discovery Engine reads this same record before every run, so settings already proven dead here are skipped instead of re-tested. <a href="/trial-ledger">How many ideas has the Deflated Sharpe check counted? &rarr;</a></p>
+<div class="gv-head">
+  <div>
+    <h1>Strategy Graveyard</h1>
+    <p class="gv-sub">Every strategy that was tested hard and rejected, and exactly why. Nothing here is wasted: the Discovery Engine reads this record before each run and skips what is already proven dead.</p>
+  </div>
+  <div class="gv-actions">
+    <a class="gv-btn" href="/family-map">Strategy family map</a>
+    <a class="gv-btn ghost" href="/trial-ledger">Trial ledger</a>
+  </div>
 </div>
+<details class="gv-how"><summary>How to read this page</summary>
+  <p>Click any row to see its scores and an equity curve. <b>Looked good in training</b> means it passed the first screen; <b>held up on fresh data</b> means it also survived data it never saw. The Trial ledger shows how many ideas the Deflated Sharpe check has counted, which is what keeps lucky winners honest.</p>
+</details>
 
 <div class="card" id="searched-variants">
   <h2>Variants searched &mdash; the Discovery memory</h2>

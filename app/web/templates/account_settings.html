@@ -220,12 +220,31 @@
     <h2>Account mode</h2>
     <p class="help">New accounts start in <b>Demo</b>: a T58 Prop Firm simulation (25k / 50k / 100k) where you create, test, optimize, validate, then forward-test a strategy with every win and loss tracked.
       Switch to <b>Live</b> to connect a real prop-firm account. Demo and Live run the same way.</p>
-    <form method="POST" action="/settings/account/mode" class="t58-mode-toggle" style="display:flex;gap:8px;align-items:center;">
+    <style>
+      .am-form { display: flex; flex-direction: column; gap: 14px; }
+      .am-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } @media (max-width: 560px) { .am-opts { grid-template-columns: 1fr; } }
+      .am-opt { position: relative; display: block; cursor: pointer; border: 1px solid var(--border-light); border-radius: 14px; padding: 14px 16px 14px 44px; background: var(--panel-3); transition: border-color .15s, background .15s; }
+      .am-opt input { position: absolute; opacity: 0; } .am-opt::before { content: ""; position: absolute; left: 16px; top: 17px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-light); }
+      .am-opt:hover { border-color: var(--teal); } .am-opt:has(input:checked) { border-color: var(--teal); background: var(--teal-dim); } .am-opt:has(input:checked)::before { border-color: var(--teal); background: radial-gradient(var(--teal) 45%, transparent 50%); }
+      .am-opt:has(input:focus-visible) { outline: 2px solid var(--teal); outline-offset: 2px; }
+      .am-opt.live:has(input:checked) { border-color: #d9626b; background: color-mix(in srgb, #ff4444 10%, transparent); } .am-opt.live:has(input:checked)::before { border-color: #d9626b; background: radial-gradient(#d9626b 45%, transparent 50%); }
+      .am-opt b { display: block; font-size: 15px; } .am-opt span { display: block; font-size: 12.5px; color: var(--text-muted); margin-top: 3px; line-height: 1.45; }
+      .am-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .am-save { padding: 10px 22px; border-radius: 999px; border: 1px solid var(--teal); background: var(--teal); color: var(--on-teal, #05110d); font-weight: 700; font-size: 13.5px; cursor: pointer; }
+      .am-save:hover { filter: brightness(1.08); }
+      .am-demo { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--border-light); color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600; background: var(--panel-3); }
+      .am-demo:hover { border-color: var(--teal); color: var(--teal); }
+    </style>
+    <form method="POST" action="/settings/account/mode" class="t58-mode-toggle am-form">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-      <label><input type="radio" name="mode" value="demo" {% if settings.account_mode != 'live' %}checked{% endif %}> Demo</label>
-      <label><input type="radio" name="mode" value="live" {% if settings.account_mode == 'live' %}checked{% endif %}> Live</label>
-      <button type="submit" class="btn">Save mode</button>
-      <a href="/forward-test?view=demo" style="margin-left:auto;">Open the T58 demo account &rarr;</a>
+      <div class="am-opts">
+        <label class="am-opt demo"><input type="radio" name="mode" value="demo" {% if settings.account_mode != 'live' %}checked{% endif %}><b>Demo</b><span>Simulated prop-firm account. Practise with no real money.</span></label>
+        <label class="am-opt live"><input type="radio" name="mode" value="live" {% if settings.account_mode == 'live' %}checked{% endif %}><b>Live</b><span>Connect a real prop-firm or MT5 account and trade real money.</span></label>
+      </div>
+      <div class="am-bar">
+        <button type="submit" class="am-save">Save mode</button>
+        <a class="am-demo" href="/forward-test?view=demo">Open the T58 demo account <span aria-hidden="true">&rarr;</span></a>
+      </div>
     </form>
   </div>
   <!-- ================= PROFILE (the profile picture lives inside this section) ================= -->

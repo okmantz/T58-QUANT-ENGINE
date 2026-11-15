@@ -863,6 +863,8 @@ def _stage1_task_batch(items: list[tuple[str, dict]], filters: dict, screen: dic
     vec_bases: dict[str, dict] = {}
     spec_by_id: dict[str, dict] = {}
     screenable: set[str] = set()
+    from app.backtest.vectorized_fastpath import risk_is_vectorizable as _riv
+    _risk_vec_ok = _riv(risk)  # fast path ignores prop/sizing/flatten rules -> scalar engine for those runs
 
     for candidate_id, spec in items:
         spec_by_id[candidate_id] = spec
@@ -883,7 +885,7 @@ def _stage1_task_batch(items: list[tuple[str, dict]], filters: dict, screen: dic
             results.append({**base, "error": str(exc), "passed_stage1": False})
             continue
 
-        if is_vectorizable(strat_result):
+        if is_vectorizable(strat_result) and _risk_vec_ok:
             # v5: per-bar stop/target distance arrays (e.g. ATR stops)
             # now vectorize too -- pass them through so the fast path
             # prices and sizes off the same distances the scalar engine

@@ -15,6 +15,7 @@
      desktop WebView shells), a sessionStorage fallback still shows it at
      most once per app session, so nobody gets nagged on every page load
      but a genuine first run is never silently skipped.
+   - Quick connect tour: [data-t58-tour-start="connect"] or ?tour=connect (prop firm / MT5 -> live).
    - Replay anytime: any element with [data-t58-tour-start], the URL
      /dashboard?tour=1, or window.T58Tour.start() in the console.
    - No innerHTML anywhere: all text is set via textContent, so step copy
@@ -46,7 +47,7 @@
   /* ---- the steps ------------------------------------------------------- */
   // target: () => element to spotlight (null/undefined = centered card, no spotlight)
   // group:  () => sidebar <details> that must be open for the target to be visible
-  var STEPS = [
+  var MAIN_STEPS = [
     {
       title: "Welcome to T58 \uD83D\uDC4B",
       text: [
@@ -113,6 +114,56 @@
       action: { label: "Start my first test \u2192", href: "/start-here/create", primary: true }
     }
   ];
+
+
+  // Quick guided tour: connect a prop-firm / MT5 account and run a strategy live (start it from [data-t58-tour-start="connect"] or ?tour=connect).
+  // It never touches the first-run "seen" flag, so replaying it cannot change whether the main tour auto-starts.
+  var CONNECT_STEPS = [
+    {
+      title: "Run a strategy live in 4 steps",
+      text: [
+        "This quick tour takes you from **a finished strategy** to **a live or demo account trading it**. It takes about a minute.",
+        "Short on time? The **Deploy** button on any champion opens the same path as a guided wizard."
+      ],
+      chips: ["Mode", "Connect", "Strategy", "Deploy"]
+    },
+    {
+      title: "1 \u00B7 Pick Demo or Live",
+      text: [
+        "T58 starts in **Demo** mode: simulated money, nothing real can happen. To connect a real prop-firm or MT5 account, switch to **Live** in **Account settings**.",
+        "You can practise on the demo first. It follows the same rules as a real evaluation."
+      ],
+      target: function () { return document.querySelector('a[href="/settings/account"].t58-nav-item') || navLink("/settings/account"); },
+      action: { label: "Open Account settings", href: "/settings/account#account-mode" }
+    },
+    {
+      title: "2 \u00B7 Connect your account",
+      text: [
+        "In the guided deploy, choose **Live on MT5** or **Live on a prop firm**, pick your firm and paste the login the firm emailed you.",
+        "Press **Test connection**: T58 checks the login, the server name and the firm's automation policy, and lists numbered fixes if anything is off."
+      ],
+      target: function () { return navLink("/forward-test"); },
+      action: { label: "Open guided deploy", href: "/deploy/wizard" }
+    },
+    {
+      title: "3 \u00B7 Choose the strategy",
+      text: [
+        "Only a **champion** should trade real money. Promote one on the **Champion** page, then press its **Deploy** button.",
+        "No champion yet? Run a strategy through **Test**, **Optimize** and **Validate** first. That is what earns the right to go live."
+      ],
+      target: function () { return navLink("/champion-simple"); },
+      action: { label: "Open Champion board", href: "/champion-simple" }
+    },
+    {
+      title: "4 \u00B7 Set limits and deploy",
+      text: [
+        "Pick your firm's rule set and T58 fills in the daily-loss and drawdown limits. Review the safety checks, type **DEPLOY LIVE**, and it starts.",
+        "A small **Live P&L** pill on every page shows balance and open trades, and you can stop the session any time."
+      ],
+      action: { label: "Start deploying \u2192", href: "/deploy/wizard", primary: true }
+    }
+  ];
+  var STEPS = MAIN_STEPS;
 
   /* ---- state ----------------------------------------------------------- */
   var state = null; // { i, opened:[details], cleanup:[fn], els:{}, prevFocus, openedDrawer }
@@ -461,11 +512,13 @@
   }
   function onReflow() { if (state) { keepTargetAboveSheet(); place(); } }
 
-  function start() {
+  function start(kind) {
     if (state) return;
+    kind = (typeof kind === "string") ? kind : "main";
+    STEPS = kind === "connect" ? CONNECT_STEPS : MAIN_STEPS;
     injectCss();
     state = {
-      i: 0, opened: [], target: null, openedDrawer: false,
+      kind: kind, i: 0, opened: [], target: null, openedDrawer: false,
       prevFocus: document.activeElement,
       els: { block: el("div", "t58-tour-block"), spot: el("div", "t58-tour-spot t58-tour-nospot"), card: el("div", "t58-tour-card") }
     };
@@ -483,7 +536,7 @@
 
   function finish(how) {
     if (!state) return;
-    markSeen(how);
+    if (state.kind !== "connect") markSeen(how);   // the quick connect tour never changes the first-run flag
     document.removeEventListener("keydown", onKey, true);
     window.removeEventListener("resize", onReflow);
     window.removeEventListener("scroll", onReflow, true);
@@ -501,7 +554,7 @@
   /* ---- wiring ----------------------------------------------------------- */
   document.addEventListener("click", function (e) {
     var t = e.target && e.target.closest ? e.target.closest("[data-t58-tour-start]") : null;
-    if (t) { e.preventDefault(); if (state) finish("done"); start(); }
+    if (t) { e.preventDefault(); if (state) finish("done"); start(t.getAttribute("data-t58-tour-start") || "main"); }
   });
 
   window.T58Tour = {
@@ -511,13 +564,15 @@
       try { localStorage.removeItem(STORE_KEY); } catch (e) {}
       try { sessionStorage.removeItem(STORE_KEY); } catch (e) {}
     },
-    _steps: STEPS // exposed for tests
+    _steps: MAIN_STEPS, // exposed for tests
+    _connectSteps: CONNECT_STEPS
   };
 
   function autoStart() {
     var q = "";
     try { q = new URLSearchParams(window.location.search).get("tour"); } catch (e) {}
     if (q === "0") return;
+    if (q === "connect") { window.setTimeout(function () { start("connect"); }, 650); return; }
     // The Dashboard renders window.T58_TOUR_AUTOSTART from the server's own
     // first-run flag: true only on the first Dashboard visit after the
     // license is activated. Browser storage is only a fallback for pages

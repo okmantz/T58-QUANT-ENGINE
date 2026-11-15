@@ -416,9 +416,9 @@ def apply_regime_exclusion(df: pd.DataFrame, signals: pd.Series, strategy) -> pd
     excluded_cells = resolve_excluded_regimes(strategy)
     if not excluded_cells:
         return signals
-    from app.validation.regime_matrix import label_regimes
+    from app.validation.regime_matrix import label_regimes_causal
     try:
-        labels, _ = label_regimes(df)
+        labels, _ = label_regimes_causal(df)
     except Exception:
         return signals
     mask = np.zeros(len(df), dtype=bool)

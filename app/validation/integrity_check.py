@@ -359,7 +359,7 @@ def run_integrity_check(
         (f"${risk.commission_per_trade:g}/trade" + (f" + ${_per_contract:g}/contract" if _per_contract else ""))
         + (
             f" -- $0 on a known futures instrument ({instrument_spec.symbol}); a realistic round-turn "
-            f"is roughly ${instrument_spec.default_commission_round_turn:g}. Every dollar figure in this "
+            f"is roughly ${instrument_spec.effective_commission_round_turn:g}. Every dollar figure in this "
             "backtest is unrealistically optimistic until this is set."
             if zero_commission_on_futures else ""
         ),
@@ -376,7 +376,7 @@ def run_integrity_check(
             f"$0 commission on a known futures instrument ({instrument_spec.symbol}).",
             f"This backtest is configured with commission_per_trade=0.0 against {instrument_spec.symbol} "
             f"({instrument_spec.description}), a real futures contract with real per-trade costs -- a "
-            f"realistic round-turn commission is roughly ${instrument_spec.default_commission_round_turn:g}. "
+            f"realistic round-turn commission is roughly ${instrument_spec.effective_commission_round_turn:g}. "
             "Backtesting at $0 commission makes a marginal or losing strategy look profitable; set a "
             "realistic commission (selecting this instrument from the Instrument dropdown fills one in "
             "automatically) before running this backtest. No performance results were produced.",

@@ -278,6 +278,37 @@ def label_regimes(
     return labels, out_thresholds
 
 
+def _expanding_edges(series: pd.Series, levels: list[float], min_periods: int = 200) -> list[pd.Series]:
+    """Per-bar quantile edges from data STRICTLY BEFORE each bar (expanding window, shifted one bar): causal replacement for qcut."""
+    return [series.expanding(min_periods=min_periods).quantile(q).shift(1) for q in levels]
+
+
+def label_regimes_causal(df: pd.DataFrame, atr_period: int = 14, trend_lookback: int = 20, bandwidth_period: int = 20) -> tuple[pd.DataFrame, None]:
+    """Same four dimensions as label_regimes, but every cut point is an expanding quantile of the PAST only (AUDIT C-1)."""
+    def bucket(series, names):
+        edges = _expanding_edges(series, [k / len(names) for k in range(1, len(names))])
+        idx = sum((series > e).astype(int) for e in edges)
+        ok = edges[0].notna() & series.notna()
+        out = pd.Series(np.array(names, dtype=object)[idx.to_numpy()], index=series.index, dtype="object")
+        out[~ok] = pd.NA
+        return out.astype("category")
+    trend = bucket(_trend_slope_normalized(df, trend_lookback, atr_period), _TREND_NAMES)
+    vol = bucket(_atr_ind(df, period=atr_period), _VOL_NAMES)
+    _, bb_mid, _ = bollinger(df["close"], period=bandwidth_period)
+    bb_upper, _, bb_lower = bollinger(df["close"], period=bandwidth_period)
+    bandwidth = (bb_upper - bb_lower) / bb_mid.replace(0.0, np.nan)
+    bwd = bandwidth.diff(bandwidth_period)
+    ts = _trend_slope_normalized(df, trend_lookback, atr_period).abs()
+    p20, = _expanding_edges(bandwidth, [0.20]); p80, = _expanding_edges(bwd, [0.80])
+    t50, t60 = _expanding_edges(ts, [0.50, 0.60])
+    labels = np.select([(bandwidth <= p20).fillna(False), ((bwd >= p80) & (ts >= t50)).fillna(False), (bwd >= p80).fillna(False),
+                        (ts >= t60).fillna(False)], ["compression", "breakout", "expansion", "trending"], default="ranging")
+    env = pd.Series(labels, index=df.index, dtype="object")
+    env[bandwidth.isna() | ts.isna() | p20.isna() | p80.isna() | t50.isna()] = pd.NA
+    labels_df = pd.DataFrame({"trend": trend, "volatility": vol, "session": _label_session(df), "environment": env.astype("category")}, index=df.index)
+    return labels_df, None
+
+
 # ---------------------------------------------------------------------------
 # Trade attribution + result shape
 # ---------------------------------------------------------------------------

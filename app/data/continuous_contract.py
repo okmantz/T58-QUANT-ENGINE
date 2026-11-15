@@ -178,6 +178,8 @@ def detect_splices_and_interleaves(
     roll_months: tuple[int, ...] | None = None,
     roll_days: range | None = None,
     one_per_month: bool = True,
+    reference: pd.DataFrame | None = None,
+    reference_pct_tol: float = 0.004,
 ) -> ContinuousCleanReport:
     """See the module docstring. `roll_months`/`roll_days` (e.g. (3,6,9,12) and
     range(4, 22) for equity-index futures) restrict where an isolated splice may
@@ -270,6 +272,36 @@ def detect_splices_and_interleaves(
             t = ts.iloc[int(i)]
             if t.month in roll_months and (roll_days is None or t.day in roll_days):
                 ambiguous.append((t, float(jump[int(i)])))
+
+    # -- weekend-open splices (needs a correlated reference series, e.g. NQ for ES) ----------------------------------------
+    # Some vendors roll across the weekend break, so the splice looks exactly like a real Sunday-open gap and the
+    # date-boundary detector above skips it. A REAL gap moves the correlated reference by about the same percentage; a
+    # splice moves only this series (by the carry, ~0.7-1.2% for ES in 2022-24 vs ~0% for NQ at the same instant).
+    if reference is not None and roll_months is not None and "timestamp" in reference.columns:
+        rts = pd.to_datetime(reference["timestamp"]).reset_index(drop=True)
+        ro = pd.Series(reference["open"].to_numpy(float), index=rts)
+        rc = pd.Series(reference["close"].to_numpy(float), index=rts)
+        ro = ro[~ro.index.duplicated()]
+        rc = rc[~rc.index.duplicated()]
+        rprev = pd.Series(rc.to_numpy()[:-1], index=rc.index[1:])
+        close_self = df["close"].to_numpy(float)
+        have = {(r.timestamp.year, r.timestamp.month) for r in splices}
+        extra: dict = {}
+        for i in np.flatnonzero((dt_min >= 120) & np.isfinite(jump) & (absj >= splice_k * scale * 4)):
+            i = int(i); t = ts.iloc[i]
+            if t.month not in roll_months or (roll_days is not None and t.day not in roll_days) or (t.year, t.month) in have:
+                continue
+            if t not in ro.index or t not in rprev.index:
+                continue
+            pct_ref = ro[t] / rprev[t] - 1.0
+            pct_self = jump[i] / close_self[i - 1]
+            if abs(pct_self - pct_ref) >= reference_pct_tol and abs(pct_ref) < 0.5 * abs(pct_self):
+                key = (t.year, t.month)
+                if key not in extra or absj[i] > absj[extra[key]]:
+                    extra[key] = i
+        if extra:
+            splices = sorted(splices + [RollEvent(i, ts.iloc[i], float(jump[i])) for i in extra.values()], key=lambda r: r.index)
+            ambiguous = [a for a in ambiguous if all(a[0] != ts.iloc[i] for i in extra.values())]
     return ContinuousCleanReport(splices, interleave_events, windows, ambiguous, scale)
 
 

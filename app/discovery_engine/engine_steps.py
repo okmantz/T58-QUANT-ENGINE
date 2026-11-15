@@ -195,6 +195,24 @@ def build_steps(*, dev_df: pd.DataFrame, sealed_df: pd.DataFrame | None, risk, f
             td = thirty_day_record(trades, risk, prop_rules, dev_df, label=str(c.get("candidate_id") or ""), cfg=honest_cfg)
         return honest_eval_step(td, cfg)
 
+    def payout_lifecycle(c, ctx):
+        """Objective B gate: G5 on exact PropAccount rules + funded survival floor. Not applicable to the pass / net-profit objectives."""
+        mode = str(getattr(cfg, "objective_mode", "prop"))
+        if mode not in ("payout", "prop_net"):
+            return StepResult("payout_lifecycle", True, skipped=True, detail=f"not applicable: objective '{mode}' does not require a funded-payout lifecycle")
+        if prop_rules is None:
+            return StepResult("payout_lifecycle", False, detail="no prop rules were supplied, so the payout lifecycle cannot be simulated")
+        from app.validation import rulebook as rb
+        trades = evaluate_spec(c.get("spec"), dev_df, risk, 1.0)
+        g = rb.g5_lifecycle(trades, prop_rules, n_paths=4_000, n_looks=max(1, int(n_trials)))
+        failing = g.failing
+        pa = (g.data or {}).get("prop_account") or {}
+        detail = (f"PropAccount Monte Carlo: P(pass) {pa.get('p_pass', float('nan')):.0f}%, P(first payout) {pa.get('p_first_payout', float('nan')):.0f}%"
+                  if pa else "G5 lifecycle")
+        if failing:
+            detail = f"{failing[0].name}: {failing[0].detail}. " + detail
+        return StepResult("payout_lifecycle", not failing, detail=detail, data={**(g.data or {}), "failing": [f.name for f in failing]})
+
     def sequence_deflated(c, ctx):
         trades = evaluate_spec(c.get("spec"), dev_df, risk, 1.0)
         s = daily_series_from_trades(trades, unit="r")
@@ -240,5 +258,5 @@ def build_steps(*, dev_df: pd.DataFrame, sealed_df: pd.DataFrame | None, risk, f
         rs, days = trade_r_and_days(tr) if tr else ([], [])
         return sealed_step(rs, days, tied=ctx["tied"], cfg=cfg, looks=looks)
 
-    return Steps(reproduction=reproduction, rulebook_g3=rulebook_g3, honest_eval=honest_eval, sequence_deflated=sequence_deflated, null_gate=null_gate,
+    return Steps(reproduction=reproduction, rulebook_g3=rulebook_g3, honest_eval=honest_eval, payout_lifecycle=payout_lifecycle, sequence_deflated=sequence_deflated, null_gate=null_gate,
                  pooled_edge=pooled_edge, sealed_slice=sealed_slice)

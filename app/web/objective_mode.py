@@ -32,6 +32,12 @@ def apply_objective_mode_to_form() -> None:
         mode = normalize_objective_mode(form.get("objective_mode"))
         g.objective_mode = mode
         if mode != OBJECTIVE_NET_PROFIT:
+            # Objective A / B / prop-net: fill the matching default fitness only when none was chosen explicitly.
+            if mode != DEFAULT_OBJECTIVE_MODE and not (form.get("fitness_metric") or "").strip():
+                rewritten = form.copy()
+                rewritten["fitness_metric"] = fitness_for_objective_mode(mode, None)
+                rewritten["objective_mode"] = mode
+                request.form = ImmutableMultiDict(rewritten)
             return
         rewritten = form.copy()
         rewritten["fitness_metric"] = fitness_for_objective_mode(mode, form.get("fitness_metric"))

@@ -908,7 +908,7 @@ def _costs_source(risk: "RiskConfig") -> str:
                 abs(float(risk.pip_size) - float(spec.pip_size)) < 1e-12
                 and risk.contract_size is not None
                 and abs(float(risk.contract_size) - float(spec.contract_size)) < 1e-9
-                and abs(float(risk.commission_per_contract) - float(spec.default_commission_round_turn)) < 1e-9
+                and abs(float(risk.commission_per_contract) - float(spec.effective_commission_round_turn)) < 1e-9
                 and abs(float(risk.spread_pips) - float(spec.default_spread_pips)) < 1e-12
                 and abs(float(risk.slippage_pips) - float(spec.default_slippage_pips)) < 1e-12
             ):

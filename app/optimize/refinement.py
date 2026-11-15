@@ -107,7 +107,10 @@ def fitness_for_objective_mode(mode, explicit: str | None = None) -> str:
     explicit = (explicit or "").strip() or None
     if mode == OBJECTIVE_NET_PROFIT:
         return explicit if explicit in ("net_profit", NET_PROFIT_FITNESS) else NET_PROFIT_FITNESS
-    return explicit or DEFAULT_FITNESS
+    if explicit:
+        return explicit
+    # 2026-11-14: the separated objectives each have their own default fitness (Objective A ranks on pass odds, B on pass-and-paid, EV on payouts).
+    return {"pass": "pass_gradient", "payout": "lifecycle_gradient", "prop_net": "expected_payout"}.get(mode, DEFAULT_FITNESS)
 
 FITNESS_METRICS: dict[str, str] = {
     # 2026-11-07: the prop-firm lifecycle objective (default) and its live-account counterpart.
