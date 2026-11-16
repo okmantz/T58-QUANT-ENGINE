@@ -1,5 +1,5 @@
 """
-T58 Quant Algo Backtester — Mobile Web App.
+T58 Quant Engine — Mobile Web App.
 
 A thin Flask front end over the exact same engine used by the desktop GUI
 and the --cli entry point (app/backtest, app/prop, app/monte_carlo,
@@ -14666,7 +14666,7 @@ def main():
     # Wi-Fi via QR code -- and is unchanged by this.)
     import argparse
 
-    parser = argparse.ArgumentParser(description="T58 Quant Algo Backtester (web edition)")
+    parser = argparse.ArgumentParser(description="T58 Quant Engine (web edition)")
     parser.add_argument("--host", default=None,
                         help="Interface to bind (default 127.0.0.1; use 0.0.0.0 for LAN access). "
                              "Also settable via the T58_WEB_HOST environment variable.")

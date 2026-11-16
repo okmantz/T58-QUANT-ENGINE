@@ -1,5 +1,5 @@
 """
-T58 Quant Algo Backtester — phone-friendly launcher.
+T58 Quant Engine — phone-friendly launcher.
 
 This is the entry point behind the "T58-Web-App.exe" build. It exists so
 Owen (or anyone else) can:
@@ -182,7 +182,7 @@ def main() -> None:
         print(f"T58 is already running on port {PORT} -- opening it (no second copy started).", flush=True)
         open_browser_once(f"http://127.0.0.1:{PORT}/dashboard")
         return
-    print("Starting T58 Quant Algo Backtester (web/phone edition)...", flush=True)
+    print("Starting T58 Quant Engine (web/phone edition)...", flush=True)
     print("(First launch can take a little while to unpack -- please wait.)", flush=True)
 
     # Import here (not at module top) so this launcher's own startup
@@ -299,7 +299,7 @@ def run() -> None:
 def _pause_on_abnormal_exit(reason: str) -> None:
     print(flush=True)
     print("=" * 64, flush=True)
-    print(f"  T58 Quant Algo Backtester {reason}", flush=True)
+    print(f"  T58 Quant Engine {reason}", flush=True)
     print("=" * 64, flush=True)
     try:
         input("Press Enter to close this window...")

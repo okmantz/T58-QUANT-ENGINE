@@ -61,9 +61,9 @@
         '<li>Until then, <b>Create shortcut</b> still puts an icon on your home screen (it opens in Chrome).</li></ol>';
     }
     wrap.innerHTML =
-      '<div role="dialog" aria-label="Install T58 Backtester" style="max-width:460px;width:100%;background:var(--panel-2,#12161f);color:var(--text,#e7ebf2);' +
+      '<div role="dialog" aria-label="Install T58 Quant Engine" style="max-width:460px;width:100%;background:var(--panel-2,#12161f);color:var(--text,#e7ebf2);' +
       'border:1px solid var(--border,#2a3142);border-radius:14px;padding:18px 20px;font-size:13.5px;line-height:1.5">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">Install T58 Backtester</b>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">Install T58 Quant Engine</b>' +
       '<button id="t58-pwa-x" aria-label="Close" style="background:none;border:0;color:inherit;font-size:20px;cursor:pointer">×</button></div>' +
       '<p style="margin:10px 0;color:' + (r.ok ? "var(--teal,#35e0b0)" : "var(--text-dim,#9aa4b8)") + '">' + esc(r.text) + '</p>' + steps +
       (deferred ? '<button id="t58-pwa-go" style="margin-top:6px;padding:9px 16px;border-radius:9px;border:1px solid var(--teal,#35e0b0);background:var(--teal,#35e0b0);color:#05070a;font-weight:700;cursor:pointer">Install now</button>' : '') +

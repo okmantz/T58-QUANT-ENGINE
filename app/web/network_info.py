@@ -395,7 +395,7 @@ def qr_code_file(url: str) -> Path | None:
         qr.add_data(url)
         qr.make(fit=True)
         img = qr.make_image()
-        out_dir = Path.home() / ".t58-backtester"
+        out_dir = Path.home() / ".t58-quant-engine"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / "phone-qr-code.png"
         img.save(out_path)
@@ -411,7 +411,7 @@ def startup_banner_lines(url: str, qr_path: Path | None) -> list[str]:
     can never again drift into showing different information."""
     lines = [
         "=" * 64,
-        "  T58 QUANT ALGO BACKTESTER -- now running as a website",
+        "  T58 QUANT ENGINE -- now running as a website",
         "=" * 64,
     ]
     if is_running_under_wine():
