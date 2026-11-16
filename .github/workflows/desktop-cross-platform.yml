@@ -53,7 +53,7 @@ jobs:
     env:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
-      PACKAGE: T58-Quant-Algo-Backtester-${{ matrix.label }}.zip
+      PACKAGE: T58-Quant-Engine-${{ matrix.label }}.zip
       T58_LICENSE_SERVER_URL: ${{ secrets.T58_LICENSE_SERVER_URL }}
       T58_LICENSE_SHEET_URL: ${{ secrets.T58_LICENSE_SHEET_URL }}
       T58_LICENSE_ALLOWLIST_URL: ${{ secrets.T58_LICENSE_ALLOWLIST_URL }}
@@ -91,13 +91,13 @@ jobs:
         run: pyinstaller --noconfirm --clean build_tools/t58_desktop.spec
       - name: Verify the build output
         run: |
-          test -f "dist/T58-Quant-Algo-Backtester/T58-Quant-Algo-Backtester${{ matrix.exe }}" || { echo "executable missing"; ls -la dist/T58-Quant-Algo-Backtester; exit 1; }
-          test -d dist/T58-Quant-Algo-Backtester/_internal || { echo "_internal missing"; exit 1; }
-          du -sh dist/T58-Quant-Algo-Backtester
+          test -f "dist/T58-Quant-Engine/T58-Quant-Engine${{ matrix.exe }}" || { echo "executable missing"; ls -la dist/T58-Quant-Engine; exit 1; }
+          test -d dist/T58-Quant-Engine/_internal || { echo "_internal missing"; exit 1; }
+          du -sh dist/T58-Quant-Engine
       - name: Smoke-test the FROZEN app (loads app.main from the bundle)
         env:
           PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
-        run: python build_tools/frozen_smoke.py desktop "dist/T58-Quant-Algo-Backtester/T58-Quant-Algo-Backtester${{ matrix.exe }}" 240
+        run: python build_tools/frozen_smoke.py desktop "dist/T58-Quant-Engine/T58-Quant-Engine${{ matrix.exe }}" 240
       - name: Code-sign (Windows, optional)
         if: matrix.platform == 'windows'
         shell: pwsh
@@ -109,15 +109,15 @@ jobs:
             [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($certB64))
             $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
             if (-not $signtool) { throw "signtool.exe not found" }
-            & $signtool sign /f $pfx /p "${{ secrets.SIGN_CERT_PASSWORD }}" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 "dist\T58-Quant-Algo-Backtester\T58-Quant-Algo-Backtester.exe"
+            & $signtool sign /f $pfx /p "${{ secrets.SIGN_CERT_PASSWORD }}" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 "dist\T58-Quant-Engine\T58-Quant-Engine.exe"
             if ($LASTEXITCODE -ne 0) { throw "signtool failed (exit $LASTEXITCODE)" }
           } finally { Remove-Item $pfx -Force -ErrorAction SilentlyContinue }
       - name: Create the zip + checksum
-        run: python build_tools/package_release.py app --dist dist/T58-Quant-Algo-Backtester --out "$PACKAGE" --platform ${{ matrix.platform }} ${{ matrix.symlinks }}
+        run: python build_tools/package_release.py app --dist dist/T58-Quant-Engine --out "$PACKAGE" --platform ${{ matrix.platform }} ${{ matrix.symlinks }}
       - name: Upload package
         uses: actions/upload-artifact@v6
         with:
-          name: T58-Quant-Algo-Backtester-${{ matrix.label }}
+          name: T58-Quant-Engine-${{ matrix.label }}
           path: |
             ${{ env.PACKAGE }}
             ${{ env.PACKAGE }}.sha256
