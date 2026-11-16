@@ -161,14 +161,14 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>T58 Quant Algo Backtester — Payout Probability: {strategy_name}</title>
+<title>T58 Quant Engine — Payout Probability: {strategy_name}</title>
 <style>/*THEME*/</style>
 </head>
 <body>
 <div class="masthead">
   <img src="data:image/png;base64,{logo_base64}" alt="T58"/>
   <div class="titles">
-    <h1>Quant Algo Backtester — Payout Probability Report</h1>
+    <h1>T58 Quant Engine — Payout Probability Report</h1>
     <div class="sub">Full-lifecycle prop-firm survival simulation &middot; separate from the main strategy report</div>
   </div>
 </div>

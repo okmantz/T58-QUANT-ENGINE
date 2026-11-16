@@ -373,7 +373,7 @@ class NavigationMixin:
         txt = Frame(brand, bg=SIDEBAR)
         txt.pack(side="left", fill="x", expand=True)
         Label(
-            txt, text="T58 Quant Algo Backtester", bg=SIDEBAR, fg=TEXT, font=_safe_font(10, "bold"),
+            txt, text="T58 Quant Engine", bg=SIDEBAR, fg=TEXT, font=_safe_font(10, "bold"),
             anchor="w", justify="left", wraplength=150,
         ).pack(anchor="w")
         Label(

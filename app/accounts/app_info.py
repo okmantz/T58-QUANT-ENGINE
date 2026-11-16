@@ -25,9 +25,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # Fill in once this project has a public GitHub repo to check releases
-# against, e.g. "T58Trading/T58-QUANT-ALGO-BACKTESTER". Left blank means
+# against, e.g. "T58Trading/T58-QUANT-ENGINE". Left blank means
 # "Check for Updates" reports itself as not configured instead of guessing.
-GITHUB_REPO = "okmantz/T58-QUANT-ALGO-BACKTESTER"
+GITHUB_REPO = "okmantz/T58-QUANT-ENGINE"
 
 _VERSION_RE = re.compile(r'(?m)^\s*version\s*=\s*"([^"]+)"')
 _REQUEST_TIMEOUT_SECONDS = 6
@@ -125,7 +125,7 @@ def check_for_updates() -> UpdateCheckResult:
         )
     url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
     try:
-        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "T58-QUANT-ALGO-BACKTESTER"})
+        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "T58-QUANT-ENGINE"})
         with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT_SECONDS) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         latest_tag = str(data.get("tag_name", "")).strip()
@@ -191,7 +191,7 @@ class UpdateDownloadResult:
 def _github_api_json(url: str) -> dict:
     req = urllib.request.Request(
         url,
-        headers={"Accept": "application/vnd.github+json", "User-Agent": "T58-QUANT-ALGO-BACKTESTER"},
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "T58-QUANT-ENGINE"},
     )
     with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT_SECONDS) as resp:
         return json.loads(resp.read().decode("utf-8"))
@@ -258,7 +258,7 @@ def _published_sha256_for(checksum_text: str, asset_name: str) -> str | None:
 
 
 def _download_bytes(url: str, hasher: "hashlib._Hash | None" = None) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": "T58-QUANT-ALGO-BACKTESTER"})
+    req = urllib.request.Request(url, headers={"User-Agent": "T58-QUANT-ENGINE"})
     chunks: list[bytes] = []
     with urllib.request.urlopen(req, timeout=_DOWNLOAD_TIMEOUT_SECONDS) as resp:
         while True:

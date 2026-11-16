@@ -1,5 +1,5 @@
 """
-T58 Trading — Quant Algo Backtester
+T58 Quant Engine
 Entry point.
 
 Usage:
@@ -1155,7 +1155,7 @@ def main():
     except Exception:
         pass  # never block startup
 
-    parser = argparse.ArgumentParser(description="T58 Trading — Quant Algo Backtester")
+    parser = argparse.ArgumentParser(description="T58 Quant Engine")
     parser.add_argument("--cli", action="store_true", help="run headlessly instead of launching the GUI")
     parser.add_argument("--csv", default=None, help="path to a market data CSV (--cli mode); if omitted, uses the "
                                                        "most recently stored dataset in data/raw/, or the bundled sample")

@@ -67,8 +67,8 @@ Recent background jobs run under this project (for your reference only --
 you cannot start, stop, or modify these; just discuss them if asked):
 {body}"""
 
-    return f"""You are the project assistant for a T58 Quant Algo Backtester project called \
-"{project_name}". T58 Quant Algo Backtester is Owen's own desktop/web app for backtesting \
+    return f"""You are the project assistant for a T58 Quant Engine project called \
+"{project_name}". T58 Quant Engine is Owen's own desktop/web app for backtesting \
 algorithmic trading strategies against prop-firm evaluation rules and estimating pass/payout \
 probability via Monte Carlo simulation (Search Lab, Evolution Lab, Full Pipeline, CPCV, \
 Walk-Forward Optimization, and related tools).

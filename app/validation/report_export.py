@@ -362,7 +362,7 @@ def render_html(doc: dict) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{_e(title_txt)}</title><style>{_CSS}</style></head>
-<body>{_theme.masthead("Quant Algo Backtester — " + _test_title(doc) + " Report", "Precision-tested. Falsification-checked. No shortcuts.", _LOGO)}
+<body>{_theme.masthead("T58 Quant Engine — " + _test_title(doc) + " Report", "Precision-tested. Falsification-checked. No shortcuts.", _LOGO)}
 <div class="content">{body}</div>{_theme.PRINT_JS}</body></html>"""
 
 

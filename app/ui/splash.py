@@ -55,7 +55,7 @@ class StartupSplash:
             mark.create_line(1 + i, 1 + inset, 1 + i, 47 - inset, fill=_blend(CYAN, VIOLET, i / 57))
         mark.create_text(30, 24, text="T58", fill="#04120E", font=_font(11, "bold"))
 
-        tk.Label(body, text="T58 Quant Algo Backtester", bg=PANEL, fg=TEXT, font=_font(12, "bold")).pack()
+        tk.Label(body, text="T58 Quant Engine", bg=PANEL, fg=TEXT, font=_font(12, "bold")).pack()
         self._status = tk.Label(body, text="Starting\u2026", bg=PANEL, fg=MUTED, font=_font(9))
         self._status.pack(pady=(4, 12))
         self._bar = tk.Canvas(body, width=300, height=4, bg=BORDER, highlightthickness=0)

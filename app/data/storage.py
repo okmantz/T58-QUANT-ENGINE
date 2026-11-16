@@ -58,22 +58,35 @@ def get_app_base_dir() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+_APP_DATA_NAME = "T58 Quant Engine"
+_LEGACY_APP_DATA_NAME = "T58 Prop Algo Backtester"   # folder name used before the T58 Quant Engine rename
+
+
 def user_data_dir() -> Path:
     """Per-user writable data folder, using each OS's own convention (used when
     the folder next to the executable is read-only -- e.g. inside a macOS .app
     bundle, /usr/local/bin, or Program Files):
-      Windows: %LOCALAPPDATA%\\T58 Prop Algo Backtester   (unchanged from before)
-      macOS:   ~/Library/Application Support/T58 Prop Algo Backtester
-      Linux:   $XDG_DATA_HOME or ~/.local/share/T58 Prop Algo Backtester
+      Windows: %LOCALAPPDATA%\\T58 Quant Engine
+      macOS:   ~/Library/Application Support/T58 Quant Engine
+      Linux:   $XDG_DATA_HOME or ~/.local/share/T58 Quant Engine
+    An existing folder from the pre-rename app ("T58 Prop Algo Backtester") is renamed in place the first time
+    this runs, so nobody loses their data, settings or saved strategies.
     """
-    name = "T58 Prop Algo Backtester"
     if sys.platform.startswith("win"):
         local_app_data = os.environ.get("LOCALAPPDATA")
-        return (Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local") / name
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / name
-    xdg = os.environ.get("XDG_DATA_HOME")
-    return (Path(xdg) if xdg else Path.home() / ".local" / "share") / name
+        parent = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+    elif sys.platform == "darwin":
+        parent = Path.home() / "Library" / "Application Support"
+    else:
+        xdg = os.environ.get("XDG_DATA_HOME")
+        parent = Path(xdg) if xdg else Path.home() / ".local" / "share"
+    new, legacy = parent / _APP_DATA_NAME, parent / _LEGACY_APP_DATA_NAME
+    if not new.exists() and legacy.is_dir():
+        try:
+            legacy.rename(new)
+        except OSError:
+            return legacy      # cannot move it (locked / read-only): keep using the old folder rather than lose data
+    return new
 
 
 _SEED_LEDGER_NAME = ".t58_seeded.json"

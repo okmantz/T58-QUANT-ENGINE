@@ -90,7 +90,7 @@ class ChromeMixin:
             icon_shown = False
 
         title_lbl = Label(
-            bar, text="T58 Trading — Quant Algo Backtester", bg=PANEL_2, fg=TEXT_MUTED,
+            bar, text="T58 Quant Engine", bg=PANEL_2, fg=TEXT_MUTED,
             font=_safe_font(9, "bold"),
         )
         title_lbl.pack(side="left", padx=(0 if icon_shown else 10, 0))

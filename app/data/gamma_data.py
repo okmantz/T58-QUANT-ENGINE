@@ -101,7 +101,7 @@ def _inst(instrument: str) -> str:
 def _http_get(url: str, timeout: float = 20.0) -> bytes:
     import requests
 
-    resp = requests.get(url, timeout=timeout, headers={"User-Agent": "T58-Backtester/1.0 (+gamma-data)"})
+    resp = requests.get(url, timeout=timeout, headers={"User-Agent": "T58-Quant-Engine/1.0 (+gamma-data)"})
     if resp.status_code != 200:
         raise GammaDataError(f"{url} answered HTTP {resp.status_code}.")
     return resp.content

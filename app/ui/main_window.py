@@ -1,5 +1,5 @@
 """
-T58 Quant Algo Backtester — Desktop GUI.
+T58 Quant Engine — Desktop GUI.
 
 Dark T58 interface with a full visual Manual Strategy Builder. The builder
 creates a structured JSON-like strategy configuration consumed by
@@ -344,7 +344,7 @@ class MainWindow(
 ):
     def __init__(self, root: Tk):
         self.root = root
-        self.root.title("T58 Trading — Quant Algo Backtester")
+        self.root.title("T58 Quant Engine")
         try:
             icon_path = _asset_path("t58_mark_medium.png")
             if icon_path.exists():

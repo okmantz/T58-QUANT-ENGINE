@@ -84,7 +84,7 @@ def achievement_card_svg(badge: dict[str, Any], who: str, rank_label: str, level
 {desc_svg}
 <text x="440" y="500" font-size="26" fill="#ffffff" font-weight="700">{escape(who)}</text>
 <text x="440" y="534" font-size="21" fill="#8fa1af">{escape(rank_label)} rank · level {level}{(' · earned ' + when) if when else ''}</text>
-<text x="1160" y="582" text-anchor="end" font-size="19" letter-spacing="2" fill="#6f808d">T58 QUANT ALGO BACKTESTER</text>
+<text x="1160" y="582" text-anchor="end" font-size="19" letter-spacing="2" fill="#6f808d">T58 QUANT ENGINE</text>
 </svg>'''
 
 
@@ -118,7 +118,7 @@ def certificate_svg(who: str, rank: dict[str, str], level: dict[str, Any], title
 <rect x="34" y="34" width="1532" height="1063" fill="none" stroke="url(#mt-{metal})" stroke-width="6"/>
 <rect x="54" y="54" width="1492" height="1023" fill="none" stroke="{m}" stroke-opacity=".45" stroke-width="1.5"/>
 <g transform="translate(0,-20)">{_medal(800, 200, 62, metal, True)}</g>
-<text x="800" y="330" text-anchor="middle" font-size="26" letter-spacing="9" fill="{m}" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-weight="700">T58 QUANT ALGO BACKTESTER</text>
+<text x="800" y="330" text-anchor="middle" font-size="26" letter-spacing="9" fill="{m}" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-weight="700">T58 QUANT ENGINE</text>
 <text x="800" y="410" text-anchor="middle" font-size="68" fill="#ffffff" font-weight="700">Certificate of Research</text>
 <text x="800" y="458" text-anchor="middle" font-size="24" fill="#8fa1af" font-style="italic">awarded in recognition of tested ideas, honest validation and steady work</text>
 <text x="800" y="548" text-anchor="middle" font-size="60" fill="url(#mt-{metal})" font-weight="700">{escape(who)}</text>
@@ -143,5 +143,5 @@ def medal_svg(metal: str, metal_label: str, level_range: str, who: str, reached:
 <text x="450" y="420" text-anchor="middle" font-size="22" letter-spacing="6" fill="{m}" font-weight="700">{escape(metal_label).upper()} RANK</text>
 <text x="450" y="474" text-anchor="middle" font-size="40" fill="#ffffff" font-weight="800">{escape(who)}</text>
 <text x="450" y="512" text-anchor="middle" font-size="20" fill="#8fa1af">{escape(level_range)}</text>
-<text x="860" y="565" text-anchor="end" font-size="16" letter-spacing="2" fill="#6f808d">T58 QUANT ALGO BACKTESTER</text>
+<text x="860" y="565" text-anchor="end" font-size="16" letter-spacing="2" fill="#6f808d">T58 QUANT ENGINE</text>
 </svg>'''

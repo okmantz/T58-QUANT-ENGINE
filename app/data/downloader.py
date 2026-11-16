@@ -80,7 +80,7 @@ def fetch_manifest(manifest_url: str, timeout: int = DEFAULT_TIMEOUT_S) -> list[
     {"packs": [{"name": ..., "url": ..., "sha256": ..., "size_bytes": ...,
     "description": ..., "filename": ...}, ...]}. Raises DataPackError on
     any failure."""
-    req = urllib.request.Request(manifest_url, headers={"User-Agent": "T58-Backtester-DataDownloader/1.0"})
+    req = urllib.request.Request(manifest_url, headers={"User-Agent": "T58-Quant-Engine-DataDownloader/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
@@ -143,7 +143,7 @@ def download_data_pack(
         log.warning("Existing %s failed checksum -- re-downloading.", final_path.name)
 
     start_at = part_path.stat().st_size if part_path.exists() else 0
-    headers = {"User-Agent": "T58-Backtester-DataDownloader/1.0"}
+    headers = {"User-Agent": "T58-Quant-Engine-DataDownloader/1.0"}
     if start_at > 0:
         headers["Range"] = f"bytes={start_at}-"
     req = urllib.request.Request(pack.url, headers=headers)

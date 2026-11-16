@@ -1,31 +1,61 @@
-"""The default strategy library: exactly the strategies committed to the GitHub repo (strategies/python/...).
+"""The default strategy library: every strategy that ships with the app (strategies/<type>/ in the GitHub repo).
 
 Rules the app follows with it:
+  * The list of defaults is DISCOVERED, never hand-maintained: whatever strategy files sit in the shipped
+    strategies/ folder (the PyInstaller bundle in a packaged build, this repo's strategies/ folder when running from
+    source) are the defaults. Drop a .py / .pine / .mq5 file in strategies/<type>/ and it is preloaded for every user.
   * First sign-in on a device (or a different account signing in): the library holds ONLY these defaults. Anything else found in
     the strategies folder (left over from another account, testing, an old install) is MOVED to a dated backup folder, never deleted.
   * After that the library saves every new strategy normally, and the account's vault brings them back after a reinstall.
   * The master key resets it to the defaults every time it is entered (see app.licensing.fresh_start).
-
-To add a strategy to the defaults, commit its file to strategies/<type>/ in the repo and add its file name below.
 """
 from __future__ import annotations
 
+import fnmatch
 import json
 import shutil
+import sys
 import time
 from pathlib import Path
 
-DEFAULT_STRATEGY_FILES: dict[str, tuple[str, ...]] = {
-    "python": (
-        "MNQ1! Gap Aligned Drive RW Tight Stop 1m.py",
-        "NQ1! Context Aligned Drive 1m v2.py",
-        "NQ1! Ind Rule 15m.py",
-        "NQ1! Trend Momentum Continuation 5m.py",
-    ),
-    "pinescript": (),
-    "mql5": (),
-    "manual": (),
+_TYPE_EXTENSIONS: dict[str, tuple[str, ...]] = {
+    "python": (".py",),
+    "pinescript": (".pine",),
+    "mql5": (".mq5",),
+    "manual": (".json",),
 }
+# Same patterns .gitignore keeps out of the repo: per-user artefacts that are never defaults.
+_NOT_DEFAULT_PATTERNS = ("*.meta.json", "searchlab_*", "stub.*", "*FULL PIPELINE*")
+
+
+def _shipped_dir() -> Path:
+    """Folder holding the strategies that ship with this build."""
+    if getattr(sys, "frozen", False):
+        bundle = getattr(sys, "_MEIPASS", None)
+        if bundle and (Path(bundle) / "strategies").is_dir():
+            return Path(bundle) / "strategies"
+    return Path(__file__).resolve().parents[2] / "strategies"
+
+
+def discover_default_files(root: Path | None = None) -> dict[str, tuple[str, ...]]:
+    """Scan the shipped strategies folder and return {type: (file names, ...)} (sorted)."""
+    root = root or _shipped_dir()
+    found: dict[str, tuple[str, ...]] = {}
+    for type_dir, exts in _TYPE_EXTENSIONS.items():
+        d = root / type_dir
+        names: list[str] = []
+        if d.is_dir():
+            for f in d.iterdir():
+                if not f.is_file() or f.suffix.lower() not in exts:
+                    continue
+                if any(fnmatch.fnmatch(f.name, pat) for pat in _NOT_DEFAULT_PATTERNS):
+                    continue
+                names.append(f.name)
+        found[type_dir] = tuple(sorted(names))
+    return found
+
+
+DEFAULT_STRATEGY_FILES: dict[str, tuple[str, ...]] = discover_default_files()
 _KEEP_NAMES = {"readme.md", "strategy_format.md", ".gitkeep"}
 _MARKER = "library_account.json"
 

@@ -1,4 +1,4 @@
-"""T58 Quant Algo Backtester."""
+"""T58 Quant Engine."""
 # Responsiveness (2026-10-17 perf pass) -- both pieces are best-effort and can never break an import:
 #
 # 1. Background worker processes (search / evolution / pipeline / Monte Carlo pools) run at a lower OS

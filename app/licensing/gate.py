@@ -88,7 +88,7 @@ def show_activation_window(initial_message: str = "", initial_email: str = "", i
             self.activated = False
             self._busy = False
             self._results: "queue.Queue[tuple[bool, str]]" = queue.Queue()
-            self.title("Activate \u2014 T58 Quant Algo Backtester")
+            self.title("Activate \u2014 T58 Quant Engine")
             self.configure(bg=BG)
             x = (self.winfo_screenwidth() - self.W) // 2
             y = max((self.winfo_screenheight() - self.H) // 2 - 20, 0)
