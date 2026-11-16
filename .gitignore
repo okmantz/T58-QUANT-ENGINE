@@ -105,7 +105,7 @@ reports/*.json
 reports/*.csv
 reports/*.jsonl
 reports/full_pipeline/
-# Saved strategies are per-user. Keep the folder layout, the format docs and the four shipped examples only.
+# Saved strategies are per-user. Keep the folder layout, the format docs and the shipped default strategies (committed files) only.
 strategies/manual/*
 !strategies/manual/.gitkeep
 strategies/**/*.meta.json
