@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # workflow file -> release zip name pattern it produces (one zip per OS, named via $PACKAGE)
 WORKFLOWS = {
-    ".github/workflows/desktop-cross-platform.yml": "T58-Quant-Algo-Backtester-${{ matrix.label }}.zip",
+    ".github/workflows/desktop-cross-platform.yml": "T58-Quant-Engine-${{ matrix.label }}.zip",
     ".github/workflows/web-cross-platform.yml": "T58-Web-App-${{ matrix.label }}.zip",
 }
 PKG = "${{ env.PACKAGE }}"

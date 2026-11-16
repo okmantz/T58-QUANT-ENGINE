@@ -10,7 +10,7 @@ def _find_repo() -> Path:
     for p in here.parents:
         if (p / "app" / "backtest" / "execution.py").exists():
             return p
-    return Path("/home/claude/okmantz/t58-quant-algo-backtester")
+    return Path("/home/claude/okmantz/t58-quant-engine")
 
 REPO = _find_repo()
 if str(REPO) not in sys.path:

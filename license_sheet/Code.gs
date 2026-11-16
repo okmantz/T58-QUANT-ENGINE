@@ -258,7 +258,7 @@ function buildKeyEmail_(info) {
   var hello = name ? 'Hi ' + name.split(/\s+/)[0] + ',' : 'Hi,';
   var plan = info.plan ? ' (' + info.plan + ')' : '';
   var steps = [
-    'Open the T58 Quant Algo Backtester.',
+    'Open the T58 Quant Engine.',
     'On the activation screen, type this email address (' + info.email + ') and the license key above.',
     'Press Activate. You are in: everything starts on the default settings and saves to your account as you work.'
   ];
@@ -554,7 +554,7 @@ function buildDashboard_(sheet, lic) {
   title.setValue('LICENSE CONTROL CENTER').setFontColor('#FFFFFF').setFontSize(24).setFontWeight('bold')
        .setHorizontalAlignment('left');
   var sub = sheet.getRange(4, 2, 1, 10).merge();
-  sub.setValue('Quant Algo Backtester  ·  Validate, don’t guess.').setFontColor(C.MUTED).setFontSize(10)
+  sub.setValue('T58 Quant Engine  ·  Validate, don’t guess.').setFontColor(C.MUTED).setFontSize(10)
      .setHorizontalAlignment('left');
   sheet.getRange(4, 2, 1, 10).setBorder(false, false, true, false, false, false, C.VIOLET,
                                         SpreadsheetApp.BorderStyle.SOLID_MEDIUM);

@@ -1,4 +1,4 @@
-# Installing T58 Quant Algo Backtester (Windows)
+# Installing T58 Quant Engine (Windows)
 
 The 15-minute path from download to a running app. No Python, no command
 line, no Git required.
@@ -19,7 +19,7 @@ line, no Git required.
 
 1. Go to the latest release on the T58 Trading store page
    [OWEN: DECIDE — insert your Whop/store download URL here].
-2. Download **T58-Quant-Algo-Backtester-Windows.zip** (the app).
+2. Download **T58-Quant-Engine-Windows.zip** (the app).
 3. Download **T58-Market-Data.zip** (the historical market data). It is a
    separate file on purpose, so the app download stays small and either
    download can be retried on its own. The app starts without it and ships
@@ -27,13 +27,13 @@ line, no Git required.
 
 ## Step 2 — Unzip (2–10 min)
 
-1. Right-click **T58-Quant-Algo-Backtester-Windows.zip** → **Extract All…**
+1. Right-click **T58-Quant-Engine-Windows.zip** → **Extract All…**
    → choose a **short** folder, e.g. `C:\T58\`. (A short path avoids the
    Windows "path too long" error. The app is a few thousand small files,
    so Windows' built-in extractor can take several minutes — the free
    [7-Zip](https://www.7-zip.org) is much faster.)
 2. Open the extracted folder. You should see
-   `T58-Quant-Algo-Backtester.exe` and a folder called `_internal`. Keep
+   `T58-Quant-Engine.exe` and a folder called `_internal`. Keep
    them together — the app does not start without `_internal`.
 3. Extract **T58-Market-Data.zip** into **that same folder** (the one that
    holds the `.exe`). Windows asks to merge the `data` folder — say yes.
@@ -48,7 +48,7 @@ line, no Git required.
 
 ## Step 3 — First launch & activation (5 min)
 
-1. Double-click `T58-Quant-Algo-Backtester.exe`. The first launch takes
+1. Double-click `T58-Quant-Engine.exe`. The first launch takes
    longer (one-time setup).
 2. When prompted, enter the **license key** from your purchase email and
    click **Activate**. Activation needs internet once; afterwards the app

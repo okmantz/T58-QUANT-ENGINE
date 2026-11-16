@@ -4,7 +4,7 @@
 
 
 A small, self-hosted Flask app that is the only thing standing between a
-copied ZIP of the T58 Quant Algo Backtester and someone actually being
+copied ZIP of the T58 Quant Engine and someone actually being
 able to use it. You run this yourself — no third-party licensing
 service, no per-seat fees to anyone but Whop (which you're already using
 for payment). SQLite storage, no managed database needed.

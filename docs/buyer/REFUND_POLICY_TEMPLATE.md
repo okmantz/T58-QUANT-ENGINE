@@ -3,7 +3,7 @@
 > **Template, not legal advice.** Every **[OWEN: DECIDE]** marker is a
 > posture choice only you can make.
 
-**T58 Quant Algo Backtester — Refund Policy**
+**T58 Quant Engine — Refund Policy**
 
 Last updated: [OWEN: DECIDE — date]
 

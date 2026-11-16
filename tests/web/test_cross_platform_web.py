@@ -37,13 +37,25 @@ def test_user_data_dir_uses_each_operating_systems_convention(monkeypatch, tmp_p
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
 
     monkeypatch.setattr(sys, "platform", "win32")
-    assert storage.user_data_dir() == tmp_path / "Local" / "T58 Prop Algo Backtester"
+    assert storage.user_data_dir() == tmp_path / "Local" / "T58 Quant Engine"
     monkeypatch.setattr(sys, "platform", "darwin")
-    assert storage.user_data_dir() == tmp_path / "Library" / "Application Support" / "T58 Prop Algo Backtester"
+    assert storage.user_data_dir() == tmp_path / "Library" / "Application Support" / "T58 Quant Engine"
     monkeypatch.setattr(sys, "platform", "linux")
-    assert storage.user_data_dir() == tmp_path / ".local" / "share" / "T58 Prop Algo Backtester"
+    assert storage.user_data_dir() == tmp_path / ".local" / "share" / "T58 Quant Engine"
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
-    assert storage.user_data_dir() == tmp_path / "xdg" / "T58 Prop Algo Backtester"
+    assert storage.user_data_dir() == tmp_path / "xdg" / "T58 Quant Engine"
+
+
+def test_legacy_prop_algo_data_folder_is_migrated(monkeypatch, tmp_path):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    legacy = tmp_path / ".local" / "share" / "T58 Prop Algo Backtester"
+    legacy.mkdir(parents=True)
+    (legacy / "settings.json").write_text("{}", encoding="utf-8")
+    new = storage.user_data_dir()
+    assert new == tmp_path / ".local" / "share" / "T58 Quant Engine"
+    assert (new / "settings.json").exists() and not legacy.exists()
 
 
 def test_read_only_install_folder_falls_back_to_user_data_dir(monkeypatch, tmp_path):

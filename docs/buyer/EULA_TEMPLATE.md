@@ -4,7 +4,7 @@
 > you sell a single license. Every **[OWEN: DECIDE]** marker below is a
 > business/legal posture choice only you can make.
 
-**T58 Quant Algo Backtester — End-User License Agreement**
+**T58 Quant Engine — End-User License Agreement**
 
 Last updated: [OWEN: DECIDE — date]
 
@@ -14,7 +14,7 @@ This agreement is between you ("Licensee") and
 ## 1. What you're buying
 
 A non-exclusive, non-transferable license to install and use the T58 Quant
-Algo Backtester on **[OWEN: DECIDE — number of devices, e.g. "up to 2
+Engine on **[OWEN: DECIDE — number of devices, e.g. "up to 2
 computers you own"]**. The license is tied to the email address used at
 purchase.
 

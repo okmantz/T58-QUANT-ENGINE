@@ -4,7 +4,7 @@
 > posture choice only you can make. If you sell to EU/UK buyers, have a
 > lawyer check GDPR wording before launch.
 
-**T58 Quant Algo Backtester — Privacy Policy**
+**T58 Quant Engine — Privacy Policy**
 
 Last updated: [OWEN: DECIDE — date]
 

@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="assets/logo/t58-logo-horizontal-dark.png" alt="T58 Quant Algo Backtester" width="480" />
+  <img src="assets/logo/t58-logo-horizontal-dark.png" alt="T58 Quant Engine" width="480" />
 </p>
 
 <p align="center">
   <sub>STRATEGY RESEARCH &nbsp;/&nbsp; VALIDATION &nbsp;/&nbsp; ROBUSTNESS &nbsp;/&nbsp; PROP SIMULATION</sub>
 </p>
 
-<img width="1280" height="420" alt="T58 Quant Algo Backtester — dashboard preview" src="assets/images/readme-banner.png" />
+<img width="1280" height="420" alt="T58 Quant Engine — dashboard preview" src="assets/images/readme-banner.png" />
 
 <div align="center">
 
 
-# T58 Trading — Quant Algo Backtester
+# T58 Quant Engine
 
 </div>
 
@@ -45,8 +45,8 @@ Everything stays on your computer.
 ## Run it
 
 **Windows `.exe` (no Python):** in GitHub go to **Actions → desktop-cross-platform → latest run** and download
-**T58-Quant-Algo-Backtester-Windows**. Extract the inner zip into a short folder such as `C:\T58\` and double-click
-`T58-Quant-Algo-Backtester.exe` (keep `_internal` beside it). Market data is a separate download (**Actions → build-data-pack →
+**T58-Quant-Engine-Windows**. Extract the inner zip into a short folder such as `C:\T58\` and double-click
+`T58-Quant-Engine.exe` (keep `_internal` beside it). Market data is a separate download (**Actions → build-data-pack →
 T58-Market-Data**); extract it next to the `.exe`. Tagged releases (`v*`) attach the app zip, data zip and `.sha256` files directly.
 
 **Web app, any OS (Python 3.10+):**

@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # GitHub rejects release assets larger than 2 GiB.
 MAX_ZIP_BYTES = 2 * 1024 ** 3 - 1024 ** 2
 # Explorer's "Extract All" prefixes the archive's paths with the folder it
-# extracts into (e.g. C:\Users\<name>\Downloads\T58-Quant-Algo-Backtester-Windows\).
+# extracts into (e.g. C:\Users\<name>\Downloads\T58-Quant-Engine-Windows\).
 # The classic Windows limit is 260 characters for the whole path.
 EXTRACT_PREFIX_BUDGET = 90
 WINDOWS_MAX_PATH = 260
@@ -100,7 +100,7 @@ def _text_entry(tmp_dir: Path, arcname: str, text: str) -> Entry:
 
 
 APP_README = """\
-T58 Quant Algo Backtester  --  READ ME FIRST
+T58 Quant Engine  --  READ ME FIRST
 ============================================
 
 1. EXTRACT THE WHOLE ZIP FIRST.
@@ -177,7 +177,7 @@ def _data_contents(entries: "list[Entry]") -> str:
 
 
 UNIX_README = """\
-T58 Quant Algo Backtester  --  READ ME FIRST  ({platform})
+T58 Quant Engine  --  READ ME FIRST  ({platform})
 ============================================
 
 1. Unzip this archive anywhere (your home folder is fine).
@@ -214,7 +214,7 @@ MAC_NOTE = """\
 
 
 CHROMEBOOK_README = """\
-T58 Quant Algo Backtester  --  READ ME FIRST  (Chromebook)
+T58 Quant Engine  --  READ ME FIRST  (Chromebook)
 ============================================
 
 This build runs inside ChromeOS's built-in Linux environment (Crostini, Debian 12).
@@ -235,7 +235,7 @@ It will NOT run in the Android or Chrome-app side of ChromeOS -- turn Linux on f
        cd T58
        bash install_chromebook.sh
 
-   The installer marks the program runnable, adds a "T58 Quant Algo Backtester" icon to your
+   The installer marks the program runnable, adds a "T58 Quant Engine" icon to your
    ChromeOS launcher (Linux apps folder) and starts it. {launch_note}
 
 3. MARKET DATA is a separate download (so this zip stays small):
@@ -257,7 +257,7 @@ Troubleshooting
 """
 
 
-def app_readme(platform: str, exe_name: str, desktop: bool, zip_name: str = "T58-Quant-Algo-Backtester-Chromebook.zip") -> str:
+def app_readme(platform: str, exe_name: str, desktop: bool, zip_name: str = "T58-Quant-Engine-Chromebook.zip") -> str:
     """README_FIRST.txt for the app zip. Windows keeps its long-standing text."""
     if platform == "windows":
         return APP_README
@@ -309,7 +309,7 @@ def collect_app_entries(dist: Path, tmp_dir: Path, platform: str = "windows", zi
         entries.append((installer, "install_chromebook.sh"))
     entries.append(_text_entry(tmp_dir, "README_FIRST.txt",
                                app_readme(platform, dist.name, desktop="Web" not in dist.name,
-                                          zip_name=zip_name or "T58-Quant-Algo-Backtester-Chromebook.zip")))
+                                          zip_name=zip_name or "T58-Quant-Engine-Chromebook.zip")))
     return entries
 
 

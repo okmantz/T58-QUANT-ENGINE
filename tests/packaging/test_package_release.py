@@ -63,7 +63,7 @@ def test_case_only_collision_is_rejected(tmp_path):
 
 def test_over_long_path_is_rejected(tmp_path):
     long_name = "_internal/" + "/".join(["d" * 40] * 5) + "/file.py"
-    problems = pr.validate_names(_entries(tmp_path, [long_name]), zip_stem="T58-Quant-Algo-Backtester-Windows")
+    problems = pr.validate_names(_entries(tmp_path, [long_name]), zip_stem="T58-Quant-Engine-Windows")
     assert any("too long" in p for p in problems)
 
 
@@ -253,12 +253,12 @@ def test_updater_never_picks_a_data_pack_and_pairs_the_right_checksum():
 
     names = ["SHA256SUMS.txt", "T58-Market-Data.zip", "T58-Market-Data.zip.sha256", "T58-Data-Examples-Slim.zip",
              "T58-Web-App-Windows.zip", "T58-Web-App-Windows.zip.sha256",
-             "T58-Quant-Algo-Backtester-Windows.zip", "T58-Quant-Algo-Backtester-Windows.zip.sha256"]
+             "T58-Quant-Engine-Windows.zip", "T58-Quant-Engine-Windows.zip.sha256"]
     assets = [{"name": n, "browser_download_url": f"https://example.invalid/{n}"} for n in names]
 
     picked = ai._pick_release_asset(assets)
-    assert picked["name"] == "T58-Quant-Algo-Backtester-Windows.zip"
-    assert ai._find_checksum_asset(assets, picked["name"])["name"] == "T58-Quant-Algo-Backtester-Windows.zip.sha256"
+    assert picked["name"] == "T58-Quant-Engine-Windows.zip"
+    assert ai._find_checksum_asset(assets, picked["name"])["name"] == "T58-Quant-Engine-Windows.zip.sha256"
     assert ai._find_checksum_asset(assets, "T58-Web-App-Windows.zip")["name"] == "T58-Web-App-Windows.zip.sha256"
     # Backward compatible: no asset name -> first checksum-looking asset, as before.
     assert ai._find_checksum_asset(assets)["name"] == "SHA256SUMS.txt"
@@ -278,7 +278,7 @@ def test_updater_prefers_exe_when_present():
 # Workflows (static)
 # --------------------------------------------------------------------------- #
 APP_WORKFLOWS = {
-    ".github/workflows/desktop-cross-platform.yml": ("t58_desktop.spec", "T58-Quant-Algo-Backtester-${{ matrix.label }}.zip", "desktop"),
+    ".github/workflows/desktop-cross-platform.yml": ("t58_desktop.spec", "T58-Quant-Engine-${{ matrix.label }}.zip", "desktop"),
     ".github/workflows/web-cross-platform.yml": ("t58_web.spec", "T58-Web-App-${{ matrix.label }}.zip", "web"),
 }
 

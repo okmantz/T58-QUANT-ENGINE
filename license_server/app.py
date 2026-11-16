@@ -1,6 +1,6 @@
 """
 T58 License Server -- a small, self-hosted Flask app that is the ONLY
-thing standing between a copied ZIP of the T58 Quant Algo Backtester and
+thing standing between a copied ZIP of the T58 Quant Engine and
 someone actually being able to use it. Run this yourself (a free-tier
 Render/Fly.io/PythonAnywhere/Railway instance, or any always-on machine
 you already have) -- no third-party licensing service, no per-seat fees
@@ -311,9 +311,9 @@ def _send_license_email(to_email: str, license_key: str, plan: str = "") -> None
     msg = EmailMessage()
     msg["From"] = sender
     msg["To"] = to_email
-    msg["Subject"] = "Your T58 Quant Algo Backtester license key"
+    msg["Subject"] = "Your T58 Quant Engine license key"
     msg.set_content(
-        "Thanks for your purchase -- here is your license key for the T58 Quant Algo Backtester:\n\n"
+        "Thanks for your purchase -- here is your license key for the T58 Quant Engine:\n\n"
         f"    {license_key}\n\n"
         f"{plan_line}"
         "Enter it in the app's activation window along with this email address. "

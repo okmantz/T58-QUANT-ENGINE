@@ -37,12 +37,12 @@ Whop webhook ──► your Render server ──► auto-creates license + email
 
 1. Go to **https://render.com** and sign up (the free account is fine).
 2. During onboarding, connect your GitHub account and give Render access
-   to the **`T58-QUANT-ALGO-BACKTESTER`** repository.
+   to the **`T58-QUANT-ENGINE`** repository.
 
 ## Step 2 — Deploy from the blueprint
 
 1. In the Render dashboard: **New → Blueprint**.
-2. Select the `T58-QUANT-ALGO-BACKTESTER` repo. Render detects
+2. Select the `T58-QUANT-ENGINE` repo. Render detects
    `license_server/render.yaml` -- on the Blueprint screen set **Blueprint file path** to `license_server/render.yaml` (it no longer sits at the repo root).
 3. Review the plan (service name `t58-license-server`, Python, gunicorn,
    health check on `/health`) and click **Apply**.
@@ -103,8 +103,8 @@ Google blocks plain-password SMTP logins, so you need an app password:
 
 1. Go to your Whop dashboard: **https://whop.com/dashboard**
    (you already sell through Whop — use the same account).
-2. Create a product for the backtester (e.g. **"T58 Quant Algo
-   Backtester — Monthly License"**), priced however you want, with
+2. Create a product for the backtester (e.g. **"T58 Quant
+   Engine — Monthly License"**), priced however you want, with
    whatever billing interval you want. The server doesn't care about the
    price — it only listens for membership events.
 3. Note the product's name — the server records it as the license `plan`.

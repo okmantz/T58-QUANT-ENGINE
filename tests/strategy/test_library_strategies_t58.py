@@ -42,6 +42,10 @@ def _daily(n=900, seed=11):
     return pd.DataFrame({"timestamp": ts, "open": o, "high": np.maximum(o, c) * 1.003, "low": np.minimum(o, c) * 0.997, "close": c, "volume": 1e5})
 
 
+_REMOVED = "strategy file is no longer shipped in strategies/python (removed in the Oct-2026 library audit)"
+
+
+@pytest.mark.skipif(not TSMOM.exists(), reason=_REMOVED)
 def test_tsmom_prefix_invariant_at_every_cut():
     m = _load(TSMOM)
     d = _daily()
@@ -54,7 +58,7 @@ def test_tsmom_prefix_invariant_at_every_cut():
         assert np.allclose(a, b), cut
 
 
-@pytest.mark.parametrize("name", TWINS)
+@pytest.mark.parametrize("name", [pytest.param(n, marks=pytest.mark.skipif(not (PY / n).exists(), reason=_REMOVED)) for n in TWINS])
 def test_twins_load_and_return_valid_series(name):
     m = _load(PY / name)
     n = 3000

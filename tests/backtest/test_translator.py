@@ -264,6 +264,7 @@ STRATEGY_FILES = sorted(
     p for p in MANUAL_DIR.glob("*.json")
     if p.name not in _EXCLUDED and not p.name.endswith(".meta.json")
     and not p.name.startswith(("searchlab_", "evolab_", "stub")) and "OPTIMIZED" not in p.name
+    and "FULL PIPELINE" not in p.name           # written into the real library by pipeline tests, not a shipped strategy
 )
 
 

@@ -2,7 +2,7 @@
 """Smoke-test a FROZEN (PyInstaller) build by actually running it.
 
     python build_tools/frozen_smoke.py web     dist/T58-Web-App/T58-Web-App.exe
-    python build_tools/frozen_smoke.py desktop dist/T58-Quant-Algo-Backtester/T58-Quant-Algo-Backtester.exe
+    python build_tools/frozen_smoke.py desktop dist/T58-Quant-Engine/T58-Quant-Engine.exe
 
 web      starts the packaged web app, waits for its HTTP server, and requests
          the pages that need bundled templates / static files / config. Proves

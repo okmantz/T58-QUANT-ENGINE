@@ -1,4 +1,4 @@
-# Using the T58 Quant Algo Backtester on your phone
+# Using the T58 Quant Engine on your phone
 
 This gives you the backtester on your Samsung (or any phone) as a
 home-screen app, with no Google Play, no app store review, and no
@@ -29,7 +29,7 @@ phone need to be on the **same Wi-Fi network** whenever you use it.
 5. In Chrome, tap the **⋮ menu** (top right) → **"Add to Home Screen"**
    (or "Install app" if Chrome offers it directly). Confirm.
 
-You now have a **T58 Backtester icon on your home screen**, just like a
+You now have a **T58 Quant Engine icon on your home screen**, just like a
 real app. Tapping it opens the tool full-screen, no browser bar.
 
 ## Every time after that

@@ -1,7 +1,7 @@
 # Render Blueprint for the T58 License Server.
 #
 # One-click deploy: Render Dashboard -> New -> Blueprint -> pick the
-# T58-QUANT-ALGO-BACKTESTER repo, and set "Blueprint file path" to license_server/render.yaml (this file no longer sits
+# T58-QUANT-ENGINE repo, and set "Blueprint file path" to license_server/render.yaml (this file no longer sits
 # at the repo root). Render reads this file and creates the
 # service below automatically. Full step-by-step: license_server/DEPLOY.md.
 #

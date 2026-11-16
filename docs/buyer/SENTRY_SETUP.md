@@ -17,7 +17,7 @@ to make it live. Nothing here costs money (Sentry free tier).
 
 1. Go to https://sentry.io and sign up (free tier).
 2. **Projects → Create Project** → platform **Python** → name it
-   `t58-backtester` (any name works).
+   `t58-quant-engine` (any name works).
 3. Open the project → **Settings → Client Keys (DSN)** → copy the DSN.
    It looks like `https://<key>@o<org>.ingest.sentry.io/<project>`.
    (Sentry DSNs are public client keys by design — safe to bake into the

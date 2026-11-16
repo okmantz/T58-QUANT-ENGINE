@@ -1,8 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec -- T58 Quant Algo Backtester desktop app (entry point: run_app.py).
+"""PyInstaller spec -- T58 Quant Engine desktop app (entry point: run_app.py).
 
 Build (any OS):   pyinstaller --noconfirm --clean build_tools/t58_desktop.spec
-Output:           dist/T58-Quant-Algo-Backtester/T58-Quant-Algo-Backtester(.exe) + _internal/
+Output:           dist/T58-Quant-Engine/T58-Quant-Engine(.exe) + _internal/
 
 ONE-FOLDER build on purpose -- see the note at the top of t58_web.spec.
 """
@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(SPECPATH)))
 import spec_common as common  # noqa: E402
 
 ROOT = common.repo_root(SPECPATH)
-NAME = "T58-Quant-Algo-Backtester"
+NAME = "T58-Quant-Engine"
 
 datas = common.data_entries(ROOT, web=False)
 binaries = []

@@ -1,5 +1,5 @@
 """
-T58 Quant Algo Backtester -- Command-Line Interface.
+T58 Quant Engine -- Command-Line Interface.
 
 Wires every backend module added across this project's recent upgrade
 rounds (the Universal Strategy Translator, Auto Regime Selector, Strategy

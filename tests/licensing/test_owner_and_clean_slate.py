@@ -1,5 +1,6 @@
 """Owner account (email + key + sheet-verified), master-key clean slate every time, default strategy library."""
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -76,10 +77,40 @@ def test_default_library_reset_keeps_only_repo_strategies(monkeypatch, tmp_path)
 
 
 def test_repo_defaults_match_committed_files():
+    """Every strategy file committed under strategies/<type>/ (Python, Pine Script, MQL5) is a preloaded default."""
     from app.strategy import default_library as dl
-    root = Path(__file__).resolve().parents[2] / "strategies" / "python"
-    on_disk = {p.name for p in root.glob("*.py")}
-    assert set(dl.DEFAULT_STRATEGY_FILES["python"]) <= on_disk
+    root = Path(__file__).resolve().parents[2] / "strategies"
+    for type_dir, pattern in (("python", "*.py"), ("pinescript", "*.pine"), ("mql5", "*.mq5")):
+        # other tests drop generated files (searchlab_*, stub.*, "(FULL PIPELINE)") into the real library; those are never defaults
+        on_disk = {p.name for p in (root / type_dir).glob(pattern)
+                   if not p.name.startswith(("searchlab_", "stub.")) and "FULL PIPELINE" not in p.name}
+        assert on_disk, f"no shipped {type_dir} strategies found"
+        assert set(dl.DEFAULT_STRATEGY_FILES[type_dir]) == on_disk
+
+
+def test_defaults_are_discovered_not_hardcoded(tmp_path):
+    from app.strategy import default_library as dl
+    for sub, name in (("python", "a.py"), ("pinescript", "b.pine"), ("mql5", "c.mq5"), ("mql5", "stub.mq5"),
+                      ("python", "a.py.meta.json"), ("python", "README.md")):
+        (tmp_path / sub).mkdir(exist_ok=True)
+        (tmp_path / sub / name).write_text("x", encoding="utf-8")
+    found = dl.discover_default_files(tmp_path)
+    assert found["python"] == ("a.py",) and found["pinescript"] == ("b.pine",) and found["mql5"] == ("c.mq5",)
+
+
+def test_reset_keeps_every_shipped_strategy_of_all_languages(monkeypatch, tmp_path):
+    from app.strategy import default_library as dl
+    lib = tmp_path / "strategies"
+    monkeypatch.setattr(dl, "_lib_dir", lambda: lib)
+    shipped = Path(__file__).resolve().parents[2] / "strategies"
+    for type_dir, names in dl.DEFAULT_STRATEGY_FILES.items():
+        (lib / type_dir).mkdir(parents=True)
+        for n in names:
+            shutil.copy2(shipped / type_dir / n, lib / type_dir / n)
+    (lib / "mql5" / "mine.mq5").write_text("// user", encoding="utf-8")
+    assert dl.reset_to_defaults(tmp_path / "bk") == 1                      # only the user's own file moves
+    for type_dir, names in dl.DEFAULT_STRATEGY_FILES.items():
+        assert {p.name for p in (lib / type_dir).iterdir()} == set(names)
 
 
 def test_master_key_fresh_start_runs_every_time(monkeypatch, tmp_path):

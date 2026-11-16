@@ -1,5 +1,5 @@
 """
-T58 Trading — Quant Algo Backtester (Web/Phone edition).
+T58 Quant Engine (Web/Phone edition).
 PyInstaller entry point.
 
 This file must stay *outside* the ``app`` package (it lives in launchers/) -- for the same reason ``run_app.py`` does (see that file's

@@ -9,7 +9,7 @@ must never prescribe lowering the 70% gate.
 import sys
 from types import SimpleNamespace
 
-sys.path.insert(0, "/home/hatch/workspace/t58v9-code/T58-QUANT-ALGO-BACKTESTER-main")
+sys.path.insert(0, "/home/hatch/workspace/t58v9-code/T58-QUANT-ENGINE-main")
 
 from app.funnel.recovery import (
     EVAL_PASS_GATE,

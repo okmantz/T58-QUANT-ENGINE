@@ -99,7 +99,12 @@ def test_order_book_invalid_json_shows_error(client):
     assert _get_error(body) is not None
 
 
-def test_regime_selector_post_with_upload(client):
+def test_regime_selector_post_with_upload(client, monkeypatch, tmp_path):
+    # The selector backtests EVERY saved strategy; point the library at an empty temp folder so this test only
+    # exercises its own strategy instead of running all the shipped (slow, interpreted) MQL5 / Pine / Python ones.
+    from app.strategy import library as _library
+    monkeypatch.setattr(_library, "get_app_base_dir", lambda: tmp_path)
+    _library._LIBRARY_SCAN_CACHE.update(key=None, rows=None)
     config = {
         "indicators": [{"type": "ema", "period": 10, "column": "close", "as": "ema_fast"},
                         {"type": "ema", "period": 40, "column": "close", "as": "ema_slow"}],
