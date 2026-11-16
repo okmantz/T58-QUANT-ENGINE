@@ -7,8 +7,10 @@ needs so the backtester knows how to place trades, exit, and set
 stop-loss/take-profit. This file below is about the *library* mechanics
 (save/load/export) rather than the file format itself.
 
-**What is in here:** the research candidates kept after the Oct-2026 audit (`python/NQ1! ...`). None has a proven edge;
-run them through the Full Pipeline before trusting any of them.
+**What is in here:** the built-in strategies that ship with the app -- Python (`python/`), Pine Script (`pinescript/`)
+and MQL5 / MT5 (`mql5/`). Every strategy file committed in these folders is preloaded into the Strategy Library the
+first time the app runs; just add the file here and it is included in the next build (no list to edit).
+None has a proven edge; run them through the Full Pipeline before trusting any of them.
 
 This folder is the app's built-in strategy library. Strategies saved here
 (from the desktop app's Strategy tab or the mobile web app) are available
