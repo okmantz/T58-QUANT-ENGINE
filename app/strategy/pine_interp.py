@@ -788,6 +788,8 @@ _CONSTS: dict[str, Any] = {
     "strategy.percent_of_equity": "pct", "strategy.direction.long": "long", "strategy.direction.short": "short",
     "strategy.direction.all": "all", "strategy.oca.none": "none", "strategy.oca.cancel": "cancel",
     "strategy.oca.reduce": "reduce",
+    "strategy.commission.percent": "percent", "strategy.commission.cash_per_contract": "cash_per_contract",
+    "strategy.commission.cash_per_order": "cash_per_order",
     "math.pi": math.pi, "math.e": math.e, "math.phi": 1.618033988749895, "math.rphi": 0.6180339887498949,
     "dayofweek.sunday": 1, "dayofweek.monday": 2, "dayofweek.tuesday": 3, "dayofweek.wednesday": 4,
     "dayofweek.thursday": 5, "dayofweek.friday": 6, "dayofweek.saturday": 7,
@@ -1080,6 +1082,37 @@ _reg("r", lambda rt, tf=None: _tf_seconds(tf), "timeframe.in_seconds")
 _reg("s", _timeframe_change, "timeframe.change")
 _reg("s", _time_fn, "time")
 _reg("p", _timestamp, "timestamp")
+
+
+def _date_part(part):
+    """Pine v5 calendar functions ``year(t)``, ``month(t)``, ``dayofmonth(t)``, ``dayofweek(t)`` (Sunday = 1), ``hour(t)``,
+    ``minute(t)``, ``second(t)``, ``weekofyear(t)`` applied to a UTC-millisecond timestamp (the second argument, a time zone, is
+    accepted and ignored: the interpreter's bar clock is already the exchange clock). Before this, a script that used them as
+    functions (e.g. ``year(time) * 12 + month(time)`` inside request.security) was rejected as unsupported."""
+    def fn(t=None, *_tz):
+        if t is None or t != t:
+            return NAN
+        ts = pd.Timestamp(int(t), unit="ms")
+        if part == "year":
+            return float(ts.year)
+        if part == "month":
+            return float(ts.month)
+        if part == "dayofmonth":
+            return float(ts.day)
+        if part == "dayofweek":
+            return float((ts.day_of_week + 1) % 7 + 1)
+        if part == "hour":
+            return float(ts.hour)
+        if part == "minute":
+            return float(ts.minute)
+        if part == "second":
+            return float(ts.second)
+        return float(ts.isocalendar()[1])
+    return fn
+
+
+for _part in ("year", "month", "dayofmonth", "dayofweek", "hour", "minute", "second", "weekofyear"):
+    _reg("p", _date_part(_part), _part)
 _reg("r", _strategy_entry, "strategy.entry", "strategy.order")
 _reg("r", _strategy_exit, "strategy.exit")
 _reg("r", _strategy_close, "strategy.close")

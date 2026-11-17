@@ -742,6 +742,7 @@ def run_quick_optimize(
     # preflight_signal_check backtest first, and the GA ran a third).
     log("Running baseline backtest...")
     _prog(0.01, "Baseline backtest")
+    from app.strategy.directives import effective_min_trades
     from app.validation.preflight import baseline_preflight, enforce_preflight, resolve_baseline_sizing
 
     sizing_notes: dict = {}
@@ -750,7 +751,7 @@ def run_quick_optimize(
             dev_df, strategy, risk, prop_rules,
             run_backtest_fn=run_backtest, adaptive_risk=adaptive_risk,
             symbol=instrument_label or None,
-            min_trades=getattr(cfg, "preflight_min_trades", 100), log=log,
+            min_trades=effective_min_trades(strategy, getattr(cfg, "preflight_min_trades", 100)), log=log,
         )
         warnings.extend(sizing_notes.get("warnings", []))
         if sizing_notes.get("rr_planned_converted"):
@@ -768,7 +769,7 @@ def run_quick_optimize(
         if _pf is None:
             _pf = baseline_preflight(baseline_bt, dev_df, risk, prop_rules,
                                      symbol=instrument_label or None,
-                                     min_trades=getattr(cfg, "preflight_min_trades", 100))
+                                     min_trades=effective_min_trades(strategy, getattr(cfg, "preflight_min_trades", 100)))
             log("  " + _pf.render().replace("\n", "\n  "))
         for _i in _pf.by_severity("warn"):
             warnings.append(_i.message)

@@ -155,6 +155,12 @@ class MQL5Strategy(Strategy):
 
     def generate(self, df: pd.DataFrame) -> StrategyResult:
         """Fast vectorized parser first for simple EAs; the full interpreter for anything it cannot follow."""
+        from app.strategy.ea_twins import run_twin, twin_name
+        if twin_name(self.code):
+            # Full MT5 EAs (CTrade, pending orders, helper functions) declare ``// T58_TWIN=<name>``: the engine runs the EA's
+            # vectorised twin, which reads the EA's own ``input`` lines (see app/strategy/ea_twins/_common.py for why).
+            self.engine_used = "twin"
+            return run_twin(self.code, df)
         from app.strategy.mql5_interp import MQL5Interpreter
         self.engine_used = "parser"
         overrides = getattr(self, "input_overrides", None)

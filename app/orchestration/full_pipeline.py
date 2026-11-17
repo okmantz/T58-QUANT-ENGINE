@@ -921,6 +921,21 @@ def _ruin_split_text(final_mc) -> str:
                if _fa else "No simulated account reached the funded stage."))
 
 
+def _la_frame(strategy, df):
+    """The frame the lookahead check should replay: the strategy's own execution-timeframe bars (what the engine really trades),
+    not the raw 1-minute file -- a Pine/MQL5 interpreter run over ~2M raw bars, nine times, never finishes."""
+    try:
+        from app.data.timeframe_resample import prepare_timeframe_aligned_data
+        return prepare_timeframe_aligned_data(df, strategy)[0]
+    except Exception:  # noqa: BLE001 -- fall back to the raw frame rather than skip the check
+        return df
+
+
+def _is_net_profit_objective(cfg) -> bool:
+    from app.prop.lifecycle import OBJECTIVE_NET_PROFIT, normalize_objective_mode
+    return normalize_objective_mode(getattr(cfg, "objective_mode", None)) == OBJECTIVE_NET_PROFIT
+
+
 def _make_verdict_core(
     final_mc: MonteCarloResult,
     oos_validation: WalkForwardResult | None,
@@ -2586,7 +2601,8 @@ def run_full_pipeline(
             sizing_remedy_candidates,
         )
 
-        _min_trades = getattr(cfg, "preflight_min_trades", 100)
+        from app.strategy.directives import effective_min_trades as _emt
+        _min_trades = _emt(strategy, getattr(cfg, "preflight_min_trades", 100))
         _pf = baseline_preflight(baseline_bt, dev_df, risk, prop_rules, symbol=instrument,
                                  min_trades=_min_trades)
         log("  " + _pf.render().replace("\n", "\n  "))
@@ -2750,7 +2766,7 @@ def run_full_pipeline(
     if strategy.source_type in ("manual", "python", "pinescript", "mql5"):
         try:
             from app.strategy.lookahead_check import check_for_lookahead
-            lookahead_result = check_for_lookahead(strategy, dev_df, max_signal_checkpoints=8)
+            lookahead_result = check_for_lookahead(strategy, _la_frame(strategy, dev_df), max_signal_checkpoints=8)
             lookahead_summary = lookahead_result.summary()
             lookahead_bug_detected = lookahead_result.bug_detected
             log(f"  Lookahead check: {lookahead_summary}")
@@ -3101,7 +3117,7 @@ def run_full_pipeline(
         if final_source_type in ("manual", "python", "pinescript", "mql5"):
             try:
                 from app.strategy.lookahead_check import check_for_lookahead
-                final_lookahead_result = check_for_lookahead(final_strategy, dev_df, max_signal_checkpoints=8)
+                final_lookahead_result = check_for_lookahead(final_strategy, _la_frame(final_strategy, dev_df), max_signal_checkpoints=8)
                 lookahead_summary = final_lookahead_result.summary()
                 lookahead_bug_detected = final_lookahead_result.bug_detected
                 lookahead_check_crashed = False
@@ -3644,7 +3660,8 @@ def run_full_pipeline(
             return _make_verdict(
                 final_mc, oos_validation, icir_gate,
                 statistics=final_bt.statistics, prop_rules=prop_rules,
-                risk_of_ruin_cap=cfg.risk_of_ruin_cap, parsimony=parsimony_result,
+                # net-profit mode buys no evaluation, so "share of purchased evaluation accounts that breached" is not a gate there
+                risk_of_ruin_cap=(100.0 if _is_net_profit_objective(cfg) else cfg.risk_of_ruin_cap), parsimony=parsimony_result,
                 cpcv_primary_result=cpcv_primary_result, cpcv_supporting_result=cpcv_supporting_result,
                 lookahead_bug_detected=lookahead_bug_detected,
                 min_trades_for_ready=cfg.min_trades_for_ready,

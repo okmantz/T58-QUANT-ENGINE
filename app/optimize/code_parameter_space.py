@@ -94,6 +94,16 @@ def _relative_bounds(value: float) -> tuple[float, float]:
     return value - span, value + span
 
 
+def _float_bounds(value: float) -> tuple[float, float]:
+    """Bounds for a float constant. A positive float (a buffer of 0.02, a width of 0.3 ATR, a 3R target) is
+    searched multiplicatively (0.4x-2.5x) so it can never cross zero or flip sign -- the old additive +/-1.0
+    span turned a 0.02 buffer into [-0.98, 1.02], and most random candidates then took no trades at all.
+    Zero or negative values keep the additive span."""
+    if value > 0:
+        return value * 0.4, value * 2.5
+    return _relative_bounds(value)
+
+
 # Some constant names have a real-world domain the generic multiplicative/
 # relative bounds heuristics above know nothing about -- most importantly
 # an hour-of-day, which is only ever meaningful in [0, 23]. Left unclamped,
@@ -129,7 +139,7 @@ def _clamp_bounds_for_known_domains(name: str, lo: float, hi: float) -> tuple[fl
 
 _PY_CONST_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)\s*(?:#.*)?$")
 # Names that, even if numeric, are never meaningful search parameters.
-_PY_EXCLUDED_NAMES = {"STRATEGY_NAME"}  # (str-valued in practice; excluded defensively)
+_PY_EXCLUDED_NAMES = {"STRATEGY_NAME", "WARMUP_BARS"}  # (str-valued in practice; excluded defensively)
 
 _PINE_INPUT_RE = re.compile(
     r"^\s*(?:var\s+)?(?:(?:int|float)\s+)?[A-Za-z_]\w*\s*=\s*input(?:\.(?:int|float))?\s*\(\s*(?:defval\s*=\s*)?(-?\d+(?:\.\d+)?)"
@@ -172,7 +182,7 @@ def discover_python_parameters(file_path: str | Path) -> list[CodeGene]:
             continue
         value = float(literal)
         is_int = "." not in literal
-        lo, hi = _multiplicative_bounds(value, is_int) if is_int else _relative_bounds(value)
+        lo, hi = _multiplicative_bounds(value, is_int) if is_int else _float_bounds(value)
         lo, hi = _clamp_bounds_for_known_domains(name, lo, hi)
         span = (m.start(2), m.end(2))
         genes.append(CodeGene(
@@ -192,7 +202,7 @@ def discover_pinescript_parameters(code: str) -> list[CodeGene]:
             literal = input_match.group(1)
             value = float(literal)
             is_int = ".int(" in line or (".float(" not in line and "." not in literal)
-            lo, hi = _multiplicative_bounds(value, True) if is_int else _relative_bounds(value)
+            lo, hi = _multiplicative_bounds(value, True) if is_int else _float_bounds(value)
             genes.append(CodeGene(
                 name=name, kind="pine_input", is_int=is_int, lo=lo, hi=hi,
                 base_value=value, label=f"{name} = input.{'int' if is_int else 'float'}(...) (line {i + 1})",
@@ -418,6 +428,9 @@ def discover_code_genes(strategy) -> list[CodeGene]:
         base = discover_pinescript_parameters(strategy.code)
         return base + _extra_pine_genes(strategy.code, base)
     if strategy.source_type == "mql5":
+        from app.strategy.ea_twins import twin_genes, twin_name
+        if twin_name(strategy.code):
+            return twin_genes(strategy.code)      # an EA with an engine twin searches only the twin's declared signal inputs
         base = discover_mql5_parameters(strategy.code)
         return base + _extra_mql5_genes(strategy.code, base)
     raise RefinementError(f"'{strategy.source_type}' is not a supported code strategy source type.")
