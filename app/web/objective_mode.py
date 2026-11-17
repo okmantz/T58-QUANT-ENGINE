@@ -13,6 +13,7 @@ from __future__ import annotations
 from flask import g, request
 from werkzeug.datastructures import ImmutableMultiDict
 
+from app.objectives import evolution_goal_preset
 from app.optimize.refinement import fitness_for_objective_mode
 from app.prop.lifecycle import DEFAULT_OBJECTIVE_MODE, OBJECTIVE_MODE_LABELS, OBJECTIVE_NET_PROFIT, normalize_objective_mode
 
@@ -32,12 +33,20 @@ def apply_objective_mode_to_form() -> None:
         mode = normalize_objective_mode(form.get("objective_mode"))
         g.objective_mode = mode
         if mode != OBJECTIVE_NET_PROFIT:
-            # Objective A / B / prop-net: fill the matching default fitness only when none was chosen explicitly.
-            if mode != DEFAULT_OBJECTIVE_MODE and not (form.get("fitness_metric") or "").strip():
+            # Objective A / B / prop-net: fill the matching default fitness only when none was chosen explicitly; the Evolution Lab's goal
+            # preset follows the objective too (a form still on "balanced" gets the preset for the chosen goal).
+            if mode != DEFAULT_OBJECTIVE_MODE:
                 rewritten = form.copy()
-                rewritten["fitness_metric"] = fitness_for_objective_mode(mode, None)
-                rewritten["objective_mode"] = mode
-                request.form = ImmutableMultiDict(rewritten)
+                changed = False
+                if not (form.get("fitness_metric") or "").strip():
+                    rewritten["fitness_metric"] = fitness_for_objective_mode(mode, None)
+                    changed = True
+                if "fitness_goal_preset" in form and (form.get("fitness_goal_preset") or "balanced") == "balanced":
+                    rewritten["fitness_goal_preset"] = evolution_goal_preset(mode)
+                    changed = True
+                if changed:
+                    rewritten["objective_mode"] = mode
+                    request.form = ImmutableMultiDict(rewritten)
             return
         rewritten = form.copy()
         rewritten["fitness_metric"] = fitness_for_objective_mode(mode, form.get("fitness_metric"))

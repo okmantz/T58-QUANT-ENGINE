@@ -10179,6 +10179,7 @@ def evolution_start():
 
         families_selected = form.getlist("families") or None
         cfg = EvolutionConfig(
+            objective_mode=_form_objective_mode(form),
             # v7 (2026-10-05, worker B, fix #10): 60 -> 200. At 60 the
             # immigrant floor filled the population before any elite
             # child was bred (n_children = 0); see EvolutionConfig's
@@ -10645,6 +10646,7 @@ def evolution_multi_instrument_start():
         rules = _prop_rules_from_search_evo_form(form)
         families_selected = form.getlist("families") or None
         base_cfg = EvolutionConfig(
+            objective_mode=_form_objective_mode(form),
             # v7 (2026-10-05, worker B, fix #10): 60 -> 200 (see above).
             population_size=int(form.get("population_size", 200) or 200),
             elite_keep=int(form.get("elite_keep", 10) or 10),
@@ -13961,6 +13963,7 @@ def speed_run_start():
             max_drawdown_pct=float(form.get("max_dd", 10)),
         ))
         cfg = SpeedRunConfig(
+            objective_mode=_form_objective_mode(form),
             max_candidates=int(form.get("max_candidates", 1200) or 1200),
             stage1_top_n=int(form.get("stage1_top_n", 24) or 24),
             ga_population=int(form.get("ga_population", 8) or 8),
@@ -14230,6 +14233,7 @@ def overnight_autopilot_start():
             max_drawdown_pct=float(form.get("max_dd", 10)),
         ))
         speed_run_cfg = SpeedRunConfig(
+            objective_mode=_form_objective_mode(form),
             max_candidates=int(form.get("max_candidates", 1200) or 1200),
             stage1_top_n=int(form.get("stage1_top_n", 24) or 24),
             ga_population=int(form.get("ga_population", 8) or 8),
@@ -14447,6 +14451,7 @@ def speed_run_multi_instrument_start():
             max_drawdown_pct=float(form.get("max_dd", 10) or 10),
         ))
         cfg = SpeedRunConfig(
+            objective_mode=_form_objective_mode(form),
             max_candidates=int(form.get("max_candidates", 1200) or 1200),
             stage1_top_n=int(form.get("stage1_top_n", 24) or 24),
             ga_population=int(form.get("ga_population", 8) or 8),

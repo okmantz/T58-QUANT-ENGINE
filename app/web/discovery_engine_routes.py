@@ -89,13 +89,10 @@ def engine_status() -> dict:
 
 
 def _engine_objective_mode(raw) -> str:
-    """Discovery-engine objective: "net_profit" (live account), "pass" (A), "payout" / "prop_net" (B, adds the payout_lifecycle gate), else "prop"."""
-    from app.prop.lifecycle import normalize_objective_mode
-    m = (raw or "").strip().lower()
-    if m in ("net_profit", "net", "live"):
-        return "net_profit"
-    mode = normalize_objective_mode(m) if m else "prop_lifecycle"
-    return {"pass": "pass", "payout": "payout", "prop_net": "prop_net"}.get(mode, "prop")
+    """Discovery-engine objective: "pass" (A), "payout" (B, adds the payout_lifecycle gate), "net_profit" (live account), else "prop" (legacy blend)."""
+    from app.objectives import engine_mode
+    return engine_mode((raw or "").strip())
+
 
 @discovery_engine_bp.route("/api/discovery-engine/status")
 def status_json():

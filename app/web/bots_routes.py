@@ -11,7 +11,7 @@ import uuid
 
 from flask import Blueprint, jsonify, render_template, request, session
 
-from app.bots import runner, store
+from app.bots import builder, runner, store
 from app.bots.metrics import compute_metrics
 from app.bots.models import DEMO_ACCOUNT_ID, OBJECTIVE_NAMES, AccountLink, BotConfig
 from app.bots.risk_governor import GovernorConfig
@@ -238,3 +238,67 @@ def api_delete(bot_id):
 @bots_bp.route("/trading-bots/api/kill", methods=["POST"])
 def api_kill():
     return jsonify({"ok": True, "stopped": runner.kill_all()})
+
+
+# ---------------------------------------------------------------------------------------------------------------- bot builder
+@bots_bp.route("/trading-bots/api/builder")
+def api_builder():
+    """Everything the New-bot wizard needs in one call: strategies, goals, risk styles, advanced fields, rule sets, defaults per goal."""
+    from app.objectives import OBJECTIVES, SPECS
+    goals = [{"key": k, "name": SPECS[k].name, "question": SPECS[k].question, "rewards": SPECS[k].what_it_rewards,
+              "punishes": SPECS[k].what_it_punishes, "uses_prop_rules": SPECS[k].uses_prop_rules} for k in OBJECTIVES]
+    defaults = {k: {st: builder.style_governor(k, st).to_dict() for st in builder.RISK_STYLES} for k in OBJECTIVES}
+    return jsonify({"ok": True, "strategies": builder.strategy_catalog(), "goals": goals, "styles": builder.RISK_STYLES,
+                    "style_labels": builder.STYLE_LABELS, "fields": builder.GOVERNOR_FIELDS, "defaults": defaults,
+                    "rule_sets": builder.prop_rule_sets(), "instruments": builder.INSTRUMENTS, "max_legs": builder.MAX_LEGS})
+
+
+@bots_bp.route("/trading-bots/api/builder/preview", methods=["POST"])
+def api_builder_preview():
+    """Validate a wizard payload and return the plain-words summary without saving anything."""
+    body = request.get_json(silent=True) or {}
+    existing = None
+    if body.get("bot_id"):
+        rec = store.get_bot(str(body["bot_id"]))
+        existing = BotConfig.from_dict(rec["config"]) if rec else None
+    cfg, errors, warnings = builder.build_config(body, existing=existing)
+    out = {"ok": not errors, "errors": errors, "warnings": warnings}
+    if cfg is not None:
+        out["summary"] = builder.describe(cfg)
+        out["governor"] = cfg.governor
+    return jsonify(out), (200 if not errors else 400)
+
+
+@bots_bp.route("/trading-bots/api/bots/create", methods=["POST"])
+def api_create_bot():
+    body = request.get_json(silent=True) or {}
+    cfg, errors, warnings = builder.build_config(body)
+    if cfg is None:
+        return jsonify({"ok": False, "error": errors[0], "errors": errors, "warnings": warnings}), 400
+    rec = store.create_bot(cfg)
+    return jsonify({"ok": True, "warnings": warnings, "bot": _public(rec, full=True)})
+
+
+@bots_bp.route("/trading-bots/api/bot/<bot_id>/update", methods=["POST"])
+def api_update_bot(bot_id):
+    """Full edit with the same form as the wizard (name, goal, strategies, risk, limits, account)."""
+    rec = store.get_bot(bot_id)
+    if rec is None:
+        return jsonify({"ok": False, "error": "Unknown bot."}), 404
+    if runner.is_running(bot_id):
+        return jsonify({"ok": False, "error": "Stop the bot before changing its settings."}), 409
+    body = request.get_json(silent=True) or {}
+    cfg, errors, warnings = builder.build_config(body, existing=BotConfig.from_dict(rec["config"]))
+    if cfg is None:
+        return jsonify({"ok": False, "error": errors[0], "errors": errors, "warnings": warnings}), 400
+    store.update_bot(bot_id, lambda r: r.__setitem__("config", cfg.to_dict()))
+    return jsonify({"ok": True, "warnings": warnings, "bot": _public(store.get_bot(bot_id), full=True)})
+
+
+@bots_bp.route("/trading-bots/api/strategies/add", methods=["POST"])
+def api_add_strategy():
+    body = request.get_json(silent=True) or {}
+    row, err = builder.add_strategy(body.get("filename", ""), body.get("code", ""), body.get("type", ""))
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    return jsonify({"ok": True, "strategy": row})
