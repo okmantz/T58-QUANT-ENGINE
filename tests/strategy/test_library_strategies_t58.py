@@ -23,12 +23,14 @@ def _load(path):
     return m
 
 
+@pytest.mark.skipif(not GAD.exists(), reason="Gap Aligned Drive is no longer shipped in strategies/python (removed in the library audit)")
 def test_gad_session_grid_constants_are_not_tunable():
     names = {g.name for g in discover_python_parameters(GAD)}
     assert "FLAT_MIN" not in names and "SESSION_MIN" not in names      # a GA moving these crashed the day grid (index out of bounds)
     assert {"STOP_FRAC", "REWARD_MULT", "ATR_DAYS"} <= names           # real parameters stay searchable
 
 
+@pytest.mark.skipif(not GAD.exists(), reason="Gap Aligned Drive is no longer shipped in strategies/python (removed in the library audit)")
 def test_gad_flat_slot_is_clamped():
     src = GAD.read_text()
     assert "flat_slot = min(int(FLAT_MIN), S - 1)" in src
