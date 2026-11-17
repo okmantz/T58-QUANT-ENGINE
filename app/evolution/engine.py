@@ -651,6 +651,10 @@ class EvolutionConfig:
     # docstring for exactly what each weight does.
     fitness_goal: "dict | str | None" = "balanced"
 
+    # The run's goal: "A"/"pass", "B"/"payout", "NET"/"net_profit" (app.objectives). When fitness_goal is still the default "balanced",
+    # the goal picks the matching preset (A -> eval_pass_rate, B -> first_payout, NET -> net_profit); an explicit fitness_goal always wins.
+    objective_mode: str = "prop_lifecycle"
+
     # Same limit-aware risk-throttle preset as Full Pipeline / Quick
     # Optimize (see app.backtest.adaptive_risk.build_limit_aware_preset)
     # -- off by default. When enabled, every candidate's pre-filter
@@ -767,6 +771,9 @@ class EvolutionConfig:
     mandatory_promotion_on_stop: bool = True # loop-mode stop => deflated test -> null gate -> pooled test -> sealed slice, or the run fails
 
     def __post_init__(self):
+        from app.objectives import evolution_goal_preset, is_objective
+        if is_objective(self.objective_mode) and (self.fitness_goal in (None, "balanced")):
+            self.fitness_goal = evolution_goal_preset(self.objective_mode)
         if self.objective not in ("edge_lb_r", "eval_pass_probability"):
             raise ValueError(f"Unknown objective '{self.objective}'. Supported: edge_lb_r, eval_pass_probability.")
         # FIX (2026-09-22): fail fast, at config construction, on an
