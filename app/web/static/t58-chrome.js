@@ -149,7 +149,7 @@
     { name: "Validate", href: "/validate-simple", paths: ["/validate-simple", "/validate", "/walk-forward-opt", "/walk-forward-ga", "/cpcv", "/pbo", "/sensitivity", "/parameter-robustness", "/regime-matrix"] },
     { name: "Champion", href: "/champion-simple", paths: ["/champion-simple", "/portfolio", "/ensemble", "/family-diversity", "/universe", "/compare"] },
     { name: "Forward Test", href: "/forward-test", paths: ["/forward-test", "/replay"] },
-    { name: "Deploy", href: "/deploy-live", paths: ["/deploy-live", "/webhook-relay"] },
+    { name: "Deploy", href: "/deploy-live", paths: ["/deploy-live", "/trading-bots", "/webhook-relay"] },
     { name: "Monitor", href: "/live-market", paths: ["/live-market"] }
   ];
 

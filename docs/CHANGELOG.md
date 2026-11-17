@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-16 - Trading Bots (Deploy section)
+- **Trading Bots page** (`/trading-bots`, `app/web/bots_routes.py`, `trading_bots.html`): three preloaded bots calibrated from the Game Plan (Evaluation Passer = Objective A, Payout Hunter = Objective B, Net Profit Compounder = net profit). Default venue is the T58 demo account; one dropdown switches to a paper sandbox or a connected prop-firm/broker account (broker start needs the live-deploy unlock and the typed phrase).
+- **Bot engine** (`app/bots/`): risk governor sizes every trade from account size, rules, P&L, drawdown, progress and day state; engine with level-signal entry semantics matching the backtest; simulation replay of the bundled 1m history or a live feed; full trade log, equity curve, per-strategy breakdown and plain-words "why trading / not trading".
+- **Research** (`docs/T58_BOT_RESEARCH.md`, `scripts/bundle_research.py`): 162 bundles and 228 Open Drive variants tested; recovered Gap Aligned Drive and Liquidity Sweep Reclaim into `strategies/python/`.
+- **Tests**: `tests/bots/`.
+
 ## 2026-11-15 - renamed to T58 Quant Engine; every shipped strategy is preloaded
 - **Rename**: the app, window titles, web/PWA name, reports, launchers, build artefacts (`T58-Quant-Engine`), docs and the README / social / logo images now say **T58 Quant Engine** instead of "T58 Quant Algo Backtester". The per-user data folder is now `T58 Quant Engine`; an existing `T58 Prop Algo Backtester` folder is renamed in place on first launch so no data is lost. The internal OS-keychain service id (`T58PropAlgoBacktester`) is intentionally unchanged so saved licence / API keys keep working.
 - **Strategy preload fix**: `app/strategy/default_library.py` listed only four Python files, so on first sign-in every other shipped strategy (all MQL5 and Pine Script ones, and the other Python ones) was moved to a backup folder. The default list is now discovered from the shipped `strategies/` folder (the bundle in a packaged build), so every `.py` / `.pine` / `.mq5` file committed there is preloaded for every new user, with no list to maintain.

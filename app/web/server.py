@@ -1158,6 +1158,9 @@ from app.web.library_detail_routes import library_detail_bp  # noqa: E402
 app.register_blueprint(library_detail_bp)
 from app.web.vault_routes import vault_bp  # noqa: E402
 app.register_blueprint(vault_bp)
+# Trading Bots (Deploy section): three calibrated bots + custom ones -- see app/web/bots_routes.py.
+from app.web.bots_routes import bots_bp  # noqa: E402
+app.register_blueprint(bots_bp)
 # TradingView webhook relay (Pine strategy alert -> T58 paper forward test,
 # optionally mirrored to a demo broker) -- see app/web/webhook_relay_routes.py.
 app.register_blueprint(webhook_relay_bp)

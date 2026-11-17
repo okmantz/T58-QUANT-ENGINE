@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Trading Bots — T58 Quant Engine</title>
+{% include '_head_common.html' %}
+{% include '_lifecycle_css.html' %}
+<style>
+  .tb-top{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:6px 0 16px}
+  .tb-pill{display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid var(--lc-border)}
+  .tb-dot{width:8px; height:8px; border-radius:50%; background:#6b7385} .tb-dot.running{background:#3ed685; box-shadow:0 0 8px #3ed685} .tb-dot.halted{background:#f0596a} .tb-dot.complete{background:#7aa2ff}
+  .tb-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px}
+  .tb-card{border:1px solid var(--lc-border); border-radius:16px; padding:16px; cursor:pointer; transition:transform .15s,border-color .15s; background:var(--lc-card,transparent)}
+  .tb-card:hover{transform:translateY(-2px); border-color:var(--lc-acc)} .tb-card.sel{border-color:var(--lc-acc); box-shadow:0 0 0 1px var(--lc-acc)}
+  .tb-obj{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--lc-muted); font-weight:700}
+  .tb-name{font-size:19px; font-weight:700; margin:2px 0} .tb-tag{font-size:13px; color:var(--lc-muted); min-height:34px}
+  .tb-big{font-size:26px; font-weight:700; font-variant-numeric:tabular-nums} .up{color:#3ed685} .down{color:#f0596a}
+  .tb-mini{display:flex; gap:16px; margin-top:8px; font-size:12px; color:var(--lc-muted)} .tb-mini b{display:block; color:inherit; font-size:14px; font-variant-numeric:tabular-nums}
+  svg.tb-spark{width:100%; height:46px; margin-top:8px}
+  .tb-panel{border:1px solid var(--lc-border); border-radius:16px; padding:18px; margin-top:18px}
+  .tb-stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin:12px 0}
+  .tb-stat{border:1px solid var(--lc-border); border-radius:12px; padding:9px 12px} .tb-stat small{display:block; font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--lc-muted)} .tb-stat b{font-size:18px; font-variant-numeric:tabular-nums}
+  .tb-bar{height:9px; background:var(--lc-border); border-radius:5px; overflow:hidden} .tb-bar>i{display:block; height:100%; background:var(--lc-acc); transition:width .4s}
+  .tb-why{background:var(--lc-border); border-radius:10px; padding:10px 12px; font-size:13px; margin:10px 0}
+  .tb-row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:10px 0}
+  .tb-btn{border:1px solid var(--lc-border); background:transparent; color:inherit; padding:9px 16px; border-radius:10px; font-weight:600; cursor:pointer; font-size:13px}
+  .tb-btn.go{background:var(--lc-acc); color:#04120c; border-color:var(--lc-acc)} .tb-btn.stop{border-color:#f0596a; color:#f0596a} .tb-btn:disabled{opacity:.45; cursor:default}
+  .tb-sel,.tb-in{background:transparent; color:inherit; border:1px solid var(--lc-border); border-radius:8px; padding:8px 10px; font-size:13px}
+  table.tb{width:100%; border-collapse:collapse; font-size:12.5px} table.tb th{font-size:10.5px; text-transform:uppercase; text-align:left; color:var(--lc-muted); padding:6px 8px; border-bottom:1px solid var(--lc-border2,var(--lc-border)); position:sticky; top:0; background:var(--lc-bg,#0f1218)}
+  table.tb td{padding:6px 8px; border-bottom:1px solid var(--lc-border); font-variant-numeric:tabular-nums} .r{text-align:right}
+  .tb-scroll{max-height:380px; overflow:auto; border:1px solid var(--lc-border); border-radius:10px}
+  .tb-tabs{display:flex; gap:4px; margin:18px 0 8px; border-bottom:1px solid var(--lc-border)} .tb-tab{padding:8px 14px; cursor:pointer; font-weight:600; font-size:13px; color:var(--lc-muted); border-bottom:2px solid transparent} .tb-tab.on{color:inherit; border-color:var(--lc-acc)}
+  .tb-field{display:grid; grid-template-columns:200px 1fr; gap:8px; align-items:center; margin:8px 0; font-size:13px} @media(max-width:640px){.tb-field{grid-template-columns:1fr}}
+  .tb-note{font-size:12px; color:var(--lc-muted); margin-top:4px} .tb-warn{border:1px solid #d9a441; background:rgba(217,164,65,.1); border-radius:10px; padding:10px 12px; font-size:12.5px; margin:10px 0}
+  #tb-toast{position:fixed; bottom:20px; right:20px; background:#1b2230; color:#e6ebf5; padding:10px 16px; border-radius:10px; display:none; z-index:50; font-size:13px; max-width:360px}
+</style>
+</head>
+<body>
+{% set active_page = 'trading_bots' %}
+<div class="t58-shell">
+{% include '_sidebar.html' %}
+<div class="t58-main">
+<div class="lc-scope"><div class="lc-wrap">
+<div class="lc-crumb">Deploy · <b>Trading Bots</b></div>
+<h1 class="lc-title">Trading Bots</h1>
+<p class="lc-sub">Three bots, each tuned for one goal. They size every trade from your account size, rules, P&amp;L, drawdown and progress, and tell you in plain words why they are (or are not) trading. They start on the <b>T58 demo account</b>; switching to a prop firm or live account is one step in Settings.</p>
+{% if mode != 'demo' %}<div class="lc-notice bad">You are in <b>Live</b> mode. Bots on the demo account still run as simulations; broker accounts need the live-deploy unlock.</div>{% endif %}
+<div class="tb-top">
+  <span class="tb-pill">Demo account: ${{ '{:,.0f}'.format(demo.balance) }} · {{ demo.status }}</span>
+  <button class="tb-btn stop" id="tb-kill" type="button">Stop all bots</button>
+  <span class="lc-muted" style="font-size:12px">Backtests and simulations are not promises: results are from past data with a small effective sample.</span>
+</div>
+
+<div class="tb-grid" id="tb-cards"><div class="lc-muted">Loading bots…</div></div>
+
+<div id="tb-detail" class="tb-panel" hidden>
+  <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap">
+    <div><div class="tb-obj" id="d-obj"></div><div class="tb-name" id="d-name"></div><div class="tb-tag" id="d-desc" style="min-height:0"></div></div>
+    <div><span class="tb-pill"><span class="tb-dot" id="d-dot"></span><span id="d-status"></span></span></div>
+  </div>
+  <div class="tb-why" id="d-why"></div>
+  <div class="tb-row">
+    <button class="tb-btn go" id="b-start" type="button">Start</button>
+    <button class="tb-btn stop" id="b-stop" type="button">Stop</button>
+    <button class="tb-btn" id="b-reset" type="button">Reset run</button>
+    <span id="sim-opts" class="tb-row" style="margin:0">
+      <label class="lc-muted" style="font-size:12px">Replay last</label>
+      <select class="tb-sel" id="o-months">{% for m in sim_months %}<option value="{{ m }}" {{ 'selected' if m == 3 }}>{{ m }} month{{ 's' if m != 1 }}</option>{% endfor %}</select>
+      <select class="tb-sel" id="o-speed"><option value="instant">Instant</option><option value="fast" selected>Fast</option><option value="watch">Watch live</option></select>
+    </span>
+  </div>
+  <div class="tb-stats" id="d-stats"></div>
+  <div id="d-progress"></div>
+  <svg id="d-eq" viewBox="0 0 800 160" preserveAspectRatio="none" style="width:100%; height:170px; margin-top:6px"></svg>
+
+  <div class="tb-tabs"><div class="tb-tab on" data-t="trades">Trades</div><div class="tb-tab" data-t="legs">Strategies</div><div class="tb-tab" data-t="log">Activity</div><div class="tb-tab" data-t="settings">Settings &amp; account</div></div>
+  <div id="t-trades"><div class="tb-scroll"><table class="tb"><thead><tr><th>Closed</th><th>Strategy</th><th>Side</th><th class="r">Qty</th><th class="r">Entry</th><th class="r">Exit</th><th class="r">P&amp;L</th><th class="r">R</th><th>Exit</th></tr></thead><tbody id="d-trades"></tbody></table></div></div>
+  <div id="t-legs" hidden><table class="tb"><thead><tr><th>Strategy</th><th class="r">Trades</th><th class="r">Win %</th><th class="r">P&amp;L</th></tr></thead><tbody id="d-legs"></tbody></table><div class="tb-note" id="d-legnote"></div></div>
+  <div id="t-log" hidden><div class="tb-scroll"><table class="tb"><tbody id="d-events"></tbody></table></div></div>
+  <div id="t-settings" hidden>
+    <div class="tb-field"><label>Name</label><input class="tb-in" id="s-name"></div>
+    <div class="tb-field"><label>Where it trades</label><select class="tb-sel" id="s-acct"></select></div>
+    <div class="tb-field" id="s-size-row"><label>Account size ($)</label><input class="tb-in" id="s-size" type="number" min="1000" step="1000"></div>
+    <div class="tb-field"><label>Risk per trade (% of account)</label><input class="tb-in" id="s-risk" type="number" step="0.05" min="0.05" max="3"><span class="tb-note">The bot scales this up or down on its own with progress, cushion and drawdown.</span></div>
+    <div class="tb-field"><label>Daily stop (share of the daily limit)</label><input class="tb-in" id="s-day" type="number" step="0.05" min="0.05" max="1"></div>
+    <div class="tb-field" id="s-cush-row"><label>Max risk as share of cushion</label><input class="tb-in" id="s-cush" type="number" step="0.05" min="0.05" max="1"></div>
+    <div class="tb-field"><label>Max trades per day</label><input class="tb-in" id="s-mtd" type="number" min="1" max="50"></div>
+    <div class="tb-row"><button class="tb-btn go" id="s-save" type="button">Save settings</button><button class="tb-btn" id="s-defaults" type="button">Restore shipped defaults</button><button class="tb-btn" id="s-dup" type="button">Duplicate as custom bot</button><button class="tb-btn stop" id="s-del" type="button">Delete</button></div>
+    <div id="s-live" class="tb-warn" hidden>This bot is pointed at a real broker account and will place real orders. Starting asks for the live-deploy unlock and the phrase <b>DEPLOY LIVE</b>. The calibration is research-grade: start on the demo account first.</div>
+    <details style="margin-top:14px"><summary style="cursor:pointer; font-weight:600">Connect a prop-firm or live account</summary>
+      <p class="tb-note">Add the account once, then pick it in “Where it trades”.</p>
+      {% include '_deploy_connect_panel.html' %}
+    </details>
+  </div>
+</div>
+<div id="tb-toast"></div>
+</div></div></div></div>
+<script>
+(function(){
+  var CSRF = "{{ csrf_token() }}", cur = null, timer = null, accounts = [];
+  function $(i){return document.getElementById(i)}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function money(v,sign){ if(v==null) return '–'; var s=Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); return (v<0?'-':(sign&&v>0?'+':''))+'$'+s }
+  function cls(v){return v>0?'up':(v<0?'down':'')}
+  function toast(m){var t=$('tb-toast'); t.textContent=m; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(function(){t.style.display='none'},4200)}
+  function api(path,body){
+    var o=body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify(body||{})};
+    return fetch('/trading-bots/api/'+path,o).then(function(r){return r.json().catch(function(){return {ok:false,error:'Unexpected response'}})});
+  }
+  function spark(eq, w, h){
+    if(!eq||eq.length<2) return '';
+    var mn=Math.min.apply(null,eq), mx=Math.max.apply(null,eq), rg=(mx-mn)||1, n=eq.length, pts=[];
+    for(var i=0;i<n;i++) pts.push((i/(n-1)*w).toFixed(1)+','+(h-2-(eq[i]-mn)/rg*(h-4)).toFixed(1));
+    var up=eq[n-1]>=eq[0];
+    return '<polyline fill="none" stroke="'+(up?'#3ed685':'#f0596a')+'" stroke-width="2" points="'+pts.join(' ')+'"/>';
+  }
+  function statusLabel(b){var s=b.runtime.status; return b.running?'Running':(s==='halted'?'Halted':s==='complete'?'Complete':s==='paused'?'Paused':'Stopped')}
+  function renderCards(list){
+    $('tb-cards').innerHTML=list.map(function(b){
+      var m=b.metrics, rt=b.runtime, st=b.running?'running':rt.status, c=b.config;
+      return '<div class="tb-card'+(cur===c.id?' sel':'')+'" data-id="'+esc(c.id)+'">'+
+        '<div style="display:flex;justify-content:space-between"><span class="tb-obj">'+esc(b.objective_name)+'</span><span class="tb-pill"><span class="tb-dot '+st+'"></span>'+esc(statusLabel(b))+'</span></div>'+
+        '<div class="tb-name">'+esc(c.name)+'</div><div class="tb-tag">'+esc(c.tagline||'')+'</div>'+
+        '<div class="tb-big '+cls(m.net_pnl)+'">'+money(m.net_pnl,true)+'</div>'+
+        '<svg class="tb-spark" viewBox="0 0 300 46" preserveAspectRatio="none">'+spark(m.equity,300,46)+'</svg>'+
+        '<div class="tb-mini"><span><b>'+m.trades+'</b>trades</span><span><b>'+(m.win_rate==null?'–':m.win_rate+'%')+'</b>win rate</span><span><b>'+(m.profit_factor==null?'–':m.profit_factor)+'</b>profit factor</span><span><b>'+money(m.max_drawdown)+'</b>max DD</span></div></div>';
+    }).join('');
+    [].forEach.call(document.querySelectorAll('.tb-card'),function(el){el.onclick=function(){select(el.getAttribute('data-id'))}});
+  }
+  function loadList(){return api('bots').then(function(r){if(r.ok){renderCards(r.bots); if(!cur&&r.bots.length) select(r.bots[0].config.id)}})}
+  function select(id){cur=id; return refresh(true)}
+  function refresh(fill){
+    if(!cur) return;
+    return api('bot/'+cur).then(function(r){ if(!r.ok) return; draw(r.bot, fill); });
+  }
+  function draw(b, fill){
+    var c=b.config, rt=b.runtime, m=b.metrics, S=rt.state||{};
+    $('tb-detail').hidden=false;
+    $('d-obj').textContent=b.objective_name; $('d-name').textContent=c.name; $('d-desc').textContent=c.description||'';
+    var st=b.running?'running':rt.status; $('d-dot').className='tb-dot '+st; $('d-status').textContent=statusLabel(b);
+    var why=(rt.halted_reason||'')||rt.next_decision||rt.message||''; $('d-why').innerHTML='<b>Right now:</b> '+esc(why)+(rt.last_bar_time?' <span class="lc-muted">· last bar '+esc(String(rt.last_bar_time).slice(0,16).replace('T',' '))+' UTC</span>':'');
+    $('b-start').disabled=b.running||rt.status==='halted'||rt.status==='complete'; $('b-start').textContent=rt.replay_cursor&&!b.running?'Resume':(c.account.venue==='broker'?'Start live':'Start');
+    $('b-stop').disabled=!b.running; $('sim-opts').style.display=c.account.venue==='broker'?'none':'flex';
+    var stats=[['Net P&L',money(m.net_pnl,true),cls(m.net_pnl)],['Balance',S.balance!=null?money(S.balance):'–',''],['Today',money(S.day_pnl,true),cls(S.day_pnl)],['Loss floor',S.floor!=null?money(S.floor):'–',''],['Cushion',S.cushion!=null?money(S.cushion):'–',''],
+      ['Trades',m.trades,''],['Win rate',m.win_rate==null?'–':m.win_rate+'%',''],['Profit factor',m.profit_factor==null?'–':m.profit_factor,''],['Avg win',money(m.avg_win),'up'],['Avg loss',money(m.avg_loss),'down'],
+      ['Expectancy',money(m.expectancy,true),cls(m.expectancy)],['Max drawdown',money(m.max_drawdown),''],['Best day',money(m.best_day,true),'up'],['Worst day',money(m.worst_day,true),'down'],['Streak W / L',m.max_win_streak+' / '+m.max_loss_streak,''],['Passes · payouts',(rt.passes||0)+' · '+money(rt.payouts||0),'']];
+    $('d-stats').innerHTML=stats.map(function(s){return '<div class="tb-stat"><small>'+s[0]+'</small><b class="'+s[2]+'">'+s[1]+'</b></div>'}).join('');
+    var pr=S.progress!=null?Math.max(0,Math.min(100,S.progress*100)):0, tgt=S.phase==='funded'?'payout goal':'profit target';
+    $('d-progress').innerHTML='<small class="lc-muted">Progress to the '+tgt+': '+pr.toFixed(0)+'% · phase: '+esc(S.phase||'evaluation')+'</small><div class="tb-bar"><i style="width:'+pr+'%"></i></div>';
+    var eq=m.equity||[]; $('d-eq').innerHTML=eq.length>1?(function(){var mn=Math.min.apply(null,eq),mx=Math.max.apply(null,eq),rg=(mx-mn)||1,p=[];eq.forEach(function(v,i){p.push((i/(eq.length-1)*800).toFixed(1)+','+(150-(v-mn)/rg*140).toFixed(1)})});return '<polyline fill="none" stroke="'+(eq[eq.length-1]>=eq[0]?'#3ed685':'#f0596a')+'" stroke-width="2" points="'+p.join(' ')+'"/>'})():'<text x="10" y="80" fill="#8a93a6" font-size="14">The equity curve appears after the first trade.</text>';
+    $('d-trades').innerHTML=(b.trades||[]).map(function(t){return '<tr><td>'+esc(String(t.exit_time||'').slice(0,16).replace('T',' '))+'</td><td>'+esc(t.leg)+'</td><td>'+esc(t.side)+'</td><td class="r">'+t.qty+' '+esc(t.kind||'')+'</td><td class="r">'+t.entry+'</td><td class="r">'+t.exit+'</td><td class="r '+cls(t.pnl)+'">'+money(t.pnl,true)+'</td><td class="r">'+(t.r_multiple==null?'–':t.r_multiple)+'</td><td>'+esc(t.reason||t.exit_reason||'')+'</td></tr>'}).join('')||'<tr><td colspan="9" class="lc-muted">No trades yet. Press Start.</td></tr>';
+    $('d-legs').innerHTML=(c.legs||[]).map(function(l){var x=(m.by_leg||[]).filter(function(y){return y.leg===l.label})[0]||{trades:0,pnl:0,win_rate:null};return '<tr><td><b>'+esc(l.label)+'</b><div class="lc-muted">'+esc(l.note||'')+'</div></td><td class="r">'+x.trades+'</td><td class="r">'+(x.win_rate==null?'–':x.win_rate+'%')+'</td><td class="r '+cls(x.pnl)+'">'+money(x.pnl,true)+'</td></tr>'}).join('');
+    $('d-legnote').textContent=(c.legs||[]).some(function(l){return l.lookback_days>=400})?'Context Drive needs about 500 days of history, so it runs in simulation but not on a short live feed.':'';
+    $('d-events').innerHTML=(b.events||[]).map(function(e){return '<tr><td style="white-space:nowrap">'+esc(String(e.t).slice(0,16).replace('T',' '))+'</td><td>'+esc(e.kind)+'</td><td>'+esc(e.text)+'</td></tr>'}).join('')||'<tr><td class="lc-muted">Nothing yet.</td></tr>';
+    if(fill||!$('s-name')._dirty){ fillSettings(c); }
+    [].forEach.call(document.querySelectorAll('.tb-card'),function(el){el.classList.toggle('sel',el.getAttribute('data-id')===cur)});
+    $('s-del').style.display=c.preset_key?'none':'inline-block';
+    $('s-live').hidden=c.account.venue!=='broker';
+    $('s-cush-row').style.display=c.objective==='NET'&&false?'none':'grid';
+  }
+  function fillSettings(c){
+    var g=c.governor||{}; $('s-name').value=c.name; $('s-risk').value=g.base_risk_pct; $('s-day').value=g.day_stop_frac; $('s-cush').value=g.cushion_risk_frac==null?'':g.cushion_risk_frac; $('s-mtd').value=c.max_trades_per_day; $('s-size').value=c.account.size;
+    var sel=$('s-acct'); sel.innerHTML=accounts.map(function(a){return '<option value="'+esc(a.id)+'" data-kind="'+a.kind+'">'+esc(a.name)+(a.kind==='demo'?' (default)':' · '+esc(a.platform||'broker'))+'</option>'}).join('')+'<option value="__paper" data-kind="paper">Paper sandbox (no rules)</option>';
+    sel.value=c.account.venue==='paper'?'__paper':c.account.account_id;
+    $('s-size-row').style.display=c.account.venue==='broker'?'none':'grid';
+  }
+  function acctPayload(){var o=$('s-acct').options[$('s-acct').selectedIndex], k=o?o.getAttribute('data-kind'):'demo';
+    return {venue:k==='broker'?'broker':(k==='paper'?'paper':'demo'), account_id:k==='broker'?o.value:undefined, size:parseFloat($('s-size').value)||undefined, preset_key:k==='paper'?'':'lucid_50k'} }
+  function save(extra){
+    var body={name:$('s-name').value, base_risk_pct:$('s-risk').value, day_stop_frac:$('s-day').value, cushion_risk_frac:$('s-cush').value, max_trades_per_day:$('s-mtd').value, account:acctPayload()};
+    return api('bot/'+cur+'/settings',body).then(function(r){toast(r.ok?'Saved.':(r.error||'Could not save.')); if(r.ok){draw(r.bot,true); loadList()} return r});
+  }
+  $('s-save').onclick=function(){save()};
+  $('s-acct').onchange=function(){$('s-size-row').style.display=acctPayload().venue==='broker'?'none':'grid'};
+  $('s-defaults').onclick=function(){api('bot/'+cur+'/reset',{restore_defaults:true}).then(function(r){toast(r.ok?'Restored shipped settings (run cleared).':r.error); if(r.ok){draw(r.bot,true);loadList()}})};
+  $('s-dup').onclick=function(){api('bot/'+cur+'/duplicate',{}).then(function(r){toast(r.ok?'Duplicated.':r.error); loadList()})};
+  $('s-del').onclick=function(){if(!confirm('Delete this bot?'))return; api('bot/'+cur+'/delete',{}).then(function(r){toast(r.ok?'Deleted.':r.error); if(r.ok){cur=null;$('tb-detail').hidden=true;loadList()}})};
+  $('b-start').onclick=function(){
+    var body={months:$('o-months').value, speed:$('o-speed').value};
+    refreshCfg(function(c){ if(c.account.venue==='broker'){ var t=prompt('This trades REAL money on '+c.account.account_id+'. Type DEPLOY LIVE to confirm.'); if(t===null)return; body.confirm_text=t; }
+      api('bot/'+cur+'/start',body).then(function(r){toast(r.ok?(r.message||'Started.'):(r.error||r.message||'Could not start.')); refresh(false); loadList()}) });
+  };
+  function refreshCfg(cb){api('bot/'+cur).then(function(r){if(r.ok)cb(r.bot.config)})}
+  $('b-stop').onclick=function(){api('bot/'+cur+'/stop',{}).then(function(){toast('Stopped.'); refresh(false); loadList()})};
+  $('b-reset').onclick=function(){if(!confirm('Clear this bot\'s trades and start a fresh run?'))return; api('bot/'+cur+'/reset',{}).then(function(r){toast(r.ok?'Run cleared.':r.error); if(r.ok){draw(r.bot,true);loadList()}})};
+  $('tb-kill').onclick=function(){api('kill',{}).then(function(r){toast('Stopped '+(r.stopped||0)+' running bot(s).'); loadList(); refresh(false)})};
+  [].forEach.call(document.querySelectorAll('.tb-tab'),function(t){t.onclick=function(){[].forEach.call(document.querySelectorAll('.tb-tab'),function(x){x.classList.toggle('on',x===t)}); ['trades','legs','log','settings'].forEach(function(k){$('t-'+k).hidden=(k!==t.getAttribute('data-t'))})}});
+  ['s-name','s-risk','s-day','s-cush','s-mtd','s-size'].forEach(function(i){$(i).oninput=function(){$('s-name')._dirty=true}});
+  api('accounts').then(function(r){accounts=r.accounts||[]; return loadList()});
+  timer=setInterval(function(){ loadList(); if(cur) refresh(false); }, 2500);
+})();
+</script>
+</body>
+</html>
