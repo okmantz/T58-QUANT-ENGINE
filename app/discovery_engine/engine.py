@@ -20,6 +20,7 @@ so the orchestration is testable without a 20-minute run; the defaults call the 
 """
 from __future__ import annotations
 
+import dataclasses
 import threading
 import logging
 import time
@@ -36,6 +37,7 @@ from app.discovery_engine import provenance as prov
 from app.discovery_engine.holdout import HoldoutBudget, split_three_way
 from app.discovery_engine.presets import Preset, apply_overrides, get_preset
 from app.discovery_engine.promotion import PromotionConfig, PromotionResult, run_promotion_sequence
+from app.objectives import annotate_champion, champion_rank_key, engine_mode, normalize_objective
 
 _log = logging.getLogger("t58.discovery_engine")
 
@@ -58,7 +60,7 @@ class EngineRequest:
     work_dir: str | Path | None = None
     overrides: dict = field(default_factory=dict)
     promotion: PromotionConfig | None = None
-    objective_mode: str = "prop"                 # "prop" (Rulebook v2 gates, default) | "net_profit" (no prop rules / gates)
+    objective_mode: str = "prop"                 # "A"/"pass" | "B"/"payout" | "NET"/"net_profit" | "prop" (legacy blend, default); see app.objectives
     max_promote: int | None = None
     max_candidates: int | None = None            # override the preset's candidate budget
     use_memory: bool = True                      # searched-variant ledger: skip known variants, breed from past leaders, record this run
@@ -95,6 +97,7 @@ class EngineResult:
     notes: list
     elapsed_seconds: float
     native: object = None
+    objective_key: str = "BLEND"                   # "A" | "B" | "NET" | "BLEND": the goal this run ranked and gated for (app.objectives)
 
     @property
     def passed(self) -> list:
@@ -110,7 +113,7 @@ class EngineResult:
                 "families_run": self.families_run, "gated_out": self.gated_out, "n_evaluations": self.n_evaluations,
                 "trial_inputs": self.trial_inputs, "champions": [{k: v for k, v in c.items() if k != "trades"} for c in self.champions],
                 "promotions": self.promotions, "provenance": self.provenance, "notes": self.notes,
-                "elapsed_seconds": self.elapsed_seconds, "n_forward_test_candidates": len(self.passed)}
+                "elapsed_seconds": self.elapsed_seconds, "n_forward_test_candidates": len(self.passed), "objective_key": self.objective_key}
 
 
 def _rulebook_notes() -> list:
@@ -207,6 +210,9 @@ class DiscoveryEngine:
     # ------------------------------------------------------------------------------------------------------------- run
     def run(self, req: EngineRequest) -> EngineResult:
         t0 = time.time()
+        # ONE spelling of the goal for everything below (A / B / NET / blend); the engine reads req.objective_mode as pass | payout | net_profit | prop.
+        objective_key = normalize_objective(getattr(req, "objective_mode", None))
+        req = dataclasses.replace(req, objective_mode=engine_mode(objective_key))
         preset = get_preset(req.preset)
         log = req.progress_cb or (lambda m: None)
         run_id = uuid.uuid4().hex[:12]
@@ -275,7 +281,7 @@ class DiscoveryEngine:
                                 instrument=req.instrument, timeframe=req.timeframe).to_dict()
         result = EngineResult(run_id=run_id, preset=preset.name, backend=preset.backend, objective=obj.EDGE_OBJECTIVE, families_run=families,
                               gated_out=gated, n_evaluations=int(out.evaluations), trial_inputs=ti.to_dict(), champions=champs, promotions=promotions,
-                              provenance=run_prov, notes=notes, elapsed_seconds=time.time() - t0, native=out.native)
+                              provenance=run_prov, notes=notes, elapsed_seconds=time.time() - t0, native=out.native, objective_key=objective_key)
         led, scope = _engine_ledger(req)
         if led is not None and out.champions:
             try:
@@ -332,18 +338,21 @@ class DiscoveryEngine:
             if c.get("provenance") is None:
                 c["provenance"] = prov.capture(seed=req.seed, df=dev_df, config={"preset": preset.name, "overrides": req.overrides}, spec=spec,
                                                instrument=req.instrument, timeframe=req.timeframe, edge=rec).to_dict()
+            # Objective A / B / NET (app.objectives): stamp the goal's own score on the champion so the ranking below, the report and the
+            # promotion gates all read the same number. NET also measures net profit after costs on the champion's trades.
+            _acct = float(getattr(req.risk, "initial_balance", 0.0) or 0.0) or None
+            annotate_champion(getattr(req, "objective_mode", "prop"), c, trades, _acct)
             c["floor_reasons"] = []
             if sc.n_trades < obj.DEFAULT_FLOOR.min_trades:
                 c["floor_reasons"].append(f"{sc.n_trades} trades < {obj.DEFAULT_FLOOR.min_trades}")
             if sc.t_stat is not None and np.isfinite(sc.t_stat) and sc.t_stat < obj.DEFAULT_FLOOR.min_t_stat:
                 c["floor_reasons"].append(f"mean-R t {sc.t_stat:.2f} < {obj.DEFAULT_FLOOR.min_t_stat:g}")
             ranked.append(c)
-        # the ONE ranking: edge_lb_r (None sorts last); candidates under the floor stay listed but cannot be promoted
-        # Ranking: edge_lb_r (None sorts last). In prop mode with rules, the 30-day pass LOWER bound leads and edge_lb_r breaks ties.
+        # Ranking (app.objectives.champion_rank_key): A = 30-day pass lower bound; B = P(pass and paid) with bust odds as the tie-break;
+        # NET = net profit after costs shrunk by drawdown; the legacy blend ranks like A. edge_lb_r breaks every tie.
+        # Candidates under the floor stay listed but cannot be promoted.
         def _rank(c):
-            edge = -1e9 if c["edge_lb_r"] is None else c["edge_lb_r"]
-            td = c.get("thirty_day")
-            return ((td["lower_bound"], td["p_pass_30"], edge) if td and not td.get("error") else (-1.0, -1.0, edge))
+            return champion_rank_key(getattr(req, "objective_mode", "prop"), c)
         ranked.sort(key=_rank, reverse=True)
         eligible = [c for c in ranked if not c["floor_reasons"]]
         for c in ranked:
