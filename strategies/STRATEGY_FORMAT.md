@@ -529,3 +529,30 @@ if (close < ll)
 (Conditions are evaluated bar-by-bar over the full history, producing a
 boolean series — an entry fires on each bar where its guard is true and no
 position is already open, exactly like the Pine subset.)
+
+---
+
+## Full MetaTrader EAs: engine twins (`// T58_TWIN=`)
+
+The MQL5 interpreter runs the simple `iMA`/`iRSI`-style EAs described above. A *full* EA (CTrade, pending orders, helper functions,
+session/time logic, multi-leg baskets) is far outside that subset and, bar by bar, far too slow. Such an EA declares a **twin**: a
+vectorised Python replica that lives in `app/strategy/ea_twins/` and that the backtester runs in place of the interpreter.
+
+```mql5
+#property strict
+// T58_TWIN=go_long          (which twin; see ea_twins/twins.py -> TWINS)
+// T58_TIMEFRAME=5m          (execution timeframe the EA was designed for)
+// T58_MIN_TRADES=30         (optional, see below)
+```
+
+* The twin reads the EA's own `input` lines (`Inputs`), so editing an input in the `.mq5` changes the backtest. Features a twin does not
+  simulate (break-even, trailing stop, multi-timeframe / S-R filters) **raise an error** when switched on rather than being ignored.
+* Times are broker server time (New York + 7 h; midnight = 17:00 ET). Decisions use bar-end time only, so every twin is causal and
+  prefix-invariant: the level on bar *k* never depends on later bars (`tests/strategy/test_ea_twins.py` enforces this).
+* The searchable inputs (the GA genes) are listed per twin in `TUNABLE` with their bounds; nothing else is tuned.
+* Inputs named `InpTwin*` exist for the engine only and are ignored by MetaTrader.
+
+## `// T58_MIN_TRADES=<n>` (any strategy language)
+
+The pre-search check refuses a configuration with fewer than 100 trades. A naturally slow strategy (Gate 27 books about one trade a
+month) can declare a lower floor. It only ever **lowers** the configured floor, and a READY verdict still needs the usual evidence.
