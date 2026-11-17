@@ -31,6 +31,15 @@
   .tb-tabs{display:flex; gap:4px; margin:18px 0 8px; border-bottom:1px solid var(--lc-border)} .tb-tab{padding:8px 14px; cursor:pointer; font-weight:600; font-size:13px; color:var(--lc-muted); border-bottom:2px solid transparent} .tb-tab.on{color:inherit; border-color:var(--lc-acc)}
   .tb-field{display:grid; grid-template-columns:200px 1fr; gap:8px; align-items:center; margin:8px 0; font-size:13px} @media(max-width:640px){.tb-field{grid-template-columns:1fr}}
   .tb-note{font-size:12px; color:var(--lc-muted); margin-top:4px} .tb-warn{border:1px solid #d9a441; background:rgba(217,164,65,.1); border-radius:10px; padding:10px 12px; font-size:12.5px; margin:10px 0}
+  .wz-back{position:fixed; inset:0; background:rgba(5,8,14,.72); z-index:60; display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:24px 12px}
+  .wz{background:var(--lc-bg,#0f1218); border:1px solid var(--lc-border); border-radius:18px; width:min(960px,100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:22px} @media(max-width:860px){.wz{grid-template-columns:1fr}}
+  .wz h2{margin:0 0 2px; font-size:21px} .wz h3{font-size:12px; letter-spacing:.09em; text-transform:uppercase; color:var(--lc-muted); margin:20px 0 8px}
+  .wz-goals{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px}
+  .wz-opt{border:1px solid var(--lc-border); border-radius:12px; padding:10px 12px; cursor:pointer; font-size:13px} .wz-opt b{display:block; font-size:14px; margin-bottom:2px} .wz-opt.on{border-color:var(--lc-acc); box-shadow:0 0 0 1px var(--lc-acc)} .wz-opt small{color:var(--lc-muted)}
+  .wz-strat{display:grid; grid-template-columns:22px minmax(0,1fr) 78px; gap:8px; align-items:center; border:1px solid var(--lc-border); border-radius:10px; padding:8px 10px; margin:6px 0; font-size:13px} .wz-strat.off{opacity:.55} .wz-strat small{display:block; color:var(--lc-muted); font-size:11.5px}
+  .wz-side{position:sticky; top:12px; align-self:start; border:1px solid var(--lc-border); border-radius:14px; padding:14px; font-size:13px} .wz-side li{margin:6px 0} .wz-side ul{padding-left:16px; margin:6px 0}
+  .wz-err{border:1px solid #f0596a; background:rgba(240,89,106,.1); border-radius:10px; padding:8px 12px; font-size:12.5px; margin:8px 0}
+  .wz-adv .tb-field{grid-template-columns:minmax(0,1fr) 110px}
   #tb-toast{position:fixed; bottom:20px; right:20px; background:#1b2230; color:#e6ebf5; padding:10px 16px; border-radius:10px; display:none; z-index:50; font-size:13px; max-width:360px}
 </style>
 </head>
@@ -46,6 +55,7 @@
 {% if mode != 'demo' %}<div class="lc-notice bad">You are in <b>Live</b> mode. Bots on the demo account still run as simulations; broker accounts need the live-deploy unlock.</div>{% endif %}
 <div class="tb-top">
   <span class="tb-pill">Demo account: ${{ '{:,.0f}'.format(demo.balance) }} · {{ demo.status }}</span>
+  <button class="tb-btn go" id="tb-new" type="button">+ New bot</button>
   <button class="tb-btn stop" id="tb-kill" type="button">Stop all bots</button>
   <span class="lc-muted" style="font-size:12px">Backtests and simulations are not promises: results are from past data with a small effective sample.</span>
 </div>
@@ -84,7 +94,7 @@
     <div class="tb-field"><label>Daily stop (share of the daily limit)</label><input class="tb-in" id="s-day" type="number" step="0.05" min="0.05" max="1"></div>
     <div class="tb-field" id="s-cush-row"><label>Max risk as share of cushion</label><input class="tb-in" id="s-cush" type="number" step="0.05" min="0.05" max="1"></div>
     <div class="tb-field"><label>Max trades per day</label><input class="tb-in" id="s-mtd" type="number" min="1" max="50"></div>
-    <div class="tb-row"><button class="tb-btn go" id="s-save" type="button">Save settings</button><button class="tb-btn" id="s-defaults" type="button">Restore shipped defaults</button><button class="tb-btn" id="s-dup" type="button">Duplicate as custom bot</button><button class="tb-btn stop" id="s-del" type="button">Delete</button></div>
+    <div class="tb-row"><button class="tb-btn go" id="s-save" type="button">Save settings</button><button class="tb-btn" id="s-edit" type="button">Edit everything (strategies, goal, risk)…</button><button class="tb-btn" id="s-defaults" type="button">Restore shipped defaults</button><button class="tb-btn" id="s-dup" type="button">Duplicate as custom bot</button><button class="tb-btn stop" id="s-del" type="button">Delete</button></div>
     <div id="s-live" class="tb-warn" hidden>This bot is pointed at a real broker account and will place real orders. Starting asks for the live-deploy unlock and the phrase <b>DEPLOY LIVE</b>. The calibration is research-grade: start on the demo account first.</div>
     <details style="margin-top:14px"><summary style="cursor:pointer; font-weight:600">Connect a prop-firm or live account</summary>
       <p class="tb-note">Add the account once, then pick it in “Where it trades”.</p>
@@ -92,6 +102,38 @@
     </details>
   </div>
 </div>
+<div class="wz-back" id="wz-back"><div class="wz" role="dialog" aria-modal="true" aria-labelledby="wz-title">
+  <div>
+    <h2 id="wz-title">New trading bot</h2>
+    <div class="tb-note">Five choices, a plain-words summary on the right. Nothing here can place a real order: new bots start in the bot sandbox.</div>
+    <h3>1 · Name and goal</h3>
+    <input class="tb-in" id="wz-name" placeholder="Name, e.g. My Lucid passer" style="width:100%; box-sizing:border-box" maxlength="60">
+    <div class="wz-goals" id="wz-goals" style="margin-top:10px"></div>
+    <h3>2 · Strategies it follows <span class="lc-muted" style="text-transform:none; letter-spacing:0">(pick one or several)</span></h3>
+    <div id="wz-strats"></div>
+    <details style="margin-top:8px"><summary style="cursor:pointer; font-weight:600; font-size:13px">Add your own strategy file</summary>
+      <div class="tb-note">Paste a Python strategy (<code>generate_signals(df)</code>), a Pine script or an MQL5 EA. It is saved to the strategy library and checked before it is accepted.</div>
+      <div class="tb-row"><input class="tb-in" id="wz-ns-file" placeholder="file name, e.g. my_breakout.py" style="flex:1; min-width:200px"><button class="tb-btn" id="wz-ns-add" type="button">Save to library</button></div>
+      <textarea class="tb-in" id="wz-ns-code" rows="6" style="width:100%; box-sizing:border-box; font-family:monospace; font-size:12px" placeholder="paste code here"></textarea>
+    </details>
+    <h3>3 · Risk</h3>
+    <div class="wz-goals" id="wz-styles"></div>
+    <details class="wz-adv" style="margin-top:10px"><summary style="cursor:pointer; font-weight:600; font-size:13px">Fine-tune every risk setting</summary><div id="wz-fields"></div></details>
+    <h3>4 · Where it trades</h3>
+    <div class="tb-field"><label>Account</label><select class="tb-sel" id="wz-acct"></select></div>
+    <div class="tb-field" id="wz-size-row"><label>Account size ($)</label><input class="tb-in" id="wz-size" type="number" min="1000" step="1000" value="50000"></div>
+    <div class="tb-field" id="wz-rules-row"><label>Rules to protect</label><select class="tb-sel" id="wz-rules"></select></div>
+    <h3>5 · Daily limits</h3>
+    <div class="tb-field"><label>Max trades per day</label><input class="tb-in" id="wz-mtd" type="number" min="1" max="50" value="6"></div>
+    <div class="tb-field"><label>Flat by (ET)</label><input class="tb-in" id="wz-flat" value="16:45" maxlength="5"></div>
+    <div class="tb-field"><label>No entries until (ET)</label><input class="tb-in" id="wz-reopen" value="18:00" maxlength="5"></div>
+  </div>
+  <div class="wz-side">
+    <b>What this bot will do</b>
+    <div id="wz-errs"></div><ul id="wz-lines"><li class="lc-muted">Fill in the form and the summary appears here.</li></ul><div id="wz-warns"></div>
+    <div class="tb-row"><button class="tb-btn go" id="wz-go" type="button">Create bot</button><button class="tb-btn" id="wz-cancel" type="button">Cancel</button></div>
+  </div>
+</div></div>
 <div id="tb-toast"></div>
 </div></div></div></div>
 <script>
@@ -185,6 +227,88 @@
   $('tb-kill').onclick=function(){api('kill',{}).then(function(r){toast('Stopped '+(r.stopped||0)+' running bot(s).'); loadList(); refresh(false)})};
   [].forEach.call(document.querySelectorAll('.tb-tab'),function(t){t.onclick=function(){[].forEach.call(document.querySelectorAll('.tb-tab'),function(x){x.classList.toggle('on',x===t)}); ['trades','legs','log','settings'].forEach(function(k){$('t-'+k).hidden=(k!==t.getAttribute('data-t'))})}});
   ['s-name','s-risk','s-day','s-cush','s-mtd','s-size'].forEach(function(i){$(i).oninput=function(){$('s-name')._dirty=true}});
+
+  /* ---------------------------------------------------------------- bot builder wizard */
+  var B=null, W=null, ptimer=null;
+  function loadBuilder(){return B?Promise.resolve(B):api('builder').then(function(r){if(r.ok)B=r; return B})}
+  function fieldsFor(g){return B.fields.filter(function(f){return f.goals.indexOf(g)>=0})}
+  function wzFillRisk(gov){
+    $('wz-fields').innerHTML=fieldsFor(W.objective).map(function(f){
+      var v=gov?gov[f.key]:null;
+      if(f.kind==='bool') return '<div class="tb-field" title="'+esc(f.help)+'"><label>'+esc(f.label)+'</label><input type="checkbox" data-k="'+f.key+'" '+(v?'checked':'')+'></div>';
+      return '<div class="tb-field" title="'+esc(f.help)+'"><label>'+esc(f.label)+'<span class="tb-note" style="display:block">'+esc(f.help)+'</span></label><input class="tb-in" data-k="'+f.key+'" type="number" min="'+f.lo+'" max="'+f.hi+'" step="'+f.step+'" value="'+(v==null?'':v)+'" '+(f.optional?'placeholder="off"':'')+'></div>'}).join('');
+    [].forEach.call($('wz-fields').querySelectorAll('input'),function(i){i.oninput=i.onchange=wzPreview});
+  }
+  function wzRisk(){var o={}; [].forEach.call($('wz-fields').querySelectorAll('input'),function(i){var k=i.getAttribute('data-k'); o[k]=i.type==='checkbox'?i.checked:i.value}); return o}
+  function wzRender(){
+    $('wz-goals').innerHTML=B.goals.map(function(g){return '<div class="wz-opt'+(W.objective===g.key?' on':'')+'" data-g="'+g.key+'"><b>'+esc(g.name)+'</b><small>'+esc(g.question)+'</small></div>'}).join('');
+    [].forEach.call($('wz-goals').children,function(el){el.onclick=function(){W.objective=el.getAttribute('data-g'); W.style=W.style||'balanced'; wzFillRisk(B.defaults[W.objective][W.style]); wzRender(); wzPreview()}});
+    $('wz-styles').innerHTML=B.styles.map(function(st){return '<div class="wz-opt'+(W.style===st?' on':'')+'" data-s="'+st+'"><b>'+st.charAt(0).toUpperCase()+st.slice(1)+'</b><small>'+esc((B.style_labels[st]||'').split(': ')[1]||'')+'</small></div>'}).join('');
+    [].forEach.call($('wz-styles').children,function(el){el.onclick=function(){W.style=el.getAttribute('data-s'); wzFillRisk(B.defaults[W.objective][W.style]); wzRender(); wzPreview()}});
+    $('wz-strats').innerHTML=B.strategies.map(function(r,i){var w=W.strats[r.id]; var on=!!w&&r.supported;
+      return '<div class="wz-strat'+(on?'':' off')+'"><input type="checkbox" data-i="'+i+'" '+(on?'checked':'')+(r.supported?'':' disabled')+'><div><b>'+esc(r.label)+'</b> <span class="lc-muted">'+esc([r.instrument,r.timeframe,r.type==='python'?'':r.type].filter(Boolean).join(' · '))+'</span><small>'+esc(r.supported?r.idea:r.reason)+'</small></div><input class="tb-in" data-w="'+i+'" type="number" min="0.1" max="3" step="0.1" value="'+(w?w.weight:1)+'" title="Size weight" '+(on?'':'disabled')+' style="width:70px"></div>'}).join('');
+    [].forEach.call($('wz-strats').querySelectorAll('input[type=checkbox]'),function(el){el.onchange=function(){var r=B.strategies[+el.getAttribute('data-i')]; if(el.checked) W.strats[r.id]=W.strats[r.id]||{weight:1}; else delete W.strats[r.id]; wzRender(); wzPreview()}});
+    [].forEach.call($('wz-strats').querySelectorAll('input[data-w]'),function(el){el.onchange=function(){var r=B.strategies[+el.getAttribute('data-w')]; if(W.strats[r.id]) W.strats[r.id].weight=parseFloat(el.value)||1; wzPreview()}});
+    $('wz-acct').innerHTML='<option value="__paper">Bot sandbox (own account, nothing else touched)</option><option value="__demo">T58 demo account (books trades to it)</option>'+accounts.filter(function(a){return a.kind==='broker'}).map(function(a){return '<option value="'+esc(a.id)+'">'+esc(a.name)+' · '+esc(a.platform||'broker')+'</option>'}).join('');
+    $('wz-acct').value=W.venue==='broker'?W.account_id:(W.venue==='demo'?'__demo':'__paper');
+    $('wz-rules').innerHTML='<option value="">No prop-firm rules (net profit only)</option>'+B.rule_sets.map(function(r){return '<option value="'+esc(r.key)+'">'+esc(r.label)+'</option>'}).join('');
+    $('wz-rules').value=W.preset_key||'';
+    var demo=W.venue==='demo', brk=W.venue==='broker';
+    $('wz-size-row').style.display=(demo||brk)?'none':'grid'; $('wz-rules-row').style.display=demo?'none':'grid';
+  }
+  function wzPayload(){
+    var strategies=B.strategies.filter(function(r){return W.strats[r.id]}).map(function(r){return {strategy:r.id,weight:W.strats[r.id].weight}});
+    var venue=W.venue, p={name:$('wz-name').value, objective:W.objective, strategies:strategies, risk:wzRisk(),
+      limits:{max_trades_per_day:$('wz-mtd').value, flatten_hhmm_et:$('wz-flat').value, reopen_hhmm_et:$('wz-reopen').value},
+      account:{venue:venue, account_id:venue==='broker'?W.account_id:undefined, size:$('wz-size').value, preset_key:$('wz-rules').value}};
+    if(W.bot_id) p.bot_id=W.bot_id; else p.style=W.style;
+    return p;
+  }
+  function wzPreview(){
+    clearTimeout(ptimer); ptimer=setTimeout(function(){
+      api('builder/preview',wzPayload()).then(function(r){
+        $('wz-errs').innerHTML=(r.errors||[]).map(function(e){return '<div class="wz-err">'+esc(e)+'</div>'}).join('');
+        var sm=r.summary; $('wz-lines').innerHTML=sm?sm.lines.map(function(l){return '<li>'+esc(l)+'</li>'}).join(''):'<li class="lc-muted">Fix the items above to see the summary.</li>';
+        $('wz-warns').innerHTML=((sm&&sm.warnings)||[]).concat(r.warnings||[]).map(function(w){return '<div class="tb-warn">'+esc(w)+'</div>'}).join('');
+        $('wz-go').disabled=!r.ok;
+      });
+    },250);
+  }
+  function wzOpen(cfg){
+    loadBuilder().then(function(){
+      if(!B){toast('Could not load the builder.'); return}
+      var edit=!!cfg; W={bot_id:edit?cfg.id:null, objective:edit?cfg.objective:'A', style:edit?'':'balanced', strats:{}, venue:'paper', account_id:'', preset_key:'lucid_50k'};
+      if(edit){ (cfg.legs||[]).forEach(function(l){W.strats[l.strategy]={weight:l.weight}}); W.venue=cfg.account.venue; W.account_id=cfg.account.account_id; W.preset_key=cfg.account.preset_key||''; }
+      else { var d=B.strategies.filter(function(r){return r.supported&&r.type==='python'&&r.instrument==='NQ'}).slice(0,1); d.forEach(function(r){W.strats[r.id]={weight:1}}); }
+      $('wz-title').textContent=edit?'Edit '+cfg.name:'New trading bot'; $('wz-go').textContent=edit?'Save changes':'Create bot';
+      $('wz-name').value=edit?cfg.name:''; $('wz-size').value=edit?cfg.account.size:50000;
+      $('wz-mtd').value=edit?cfg.max_trades_per_day:6; $('wz-flat').value=edit?cfg.flatten_hhmm_et:'16:45'; $('wz-reopen').value=edit?cfg.reopen_hhmm_et:'18:00';
+      wzFillRisk(edit?cfg.governor:B.defaults[W.objective][W.style]); wzRender(); wzPreview();
+      $('wz-back').style.display='flex'; setTimeout(function(){$('wz-name').focus()},50);
+    });
+  }
+  function wzClose(){$('wz-back').style.display='none'}
+  $('wz-cancel').onclick=wzClose;
+  $('wz-back').onclick=function(e){if(e.target===$('wz-back'))wzClose()};
+  $('wz-acct').onchange=function(){var v=$('wz-acct').value; W.venue=v==='__demo'?'demo':(v==='__paper'?'paper':'broker'); W.account_id=W.venue==='broker'?v:''; if(W.venue==='demo')W.preset_key='lucid_50k'; wzRender(); wzPreview()};
+  ['wz-name','wz-size','wz-rules','wz-mtd','wz-flat','wz-reopen'].forEach(function(i){$(i).oninput=$(i).onchange=function(){if(i==='wz-rules')W.preset_key=$(i).value; wzPreview()}});
+  $('wz-ns-add').onclick=function(){
+    api('strategies/add',{filename:$('wz-ns-file').value, code:$('wz-ns-code').value}).then(function(r){
+      if(!r.ok){toast(r.error||'Could not add the strategy.'); return}
+      B=null; loadBuilder().then(function(){W.strats[r.strategy.id]={weight:1}; $('wz-ns-file').value=''; $('wz-ns-code').value=''; wzRender(); wzPreview(); toast('Added '+r.strategy.label+' and selected it.')});
+    });
+  };
+  $('wz-go').onclick=function(){
+    var p=wzPayload(), path=W.bot_id?('bot/'+W.bot_id+'/update'):'bots/create';
+    $('wz-go').disabled=true;
+    api(path,p).then(function(r){
+      $('wz-go').disabled=false;
+      if(!r.ok){toast(r.error||'Could not save the bot.'); return}
+      wzClose(); toast(W.bot_id?'Saved.':'Bot created. Press Start to run it.'); cur=r.bot.config.id; loadList().then(function(){select(cur)});
+    });
+  };
+  $('tb-new').onclick=function(){wzOpen(null)};
+  $('s-edit').onclick=function(){refreshCfg(function(c){wzOpen(c)})};
   api('accounts').then(function(r){accounts=r.accounts||[]; return loadList()});
   timer=setInterval(function(){ loadList(); if(cur) refresh(false); }, 2500);
 })();

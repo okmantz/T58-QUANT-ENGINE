@@ -1,16 +1,24 @@
-{# Test mode: PROP FIRM (default) or NET PROFIT (live account). Posted as objective_mode; see app/web/objective_mode.py.
+{# Objective: A (pass) | B (payout) | NET profit | balanced blend (default). Posted as objective_mode; see app/web/objective_mode.py and app/objectives.py.
    Styled by the shared kit (.t58-mode in t58-ui.css). Anything marked data-prop-only on the page (the prop-firm picker, its rules)
    hides while Net profit is chosen, because a live-account test ignores prop rules. #}
 <div class="objective-mode" style="flex:1 1 100%;width:100%;margin:6px 0 10px 0;">
-  <label class="flabel" style="display:block;margin-bottom:6px;">Test mode</label>
-  <div class="t58-mode" role="radiogroup" aria-label="Test mode">
+  <label class="flabel" style="display:block;margin-bottom:6px;">Objective</label>
+  <div class="t58-mode" role="radiogroup" aria-label="Objective">
     <label>
-      <input type="radio" name="objective_mode" value="prop_lifecycle" checked>
-      <span class="m-box"><b>Prop firm</b><span>Default. Scores the full lifecycle: pass the evaluation, survive the funded stage, reach a payout.</span></span>
+      <input type="radio" name="objective_mode" value="pass">
+      <span class="m-box"><b>A: Pass the evaluation</b><span>Ranks on the chance of reaching the profit target inside the time limit without breaching a rule. Speed counts.</span></span>
+    </label>
+    <label>
+      <input type="radio" name="objective_mode" value="payout">
+      <span class="m-box"><b>B: Get paid</b><span>Ranks on passing AND reaching a payout while the funded account stays alive. Smooth, consistent days win.</span></span>
     </label>
     <label>
       <input type="radio" name="objective_mode" value="net_profit">
-      <span class="m-box"><b>Net profit (live account)</b><span>Ignores prop rules and ranks on what the account earns after costs, shrunk by drawdown.</span></span>
+      <span class="m-box"><b>Net profit (no evaluation)</b><span>Ignores prop rules and ranks on what the account earns after costs, shrunk by drawdown.</span></span>
+    </label>
+    <label>
+      <input type="radio" name="objective_mode" value="prop_lifecycle" checked>
+      <span class="m-box"><b>Balanced (default)</b><span>The original blend: pass odds and first-payout odds together, with small speed and survival bonuses.</span></span>
     </label>
   </div>
 </div>
@@ -20,7 +28,7 @@
   function apply() {
     var r = document.querySelector('input[name="objective_mode"]:checked'), net = r && r.value === 'net_profit';
     document.querySelectorAll('[data-prop-only]').forEach(function (e) { e.style.display = net ? 'none' : ''; });
-    document.documentElement.setAttribute('data-objective', net ? 'net_profit' : 'prop_lifecycle');
+    document.documentElement.setAttribute('data-objective', r ? r.value : 'prop_lifecycle');
     var sel = document.querySelector('#fp_prop_preset_select, #lc-prop-preset, select[name="prop_preset"]');
     var key = document.getElementById('fp_prop_preset_key');
     if (net) {
