@@ -936,6 +936,13 @@ def _is_net_profit_objective(cfg) -> bool:
     return normalize_objective_mode(getattr(cfg, "objective_mode", None)) == OBJECTIVE_NET_PROFIT
 
 
+def _objective_key(cfg) -> str:
+    """"A" | "B" | "NET" | "BLEND": the goal this run was started for (app.objectives). Decides which lifecycle score is attached to the
+    result and which Rulebook gates apply (NET has no prop rules, so none)."""
+    from app.objectives import normalize_objective
+    return normalize_objective(getattr(cfg, "objective_mode", None))
+
+
 def _make_verdict_core(
     final_mc: MonteCarloResult,
     oos_validation: WalkForwardResult | None,
@@ -3839,6 +3846,7 @@ def run_full_pipeline(
                 from app.prop.lifecycle import OBJECTIVE_NET_PROFIT as _ONP, normalize_objective_mode as _nom
                 _mode = _nom(getattr(cfg, "objective_mode", None))
                 _audit_ev["objective_mode"] = _mode
+                _audit_ev["objective"] = _objective_key(cfg)
                 _ltrades = list(final_bt.trades)
                 if _mode == _ONP:
                     from app.validation.net_profit_tester import NetProfitTestConfig as _NC, run_net_profit_test as _rnp
@@ -3849,9 +3857,16 @@ def run_full_pipeline(
                 elif len(_ltrades) >= 20 and prop_rules is not None:
                     from app.prop.lifecycle import LifecycleConfig as _LC, run_lifecycle as _rlc
                     _lc = _rlc(_ltrades, prop_rules, _LC(n_simulations=int(getattr(cfg, "lifecycle_sims", 1500)),
-                                                         random_seed=int(getattr(cfg, "random_seed", 42) or 42)))
+                                                         random_seed=int(getattr(cfg, "random_seed", 42) or 42)), objective_mode=_mode)
                     _audit_ev["lifecycle"] = _lc.to_dict()
                     log("  Account lifecycle: " + _lc.headline())
+                    # Objective A / B: attach that goal's own report (primary metric, survival floor, time to target) beside the lifecycle.
+                    _okey = _objective_key(cfg)
+                    _audit_ev["objective"] = _okey
+                    if _okey in ("A", "B"):
+                        from app.prop import objectives as _po
+                        _audit_ev["objective_report"] = _po.objective_a_report(_lc) if _okey == "A" else _po.objective_b_report(_lc)
+                        log(f"  Objective {_okey}: " + str(_audit_ev["objective_report"].get("primary_metric")))
             except Exception as exc:  # noqa: BLE001 -- informational layer; never blocks a run
                 log(f"  Lifecycle / net-profit evidence skipped: {exc}")
         if isinstance(_audit_ev, dict):
@@ -3860,7 +3875,7 @@ def run_full_pipeline(
             _audit_ev["edge_decay"] = edge_decay
             try:  # Rulebook v2: G3 development evidence, G4 day behaviour, G5 lifecycle (prop mode only: net-profit mode has its own tests)
                 _mode_now = str(_audit_ev.get("objective_mode") or "prop_lifecycle")
-                if _mode_now == "prop_lifecycle" and prop_rules is not None and len(getattr(final_bt, "trades", []) or []) >= 20:
+                if _mode_now in ("prop_lifecycle", "pass", "payout", "prop_net") and prop_rules is not None and len(getattr(final_bt, "trades", []) or []) >= 20:
                     from app.validation import rulebook as _rbk
                     _n_looks = int(getattr(dsr_gate_result, "effective_trials", None) or getattr(dsr_gate_result, "n_trials", None) or 1)
                     _plat = (getattr(ga_result, "plateau_robustness", None) or {}) if ga_result is not None else {}

@@ -119,7 +119,7 @@ class ForgeConfig:
     rolling_survivors: int = 2
     locked_holdout_frac: float = 0.15   # reserved BEFORE any stage runs, never searched over
     locked_oos_min_pass_rate: float = 25.0  # % -- below this, the holdout check kills the candidate
-    objective_mode: str = "prop_lifecycle"  # "net_profit": Stage 2 / CPCV / PBO rank on net profit instead of prop-eval pass probability
+    objective_mode: str = "prop_lifecycle"  # A "pass" | B "payout" | NET "net_profit" | blended "prop_lifecycle" (app.objectives): sets Stage 2's fitness and the CPCV / PBO metric
 
     # UPGRADE (prop-firm reset-on-breach as the search basis): threaded
     # through to every stage below (Stages 1-3 via SearchStageConfig,
@@ -321,6 +321,21 @@ def _holdout_diag_kwargs(holdout_bt, locked_df, risk) -> dict:
         return {}
 
 
+def _forge_fitness_metric(config) -> str:
+    """Stage 2 (GA) fitness for the run's objective: A -> pass odds, B -> first-payout odds (funded stage must be reached), NET -> net profit
+    shrunk by drawdown (no prop rules), blended -> pass odds (the long-standing Forge default). See app.objectives."""
+    from app.objectives import OBJ_B, OBJ_NET, normalize_objective
+    o = normalize_objective(getattr(config, "objective_mode", None))
+    return {OBJ_NET: "net_profit_adjusted", OBJ_B: "first_payout_probability"}.get(o, "eval_pass_probability")
+
+
+def _forge_validation_metric(config) -> str:
+    """CPCV / PBO metric: net profit for NET, pass probability otherwise (the overfitting checks need a metric CPCV can recompute per path
+    from a trade list; first-payout odds are not one of them, so Objective B validates on the same pass metric as A)."""
+    from app.objectives import OBJ_NET, normalize_objective
+    return "net_profit" if normalize_objective(getattr(config, "objective_mode", None)) == OBJ_NET else "eval_pass_probability"
+
+
 def run_forge(
     df: pd.DataFrame,
     risk: RiskConfig,
@@ -461,7 +476,7 @@ def run_forge(
         full_mc_sims=config.stage3_mc_sims,
         walk_forward_folds=config.walk_forward_folds,
         robustness_neighbors=config.robustness_neighbors,
-        fitness_metric=("net_profit_adjusted" if str(config.objective_mode) == "net_profit" else "eval_pass_probability"),
+        fitness_metric=_forge_fitness_metric(config),
         workers=config.workers,
         random_seed=config.random_seed,
         reset_on_breach=config.reset_on_breach,
@@ -541,7 +556,7 @@ def run_forge(
             cpcv_result = run_cpcv(
                 search_df, _strategy_builder(spec), risk,
                 n_groups=config.cpcv_n_groups, n_test_groups=config.cpcv_n_test_groups,
-                metric=("net_profit" if str(config.objective_mode) == "net_profit" else "eval_pass_probability"), prop_rules=prop_rules,
+                metric=_forge_validation_metric(config), prop_rules=prop_rules,
             )
         except CPCVError as exc:
             log(f"  CPCV skipped for {rec.get('candidate_id')}: {exc}")
@@ -589,7 +604,7 @@ def run_forge(
             pbo_result = compute_pbo(
                 search_df, [_rebuild_spec(r) for r in cpcv_shortlist], risk,
                 n_groups=config.cpcv_n_groups, n_test_groups=config.cpcv_n_test_groups,
-                metric=("net_profit" if str(config.objective_mode) == "net_profit" else "eval_pass_probability"), prop_rules=prop_rules,
+                metric=_forge_validation_metric(config), prop_rules=prop_rules,
             )
             cohort_pbo = pbo_result.pbo
             log(f"  Cohort Probability of Backtest Overfitting (selecting among this shortlist): {cohort_pbo:.0%}.")

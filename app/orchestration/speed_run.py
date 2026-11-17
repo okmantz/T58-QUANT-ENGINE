@@ -131,6 +131,9 @@ class SpeedRunConfig:
     validation_folds: int = 3
     validation_holdout_frac: float = 0.2
     fitness_metric: str = "edge_lb_r"   # the shared Discovery objective (was eval_pass_probability, which disagreed with every other discovery tool)
+    # A "pass" | B "payout" | NET "net_profit" | blended "prop_lifecycle" (app.objectives). Phase 1 keeps ranking on edge (the audited choice);
+    # the objective decides how Phase 2's full-pipeline validation scores and gates each finalist.
+    objective_mode: str = "prop_lifecycle"
     save_winner_to_library: bool = True
     random_seed: int = 42
 
@@ -433,6 +436,7 @@ def run_speed_run(
     per_job_workers = max(1, total_workers // n_concurrent)
 
     fp_cfg = FullPipelineConfig(
+        objective_mode=getattr(cfg, "objective_mode", "prop_lifecycle"),
         n_folds=cfg.validation_folds,
         ga_population=cfg.validation_ga_population,
         ga_generations=cfg.validation_ga_generations,
