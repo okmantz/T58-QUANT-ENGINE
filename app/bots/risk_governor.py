@@ -49,6 +49,14 @@ class AccountRulesLite:
         return cls()
 
     @classmethod
+    def live_account(cls, size: float) -> "AccountRulesLite":
+        """A rule-free account for Objective NET: no profit target to pass, no payout goal, no daily limit and a floor at zero (only ruin ends
+        the run). The trailing prop floor, the evaluation and the funded stage simply do not exist here."""
+        big = 1e12
+        return cls(account_size=float(size), profit_target=big, loss_limit=float(size), soft_daily_limit=big, lock_floor_offset=0.0,
+                   trailing=False, funded_buffer=0.0, payout_goal=big)
+
+    @classmethod
     def tier(cls, size: float) -> "AccountRulesLite":
         k = float(size) / 50_000.0
         b = cls()

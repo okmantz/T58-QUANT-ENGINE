@@ -23,6 +23,7 @@ import pandas as pd
 from app.bots.models import BotConfig, BotRuntime, OpenPos, now_iso
 from app.bots.risk_governor import AccountRulesLite, AccountState, contracts_for_risk, decide_risk
 from app.bots.signals import LegSignal
+from app.objectives import governor_objective
 
 ET = "America/New_York"
 
@@ -50,10 +51,16 @@ def _hhmm(s: str) -> int:
     return int(h) * 60 + int(m)
 
 
-def rules_for_account(account, preset_override: Optional[AccountRulesLite] = None) -> tuple[AccountRulesLite, int, int]:
-    """(rules for the governor, max minis, max micros) for a bot's AccountLink."""
+def rules_for_account(account, preset_override: Optional[AccountRulesLite] = None, objective: Optional[str] = None) -> tuple[AccountRulesLite, int, int]:
+    """(rules for the governor, max minis, max micros) for a bot's AccountLink.
+
+    Objective NET on a sandbox ("paper") account or an account with no prop-firm rule set is a LIVE account: no evaluation to pass, no
+    trailing floor, no daily limit (``AccountRulesLite.live_account``). NET on a demo / prop-rule account keeps that account's rules."""
     if preset_override is not None:
         return preset_override, 4, 40
+    if objective is not None and governor_objective(objective) == "NET" and account.venue != "demo" and (account.venue == "paper" or not account.preset_key):
+        k = float(account.size) / 50_000.0
+        return AccountRulesLite.live_account(account.size), max(1, int(round(4 * k))), max(10, int(round(40 * k)))
     if account.venue == "demo":
         from app.demo_account import account as demo
         a = demo.load()
@@ -79,7 +86,10 @@ class BotEngine:
                  on_trade: Optional[Callable[[dict], None]] = None):
         self.cfg, self.rt, self.trades, self.events, self.venue, self.sources = cfg, rt, trades, events, venue, sources
         self.gov = cfg.governor_cfg()
-        self.rules = rules or AccountRulesLite.tier(cfg.account.size)
+        self.rules = rules or (AccountRulesLite.live_account(cfg.account.size) if (governor_objective(cfg.objective) == "NET" and cfg.account.venue == "paper")
+                               else AccountRulesLite.tier(cfg.account.size))
+        if self.rules.profit_target >= 1e11 and self.gov.cushion_risk_frac is not None:
+            self.gov = self.gov.with_(cushion_risk_frac=None)        # rule-free account: there is no prop cushion to cap the risk against
         self.max_minis, self.max_micros = max_minis, max_micros
         self.on_trade = on_trade
         self.costs = {lg.symbol: instrument_costs(lg.symbol) for lg in cfg.legs}
@@ -96,6 +106,11 @@ class BotEngine:
         self.reopen_min = _hhmm(cfg.reopen_hhmm_et)
         self.pos: Optional[OpenPos] = OpenPos.from_dict(rt.position) if rt.position else None
         self.detached = bool(rt.state.get('detached')) if rt.state else False   # funded simulation: no longer mirrors the demo account
+
+    @property
+    def _objective(self) -> str:
+        """The goal this bot runs for: "A" (pass), "B" (payout) or "NET" (net profit); read by the governor and by ``_after_trade``."""
+        return governor_objective(self.cfg.objective)
 
     # ----------------------------------------------------------------------------------------------------------------- state io
     def _restore(self, d: dict) -> None:
@@ -350,7 +365,7 @@ class BotEngine:
             self._event("halt", "Account breached: bot halted. Reset the bot to start a new attempt.", t)
         elif a.phase == "passed":
             self.rt.passes += 1
-            if self.cfg.objective == "A":
+            if self._objective == "A":
                 self.rt.status, self.rt.message = "complete", "Evaluation passed. Objective complete."
                 self.rt.pending = None
                 self._event("pass", f"Evaluation PASSED at ${a.balance:,.2f}: objective A complete.", t)

@@ -80,11 +80,17 @@ def _build_sim_sources(cfg: BotConfig, start: pd.Timestamp, end: pd.Timestamp, e
         df = load_history(lg.symbol)
         w0 = start - pd.Timedelta(days=int(lg.lookback_days))
         seg = df[(df["timestamp"] >= w0) & (df["timestamp"] <= end)].reset_index(drop=True)
-        strat = load_strategy(lg.strategy)
+        try:
+            strat = load_strategy(lg.strategy)
+        except FileNotFoundError as exc:      # a strategy file was renamed or deleted: run the bot on the rest instead of halting it
+            events.append({"t": now_iso(), "kind": "warn", "text": f"{lg.label}: strategy file not found ({exc}); leg skipped."})
+            continue
         tf = strategy_timeframe_minutes(strat)
         sources[lg.label] = PrecomputedSignals(strat, seg, tf)
         if primary is None:
             primary = df
+    if not sources:
+        raise ValueError("None of this bot's strategies could be loaded. Open Settings and pick strategies that exist in the library.")
     bars = primary[(primary["timestamp"] >= start) & (primary["timestamp"] <= end)].reset_index(drop=True)
     return sources, bars
 
@@ -136,7 +142,7 @@ def _sim_loop(bot_id: str, start: pd.Timestamp, end: pd.Timestamp, pause: float,
     try:
         sources, bars = _build_sim_sources(cfg, start, end, events)
         venue = venue_for(cfg.account)
-        rules, mx, mm = rules_for_account(cfg.account)
+        rules, mx, mm = rules_for_account(cfg.account, objective=cfg.objective)
         eng = BotEngine(cfg, rt, trades, events, venue, sources, rules=rules, max_minis=mx, max_micros=mm)
         ts = pd.DatetimeIndex(bars["timestamp"])
         o, h, l, c = (bars[k].to_numpy(float) for k in ("open", "high", "low", "close"))
@@ -202,11 +208,17 @@ def _feed_loop(bot_id: str, adapter, poll_seconds: float, stop: threading.Event)
         sym = cfg.account.broker_symbol
         sources = {}
         for lg in cfg.legs:
-            strat = load_strategy(lg.strategy)
+            try:
+                strat = load_strategy(lg.strategy)
+            except FileNotFoundError as exc:
+                events.append({"t": now_iso(), "kind": "warn", "text": f"{lg.label}: strategy file not found ({exc}); leg skipped."})
+                continue
             tf = strategy_timeframe_minutes(strat)
             sources[lg.label] = RollingSignals(strat, tf, lambda: window["df"])
+        if not sources:
+            raise ValueError("None of this bot's strategies could be loaded. Open Settings and pick strategies that exist in the library.")
         venue = venue_for(cfg.account, adapter=adapter) if cfg.account.venue == "broker" else venue_for(cfg.account)
-        rules, mx, mm = rules_for_account(cfg.account)
+        rules, mx, mm = rules_for_account(cfg.account, objective=cfg.objective)
         eng = BotEngine(cfg, rt, trades, events, venue, sources, rules=rules, max_minis=mx, max_micros=mm)
         need = max(lg.lookback_days for lg in cfg.legs) * 1440
         last_t = pd.Timestamp(rt.last_bar_time) if rt.last_bar_time else None

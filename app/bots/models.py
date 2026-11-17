@@ -78,8 +78,10 @@ class BotConfig:
         legs = [BotLeg.from_dict(x) if isinstance(x, dict) else x for x in d.pop("legs", [])]
         acct = AccountLink.from_dict(d.pop("account", {}))
         known = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
-        if known.get("objective") not in OBJECTIVES:
-            known["objective"] = "A"
+        # any spelling of the goal ("pass", "payout", "net_profit", ...) maps to the governor's A / B / NET; unknown or blended means A
+        from app.objectives import OBJECTIVES as _GOALS, normalize_objective
+        _o = normalize_objective(known.get("objective"), default="")
+        known["objective"] = _o if _o in _GOALS else "A"
         return cls(legs=legs, account=acct, **known)
 
 
