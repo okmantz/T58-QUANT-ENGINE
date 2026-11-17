@@ -120,8 +120,22 @@ class PortfolioComposerResult:
         return "\n".join(lines)
 
 
-def _score_result(result: PortfolioResult, prop_rules: PropRules | None, mc_config: MonteCarloConfig | None) -> tuple[float, str]:
+def _score_result(result: PortfolioResult, prop_rules: PropRules | None, mc_config: MonteCarloConfig | None,
+                  objective: str = "prop_lifecycle", account_size: float | None = None) -> tuple[float, str]:
+    """Score one combination for the run's goal (app.objectives): A / blended -> evaluation pass odds, B -> first-payout odds, NET -> the
+    net-profit objective of the combined trades (no prop rules needed). Without prop rules or a Monte Carlo result A / B fall back to profit factor."""
+    from app.objectives import OBJ_B, OBJ_NET, normalize_objective
+    o = normalize_objective(objective)
+    if o == OBJ_NET:
+        from app.prop.lifecycle import net_profit_objective
+        r = net_profit_objective(list(result.combined_trades or []), account_size)
+        v = float(r["objective"])
+        return (v if math.isfinite(v) else float("-inf")), "net_profit"
     if prop_rules is not None and mc_config is not None and result.mc_result is not None:
+        if o == OBJ_B:
+            mc = result.mc_result
+            per = getattr(mc, "per_attempt_payout_probability", None)
+            return float(per if per is not None else mc.first_payout_probability), "first_payout_probability"
         return float(result.mc_result.evaluation_pass_probability), "eval_pass_probability"
     stats = result.combined_statistics
     pf = getattr(stats, "profit_factor", None)
@@ -138,7 +152,8 @@ def _evaluate_combo(
         return None, float("-inf"), "eval_pass_probability", str(exc)
     except Exception as exc:  # noqa: BLE001 -- one bad combo must not stop the search
         return None, float("-inf"), "eval_pass_probability", str(exc)
-    score, metric = _score_result(result, base_config.prop_rules, base_config.mc_config)
+    score, metric = _score_result(result, base_config.prop_rules, base_config.mc_config, getattr(base_config, "objective_mode", "prop_lifecycle"),
+                                  float(getattr(base_config, "initial_balance", 0.0) or 0.0) or None)
     return result, score, metric, None
 
 
@@ -208,7 +223,10 @@ def compose_portfolio(
     best_combo: tuple[str, ...] = ()
     best_result: PortfolioResult | None = None
     best_score = float("-inf")
-    score_metric = "eval_pass_probability" if (cfg.prop_rules and cfg.mc_config) else "profit_factor"
+    from app.objectives import OBJ_NET, normalize_objective, portfolio_score_metric
+    _have_rules = bool(cfg.prop_rules and cfg.mc_config)
+    score_metric = ("net_profit" if normalize_objective(cfg.objective_mode) == OBJ_NET
+                    else portfolio_score_metric(cfg.objective_mode, have_prop_rules=_have_rules))
     n_evaluated = 0
 
     def record(combo_names: tuple[str, ...], result: PortfolioResult | None, score: float, metric: str, error: str | None):

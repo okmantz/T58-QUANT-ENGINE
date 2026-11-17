@@ -93,6 +93,8 @@ class PortfolioConfig:
     engine: str = "legacy"
     # Unified-engine options (capacity caps, sizing basis, window...). account is filled in from the legs.
     engine_config: object | None = None      # PortfolioEngineConfig | None
+    # A "pass" | B "payout" | NET "net_profit" | blended "prop_lifecycle" (app.objectives): the composer scores combinations on this goal.
+    objective_mode: str = "prop_lifecycle"
 
 
 @dataclass
