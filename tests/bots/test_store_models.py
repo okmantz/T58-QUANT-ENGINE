@@ -10,13 +10,17 @@ def test_three_presets_seeded_with_demo_default():
     bots = store.list_bots()
     assert [b["config"]["id"] for b in bots] == ["bot-pass", "bot-payout", "bot-profit"] or len(bots) == 3
     assert {b["config"]["objective"] for b in bots} == {"A", "B", "NET"}
-    assert all(b["config"]["account"]["venue"] == "demo" and b["config"]["account"]["account_id"] == "t58-demo" for b in bots)
+    by = {b["config"]["preset_key"]: b["config"]["account"] for b in bots}
+    assert by["pass"]["venue"] == by["payout"]["venue"] == "demo" and by["pass"]["account_id"] == "t58-demo"
+    assert by["profit"]["venue"] == "paper" and not by["profit"]["preset_key"]      # Gate 27 swing legs need a rule-free account
 
 
 def test_preset_strategy_files_exist():
     from app.bots.signals import resolve_strategy_path
     for cfg in preset_configs():
         for leg in cfg.legs:
+            if leg.kind == "gate27":
+                continue                          # built in (app/bots/gate27.py), no strategy file
             assert resolve_strategy_path(leg.strategy).exists(), leg.strategy
 
 

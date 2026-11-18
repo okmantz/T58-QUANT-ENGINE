@@ -1,0 +1,104 @@
+{
+ "A (60-day pass, engine, starts every 15 days; n=73 train+val 2022-24, n=24 test 2025)": [
+  [
+   "Old: Open Drive 1 + Ind Rule 1 + Context Drive (both sides) 1",
+   "39.7 / 0.0",
+   "25.0 / 0.0"
+  ],
+  [
+   "Ind Rule 2 + CADL 0.5 + IR30 0.5 (lab winner)",
+   "17.8 / 2.7",
+   "12.5 / 0.0"
+  ],
+  [
+   "Ind Rule 2 + CADL 1 + IR30 1",
+   "35.6 / 2.7",
+   "33.3 / 4.2"
+  ],
+  [
+   "Ind Rule 2 + CADL 1",
+   "34.2 / 2.7",
+   "45.8 / 4.2"
+  ],
+  [
+   "Ind Rule 3 + CADL 1 + IR30 1",
+   "42.5 / 9.6",
+   "45.8 / 20.8"
+  ],
+  [
+   "Ind Rule 3 + CADL 1",
+   "42.5 / 9.6",
+   "50.0 / 16.7"
+  ],
+  [
+   "Ind Rule 2 + CADL 2 + IR30 1",
+   "37.0 / 16.4",
+   "29.2 / 25.0"
+  ],
+  [
+   "Ind Rule 1 + CADL 1 + IR30 1",
+   "31.5 / 0.0",
+   "25.0 / 0.0"
+  ],
+  [
+   "Ind Rule 2 + CADL 1 + IR30 2",
+   "38.4 / 8.2",
+   "29.2 / 8.3"
+  ],
+  [
+   "Open Drive 1 + Ind Rule 2 + CADL 1",
+   "42.5 / 2.7",
+   "37.5 / 4.2"
+  ],
+  [
+   "Open Drive 1 + Ind Rule 2 + Context Drive (both sides) 1",
+   "43.8 / 1.4",
+   "37.5 / 4.2"
+  ],
+  [
+   "**Open Drive 1 + Ind Rule 3 + CADL 1 (shipped)**",
+   "52.1 / 17.8",
+   "54.2 / 16.7"
+  ]
+ ],
+ "B (paid within 365 days, engine, B governor with funded 0.6, starts every 60 days, n=20)": [
+  [
+   "Ind Rule 1 + CADL 1 (shipped)",
+   "paid 75.0 / bust 0.0 / avg paid $2,709"
+  ],
+  [
+   "Open Drive 1 + Ind Rule 2 + CADL 1",
+   "paid 75.0 / bust 0.0 / avg paid $2,058"
+  ],
+  [
+   "Ind Rule 2 + CADL 1",
+   "paid 70.0 / bust 0.0 / avg paid $2,427"
+  ],
+  [
+   "Open Drive 1 + Ind Rule 1 + CADL 1",
+   "paid 60.0 / bust 0.0 / avg paid $3,981"
+  ]
+ ],
+ "NET (24 months to 2026-03, rule-free account)": [
+  [
+   "Ind Rule 1 + CADL 1 + Gate 27 x0.5",
+   "net $40,786 / CAGR 34.7% / max DD 6.4% / PF 1.64"
+  ],
+  [
+   "**Ind Rule 1 + CADL 1 + Gate 27 x1.0 (shipped)**",
+   "net $70,465 / CAGR 55.2% / max DD 5.8% / PF 2.02 (Gate 27 legs $27,089)"
+  ],
+  [
+   "Open Drive 1 + Ind Rule 1 + CADL 1 + Gate 27 x0.5",
+   "net $84,331 / CAGR 63.9% / max DD 9.5% / PF 1.45"
+  ],
+  [
+   "Ind Rule 1 + CADL 2 + Gate 27 x0.5",
+   "net $78,026 / CAGR 60.0% / max DD 8.1% / PF 1.70"
+  ],
+  [
+   "Ind Rule 1 + IR30 1 + CADL 1 + Gate 27 x0.5 (lab winner)",
+   "net $47,273 / CAGR 39.5% / max DD 5.8% / PF 1.60"
+  ]
+ ]
+}

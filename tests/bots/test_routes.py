@@ -24,7 +24,9 @@ def test_page_renders(client):
 def test_lists_three_bots_on_demo(client):
     j = _ok(client.get("/trading-bots/api/bots"))
     assert len(j["bots"]) >= 3
-    assert all(b["config"]["account"]["venue"] == "demo" for b in j["bots"] if b["config"].get("preset_key"))
+    venues = {b["config"]["preset_key"]: b["config"]["account"]["venue"] for b in j["bots"] if b["config"].get("preset_key")}
+    # the pass and payout bots run on the demo prop account; the net-profit bot (Gate 27 holds overnight) runs on a rule-free sandbox account
+    assert venues["pass"] == "demo" and venues["payout"] == "demo" and venues["profit"] == "paper"
 
 
 def test_accounts_include_demo_first(client):
