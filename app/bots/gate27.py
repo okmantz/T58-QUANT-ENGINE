@@ -38,6 +38,13 @@ class Gate27Config:
     phase_in_days: int = PHASE_IN_DAYS
 
 
+def config_from_params(params: Optional[dict]) -> Gate27Config:
+    """A Gate27Config from a leg's ``params`` dict (unknown keys ignored, missing keys keep the frozen original EA value)."""
+    p = dict(params or {})
+    keys = {"sma_window": int, "vol_window": int, "daily_vol_target_pct": float, "leverage_cap": float, "phase_in_days": int}
+    return Gate27Config(**{k: cast(p[k]) for k, cast in keys.items() if k in p and p[k] is not None})
+
+
 def session_closes(df_1m: pd.DataFrame) -> pd.DataFrame:
     """One row per CME session day: ``close`` (back-adjusted, used for the signal) and ``raw`` (the unadjusted price level, used for notional).
 

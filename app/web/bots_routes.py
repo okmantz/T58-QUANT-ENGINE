@@ -77,6 +77,14 @@ def trading_bots_page():
     return render_template("trading_bots.html", mode=get_mode(), demo=demo_view, sim_months=SIM_MONTHS)
 
 
+@bots_bp.route("/trading-bots/api/directive")
+def api_directive():
+    """The three objective directives and the engine directive, verbatim from app/objectives.py (the page shows the goal under each bot)."""
+    from dataclasses import asdict
+    from app.objectives import DIRECTIVES, ENGINE_DIRECTIVE
+    return jsonify({"ok": True, "engine_directive": ENGINE_DIRECTIVE, "objectives": {k: asdict(v) for k, v in DIRECTIVES.items()}})
+
+
 @bots_bp.route("/trading-bots/api/bots")
 def api_list():
     return jsonify({"ok": True, "bots": [_public(r) for r in store.list_bots()]})

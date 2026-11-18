@@ -12,6 +12,10 @@ discovery engine, Forge, the full pipeline, the Evolution Lab, Speed Run, the po
 ``BLEND`` is the legacy "prop lifecycle" mode (pass AND payout together, with speed and survival bonuses). It stays the default for
 callers that name no objective so no existing run changes; it is deliberately NOT one of the three goals.
 
+The mission, rules, primary / secondary metrics and the ENGINE DIRECTIVE for each goal are written down once, verbatim, in ``DIRECTIVES`` and
+``ENGINE_DIRECTIVE`` below (docs/OBJECTIVES.md is generated from them). They are the standing instructions for every engine: discovery, test,
+optimise, validate and the trading bots. A strategy is judged only by how well it does the job of the objective it is being built for.
+
 Pure functions, no I/O. The heavy simulators live in ``app.prop`` and are imported lazily.
 """
 from __future__ import annotations
@@ -44,17 +48,17 @@ class ObjectiveSpec:
 
 SPECS: dict[str, ObjectiveSpec] = {
     OBJ_A: ObjectiveSpec(
-        OBJ_A, "Objective A: pass the evaluation", "How often does a fresh evaluation reach its target inside the horizon without a breach?",
+        OBJ_A, "Objective A: Evaluation Passer", "How often does a fresh evaluation reach its target inside the horizon without a breach?",
         "pass", "pass", "A", True, "P(pass within the horizon, no breach)", True,
         "A high hit rate on a short clock: front-loaded edge, frequent small wins, a bounded worst day.",
         "Slow strategies, one-big-winner equity curves, any path that touches the trailing floor or the daily limit."),
     OBJ_B: ObjectiveSpec(
-        OBJ_B, "Objective B: get paid", "How often does a funded account reach a payout and stay alive while doing it?",
+        OBJ_B, "Objective B: Payout Hunter", "How often does a funded account reach a payout and stay alive while doing it?",
         "payout", "payout", "B", True, "P(pass AND paid), valid only above the funded-survival floor", False,
         "Smooth, consistent days: low variance, small drawdowns, no single day carrying the profit.",
         "Big days (consistency rules), deep intraday excursions, anything that trades survival for a larger payout."),
     OBJ_NET: ObjectiveSpec(
-        OBJ_NET, "Net profit", "How much does the account earn after costs per unit of drawdown, with no evaluation to pass?",
+        OBJ_NET, "Objective C: Net Profit Compounder", "How much does the account earn after costs per unit of drawdown, with no evaluation to pass?",
         "net_profit", "net_profit", "NET", False, "net profit after costs, shrunk by drawdown and a thin sample", False,
         "Edge times frequency, compounding, positive skew; prop-firm rules do not apply.",
         "Cost drag, deep drawdowns, a thin trade sample."),
@@ -65,6 +69,7 @@ _ALIASES = {
     "eval_pass": OBJ_A, "pass_eval": OBJ_A,
     "b": OBJ_B, "obj_b": OBJ_B, "objective_b": OBJ_B, "objective b": OBJ_B, "payout": OBJ_B, "get_paid": OBJ_B, "funded": OBJ_B,
     "first_payout": OBJ_B, "prop_net": OBJ_B,
+    "c": OBJ_NET, "obj_c": OBJ_NET, "objective_c": OBJ_NET, "objective c": OBJ_NET, "compounder": OBJ_NET, "net_profit_compounder": OBJ_NET,
     "net": OBJ_NET, "net_profit": OBJ_NET, "netprofit": OBJ_NET, "obj_net": OBJ_NET, "objective_net": OBJ_NET, "profit": OBJ_NET, "live": OBJ_NET,
     "prop": OBJ_BLEND, "prop_firm": OBJ_BLEND, "prop_lifecycle": OBJ_BLEND, "lifecycle": OBJ_BLEND, "blend": OBJ_BLEND, "blended": OBJ_BLEND,
     "balanced": OBJ_BLEND, "": OBJ_BLEND,
@@ -248,3 +253,134 @@ ENGINE_WIRING: dict[str, str] = {
     "Trading bots": "app.bots.engine:BotEngine._objective",
     "Web forms": "app.web.objective_mode:apply_objective_mode_to_form",
 }
+
+
+# ================================================================================================================ THE DIRECTIVES
+# Standing instructions for every engine. Written once, here; docs/OBJECTIVES.md and the trading-bot pages read them from this file.
+# The wording of ``mission``, ``rules`` and ``goal`` is the owner's own and is kept verbatim.
+A_TARGET_DAYS = 30            # Objective A: the horizon it is optimised for ...
+A_MAX_DAYS = 60               # ... and the longest horizon still acceptable
+B_PAYOUT_HORIZON_DAYS = 365   # Objective B: first payout inside a year, funded account alive
+C_MIN_TRADES = 100            # Objective C: fewer trades than this is an anecdote, not an out-of-sample edge
+
+
+@dataclass(frozen=True)
+class Directive:
+    key: str                         # "A" | "B" | "NET" (Objective C)
+    letter: str                      # "A" | "B" | "C" as the owner writes it
+    codename: str                    # EVALUATION PASSER / PAYOUT HUNTER / NET PROFIT COMPOUNDER
+    mission: str
+    rules: tuple
+    primary_metric: str
+    secondary_metrics: tuple
+    goal: str
+    horizon_days: Optional[int]      # the horizon the primary metric is read at (None: no evaluation clock)
+    horizon_max_days: Optional[int]
+    risk_posture: str                # how much variance the objective accepts, in one line
+    sizing_posture: str
+    market_scope: str
+    overnight_allowed: bool
+    forbidden_inputs: tuple = ()     # numbers that belong to ANOTHER objective and must never move this one's ranking
+
+
+ENGINE_DIRECTIVE = (
+    "Each objective must have its own independent strategy discovery, optimization, portfolio construction, position-sizing logic, risk governor, "
+    "scoring system, and selection criteria. Never optimize a strategy for one objective using another objective's priorities. A strategy that "
+    "is excellent at passing an evaluation may be unsuitable for payouts or live compounding. Strategies must be judged exclusively by how "
+    "effectively they accomplish their assigned mission.")
+
+DIRECTIVES: dict[str, Directive] = {
+    OBJ_A: Directive(
+        OBJ_A, "A", "EVALUATION PASSER",
+        "Pass a prop-firm evaluation as quickly and efficiently as possible. Optimize strategy portfolios for the highest probability of reaching the "
+        "profit target within 30 days, with 60 days as the maximum acceptable horizon, while minimizing the probability of breaching drawdown rules "
+        "before passing.",
+        ("Prioritize probability of passing, speed to target, and capital efficiency.",
+         "Accept higher variance and more aggressive risk than Objective B, provided drawdown survival remains statistically viable.",
+         "Optimize position sizing, trade frequency, strategy combinations, and risk dynamically as the account approaches its profit target or "
+         "drawdown limit.",
+         "Maximize the probability of reaching the profit target before violating any account rules."),
+        "Probability of passing within 30/60 days.",
+        ("Median days to pass", "breach probability", "profit-target efficiency", "risk of ruin"),
+        "The goal is to pass—not to preserve the account long-term.",
+        A_TARGET_DAYS, A_MAX_DAYS,
+        "aggressive: more variance than B, as long as survival to the target stays statistically viable",
+        "dynamic: full size while the floor is far, trimmed as the target or the floor comes near; ends at the pass",
+        "intraday futures inside the firm's rules (flat at the close, news and consistency rules respected)", False,
+        ("p_paid", "mean_payout_usd", "net_objective", "funded_survival", "cagr", "calmar")),
+    OBJ_B: Directive(
+        OBJ_B, "B", "PAYOUT HUNTER",
+        "Secure a funded account, preserve it, and extract payouts as quickly and consistently as possible. Optimize for the highest probability of "
+        "generating a payout while minimizing the risk of losing the funded account.",
+        ("Prioritize survivability, capital preservation, consistency, and sustainable payout generation.",
+         "Use conservative risk sizing and reduce exposure as drawdown increases or the account's safety buffer shrinks.",
+         "Favor robust strategies, low drawdown, shorter losing streaks, consistency-rule compliance, and uncorrelated portfolio exposure.",
+         "Optimize for reaching payout thresholds efficiently without jeopardizing the account.",
+         "Avoid unnecessary risk after achieving payout eligibility or daily profit objectives."),
+        "Probability of reaching a payout without breaching account rules.",
+        ("Time to first payout", "payout expectancy", "account survival", "drawdown", "consistency compliance", "repeat payout probability"),
+        "The goal is to get paid and keep the account alive—not to pass aggressively or maximize raw trading profits.",
+        None, B_PAYOUT_HORIZON_DAYS,
+        "conservative: low variance, small drawdowns, short losing streaks, no single day carrying the profit",
+        "shrinks with drawdown and with the safety buffer; eased back once payout-eligible or after a good day",
+        "intraday futures inside the firm's rules, diversified across uncorrelated sleeves", False,
+        ("p_pass_30", "lower_bound", "cagr", "calmar", "net_objective")),
+    OBJ_NET: Directive(
+        OBJ_NET, "C", "NET PROFIT COMPOUNDER",
+        "Maximize long-term risk-adjusted net profit on unrestricted live accounts. Optimize for sustainable wealth generation and account growth "
+        "after all trading costs, with no prop-firm restrictions.",
+        ("Maximize long-term net profit and compound growth.",
+         "Optimize risk-adjusted returns, expectancy, drawdown efficiency, and capital utilization.",
+         "Trade any suitable market: forex, stocks, indices, futures, commodities, etc.",
+         "Permit overnight, swing, position, and longer-term trades where statistically advantageous.",
+         "Allow flexible leverage, sizing, holding periods, portfolio allocation, and compounding based on validated risk controls.",
+         "Prioritize durable out-of-sample edges over short-term performance or artificial trading-frequency constraints."),
+        "Long-term net profit and compounded growth.",
+        ("Risk-adjusted return", "Calmar ratio", "expectancy", "maximum drawdown", "return on capital", "robustness across market regimes"),
+        "The goal is to grow capital and maximize net wealth—not pass evaluations or satisfy payout rules.",
+        None, None,
+        "growth: as much volatility as the validated drawdown budget allows, throttled as drawdown deepens",
+        "compounds with equity; falls to a floor multiple as drawdown from the equity peak deepens",
+        "any liquid market: futures, indices, commodities, FX, equities; overnight, swing and position holds allowed", True,
+        ("p_pass_30", "lower_bound", "p_paid", "mean_payout_usd", "p_bust_30")),
+}
+
+
+def directive_for(value: Any) -> Optional[Directive]:
+    """The standing directive for A / B / C (any spelling), or None for the legacy blend."""
+    return DIRECTIVES.get(normalize_objective(value))
+
+
+def metrics_for(value: Any) -> dict:
+    """{'primary': str, 'secondary': tuple} an objective is judged on."""
+    d = directive_for(value)
+    return {"primary": d.primary_metric, "secondary": d.secondary_metrics} if d else {"primary": "", "secondary": ()}
+
+
+def isolated_champion(value: Any, champion: dict) -> dict:
+    """A copy of ``champion`` with every number that belongs to ANOTHER objective removed. Ranking this copy must give the same order as ranking
+    the original, which ``tests/test_objective_directive.py`` checks: it is how the engine directive ("never optimize a strategy for one objective
+    using another objective's priorities") is enforced rather than just stated."""
+    d = directive_for(value)
+    if d is None:
+        return dict(champion)
+    out = {k: v for k, v in champion.items() if k not in d.forbidden_inputs}
+    td = out.get("thirty_day")
+    if isinstance(td, dict):
+        out["thirty_day"] = {k: v for k, v in td.items() if k not in d.forbidden_inputs}
+    return out
+
+
+def directive_markdown() -> str:
+    """docs/OBJECTIVES.md body, generated from ``DIRECTIVES`` so the page can never drift from the code."""
+    out = ["# The three objectives", "",
+           "Generated from `app/objectives.py` (`DIRECTIVES`, `ENGINE_DIRECTIVE`). Edit the code, not this file.", ""]
+    for key in OBJECTIVES:
+        d = DIRECTIVES[key]
+        out += [f"## OBJECTIVE {d.letter}: {d.codename}", "", f"**Mission:** {d.mission}", ""]
+        out += [f"- {r}" for r in d.rules]
+        out += ["", f"**Primary metric:** {d.primary_metric}", f"**Secondary metrics:** {', '.join(d.secondary_metrics)}.", "", f"**{d.goal}**", "",
+                f"- Risk posture: {d.risk_posture}", f"- Sizing: {d.sizing_posture}", f"- Markets: {d.market_scope}",
+                f"- Overnight holds: {'allowed' if d.overnight_allowed else 'not allowed'}", ""]
+    out += ["## ENGINE DIRECTIVE", "", ENGINE_DIRECTIVE, ""]
+    return "\n".join(out)

@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / "scripts"))
 import warnings; warnings.filterwarnings("ignore")
 import bundle_research as br  # noqa: E402
 
-BASE = ROOT / "strategies" / "python" / "NQ1! Ind Rule 15m.py"
+BASE = ROOT / "strategies" / "python" / "IndRule_NQ_15m_v1.py"
 TF_MIN = {"5m": 5, "15m": 15, "30m": 30}
 
 GRID = {

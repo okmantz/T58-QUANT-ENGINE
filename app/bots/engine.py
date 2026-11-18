@@ -31,6 +31,7 @@ from app.bots.models import BotConfig, BotRuntime, OpenPos, now_iso
 from app.bots.risk_governor import AccountRulesLite, AccountState, contracts_for_risk, decide_risk
 from app.bots.signals import LegSignal
 from app.bots import gate27 as g27
+from app.bots.arbiter import Arbiter, Limits
 from app.objectives import governor_objective
 
 ET = "America/New_York"
@@ -104,7 +105,7 @@ class Lane:
 class BotEngine:
     def __init__(self, cfg: BotConfig, rt: BotRuntime, trades: list, events: list, venue, sources: dict, *,
                  rules: Optional[AccountRulesLite] = None, max_minis: int = 4, max_micros: int = 40,
-                 on_trade: Optional[Callable[[dict], None]] = None):
+                 on_trade: Optional[Callable[[dict], None]] = None, arbiter: Optional[Arbiter] = None):
         self.cfg, self.rt, self.trades, self.events, self.venue, self.sources = cfg, rt, trades, events, venue, sources
         self.gov = cfg.governor_cfg()
         self.rules = rules or (AccountRulesLite.live_account(cfg.account.size) if (governor_objective(cfg.objective) == "NET" and cfg.account.venue == "paper")
@@ -113,6 +114,8 @@ class BotEngine:
             self.gov = self.gov.with_(cushion_risk_frac=None)        # rule-free account: there is no prop cushion to cap the risk against
         self.max_minis, self.max_micros = max_minis, max_micros
         self.on_trade = on_trade
+        # the account-wide arbiter: one position slot and one daily limit shared by every strategy (and every bot) on this account
+        self.arbiter = arbiter or Arbiter.memory()
         self.costs = {lg.symbol: instrument_costs(lg.symbol) for lg in cfg.legs}
         self.leg_by_label = {lg.label: lg for lg in cfg.legs}
         self.tf = {lg.label: int(getattr(sources[lg.label], "tf", 1)) for lg in cfg.legs if lg.label in sources}
@@ -252,6 +255,8 @@ class BotEngine:
                 self._close_position(o - lane.pos.direction * self._slip(lane.pos.symbol), t, pend.get("reason", "signal off"))
             elif pend["type"] == "entry" and lane.pos is None and self._entries_allowed(et):
                 self._open_position(pend, o, t)
+            elif pend["type"] == "entry":
+                self.arbiter.release(self.cfg.id, pend["leg"])          # the reserved slot never filled
 
         # 2. stop / target inside this bar
         if lane.pos is not None and self.venue.simulated_fills:
@@ -346,10 +351,26 @@ class BotEngine:
             self.rt.next_decision = f"{lg.label}: risk ${risk:,.0f} is below one micro contract at a {ls.stop:,.1f}-point stop, skipped."
             self._event("skip", self.rt.next_decision, bar_end)
             return
+        v = self.arbiter.request_entry(self.cfg.id, lg.label, lg.symbol, int(ls.sig), risk, self.rt.day_key, self._arbiter_limits())
+        if not v.allow:
+            self.rt.next_decision = f"Arbiter: {v.reason}."
+            self._event("skip", f"{lg.label} signal skipped by the risk arbiter: {v.reason}", bar_end)
+            return
         lane.pending = {"type": "entry", "leg": lg.label, "symbol": lg.symbol, "direction": int(ls.sig), "stop": float(ls.stop),
                         "tp": float(ls.tp) if math.isfinite(ls.tp) and ls.tp > 0 else None, "kind": kind, "qty": int(n),
                         "risk": float(risk), "mult": float(dec.multiplier), "why": dec.reason}
         self.rt.next_decision = f"Entering {'long' if ls.sig > 0 else 'short'} {n} {kind} on {lg.label} at the next open (risk ${risk:,.0f})."
+
+    def _drop_pending(self, lane: "Lane") -> None:
+        if lane.pending and lane.pending.get("type") == "entry":
+            self.arbiter.release(self.cfg.id, lane.pending.get("leg", ""))
+        lane.pending = None
+
+    def _arbiter_limits(self) -> Limits:
+        soft = float(getattr(self.rules, "soft_daily_limit", 0.0) or 0.0)
+        cap = soft * float(self.cfg.daily_loss_cap_pct_of_soft) / 100.0 if 0 < soft < 1e11 else 0.0
+        return Limits(max_open_positions=max(1, int(self.cfg.max_open_positions)), max_trades_per_day=int(self.cfg.max_trades_per_day),
+                      daily_loss_cap_usd=cap)
 
     def _leg_may_enter(self, label: str) -> bool:
         cap = getattr(self.sources.get(label), "max_trades_per_day", None)
@@ -380,6 +401,7 @@ class BotEngine:
                       stop_points=float(pend["stop"]), mult=float(pend["mult"]))
         ok, price, ticket, msg = self.venue.open(pos)
         if not ok:
+            self.arbiter.release(self.cfg.id, pend["leg"])
             self._event("error", f"Order rejected: {msg}", t)
             self.rt.message = f"Order rejected: {msg}"
             return
@@ -389,6 +411,7 @@ class BotEngine:
         pos.ticket, pos.broker = ticket, not self.venue.simulated_fills
         lane.pos = pos
         self.rt.day_trades += 1
+        self.arbiter.on_open(self.cfg.id, pos.leg, pos.symbol, pos.direction, pos.qty, pos.risk_dollars, self.rt.day_key, pos.entry_time)
         k = (pos.leg, self.rt.day_key)
         lane.leg_day_trades[k] = lane.leg_day_trades.get(k, 0) + 1
         self._event("entry", f"{'Long' if d > 0 else 'Short'} {pos.qty} {pos.kind} {pos.symbol} @ {pos.entry_price:,.2f} "
@@ -445,6 +468,7 @@ class BotEngine:
                "exit": round(price, 2), "pnl": round(pnl, 2), "r_multiple": round(pnl / p.risk_dollars, 2) if p.risk_dollars else None,
                "risk": round(p.risk_dollars, 2), "reason": reason, "mult": round(p.mult, 2)}
         self.rt.day_realised += pnl
+        self.arbiter.on_close(self.cfg.id, p.leg, pnl, self.rt.day_key)
         self.acct.update(pnl, str(t.tz_convert(ET).date()))
         row["balance"] = round(self.acct.balance, 2)
         self.trades.append(row)
@@ -477,14 +501,14 @@ class BotEngine:
             self.rt.status, self.rt.halted_reason = "halted", "The account breached its loss floor."
             self.rt.breaches += 1
             for ln in self.lanes.values():
-                ln.pending = None
+                self._drop_pending(ln)
             self._event("halt", "Account breached: bot halted. Reset the bot to start a new attempt.", t)
         elif a.phase == "passed":
             self.rt.passes += 1
             if self._objective == "A":
                 self.rt.status, self.rt.message = "complete", "Evaluation passed. Objective complete."
                 for ln in self.lanes.values():
-                    ln.pending = None
+                    self._drop_pending(ln)
                 self._event("pass", f"Evaluation PASSED at ${a.balance:,.2f}: objective A complete.", t)
             else:
                 self._event("pass", f"Evaluation PASSED at ${a.balance:,.2f}: continuing on the funded stage.", t)

@@ -28,7 +28,7 @@ import pandas as pd
 import requests
 
 from app.live_deploy.broker_base import (
-    BrokerAdapter, ConnectionResult, OpenPosition, OrderResult,
+    BrokerAdapter, ConnectionResult, OpenPosition, OrderResult, PendingOrder,
 )
 
 _RESOLUTION_MAP = {1: "1m", 5: "5m", 15: "15m", 30: "30m", 60: "1h", 240: "4h", 1440: "1d"}
@@ -194,3 +194,74 @@ class DXtradeBrokerAdapter(BrokerAdapter):
             return OrderResult(ok=True, message="Closed.", ticket=ticket)
         except Exception as exc:
             return OrderResult(ok=False, message=str(exc))
+
+    # ------------------------------------------------------------ stop / limit orders (mocked-tested, NOT live-tested)
+    # DXtrade REST dialects differ per firm; this follows the same /orders shape the market order above uses.
+    supports_limit_orders = True
+    supports_stop_orders = True
+    supports_order_modify = True
+
+    def _pending(self, symbol, direction, volume, otype, price=None, stop_price=None, sl_price=None, tp_price=None, comment="") -> OrderResult:
+        try:
+            body = {"accountId": self.account_id, "symbol": symbol, "side": "buy" if direction == 1 else "sell", "quantity": volume,
+                    "orderType": otype, "comment": comment, "timeInForce": "GTC"}
+            if price is not None:
+                body["limitPrice"] = float(price)
+            if stop_price is not None:
+                body["stopPrice"] = float(stop_price)
+            if sl_price:
+                body["stopLoss"] = sl_price
+            if tp_price:
+                body["takeProfit"] = tp_price
+            resp = self._session.post(f"{self.base_url}/orders", json=body, timeout=20)
+            data = resp.json()
+            if resp.status_code >= 400:
+                return OrderResult(ok=False, message=str(data))
+            return OrderResult(ok=True, message="Order working.", ticket=str(data.get("orderId") or data.get("id")), volume=volume)
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def place_limit_order(self, symbol, direction, volume, limit_price, sl_price=None, tp_price=None, comment="T58 Live", reduce_only=False) -> OrderResult:
+        return self._pending(symbol, direction, volume, "limit", price=limit_price, sl_price=sl_price, tp_price=tp_price, comment=comment)
+
+    def place_stop_order(self, symbol, direction, volume, stop_price, sl_price=None, tp_price=None, comment="T58 Live", reduce_only=False,
+                         limit_price=None) -> OrderResult:
+        return self._pending(symbol, direction, volume, "stop_limit" if limit_price else "stop", price=limit_price, stop_price=stop_price,
+                             sl_price=sl_price, tp_price=tp_price, comment=comment)
+
+    def cancel_order(self, order_id: str) -> OrderResult:
+        try:
+            resp = self._session.delete(f"{self.base_url}/orders/{order_id}", timeout=20)
+            if resp.status_code >= 400:
+                return OrderResult(ok=False, message=resp.text)
+            return OrderResult(ok=True, message="Cancelled.", ticket=str(order_id))
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def modify_order(self, order_id, *, price=None, stop_price=None, volume=None, sl_price=None, tp_price=None) -> OrderResult:
+        body = {k: v for k, v in {"limitPrice": price, "stopPrice": stop_price, "quantity": volume, "stopLoss": sl_price, "takeProfit": tp_price}.items()
+                if v is not None}
+        try:
+            resp = self._session.put(f"{self.base_url}/orders/{order_id}", json=body, timeout=20)
+            if resp.status_code >= 400:
+                return OrderResult(ok=False, message=resp.text)
+            return OrderResult(ok=True, message="Modified.", ticket=str(order_id))
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def get_pending_orders(self, symbol=None) -> list[PendingOrder]:
+        try:
+            resp = self._session.get(f"{self.base_url}/accounts/{self.account_id}/orders", timeout=15).json()
+            rows = resp.get("orders", resp) if isinstance(resp, dict) else resp
+        except Exception:  # noqa: BLE001
+            return []
+        out = []
+        for o in rows:
+            sym = o.get("symbol") or o.get("instrument")
+            if symbol and sym != symbol:
+                continue
+            t = str(o.get("orderType", o.get("type", "limit"))).lower()
+            out.append(PendingOrder(order_id=str(o.get("orderId") or o.get("id")), symbol=sym, direction=1 if str(o.get("side")).lower() == "buy" else -1,
+                                    volume=float(o.get("quantity", o.get("qty", 0)) or 0), order_type=t if t in ("limit", "stop", "stop_limit") else "limit",
+                                    price=float(o.get("limitPrice", o.get("price", 0)) or 0), stop_price=float(o.get("stopPrice", 0) or 0)))
+        return out

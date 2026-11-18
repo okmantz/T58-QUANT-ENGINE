@@ -28,6 +28,7 @@ class BotLeg:
     lookback_days: int = 30            # history the strategy needs to warm up (calendar days of 1-minute bars)
     note: str = ""
     kind: str = "intraday"             # "intraday" (a strategy file read bar by bar) | "gate27" (monthly swing leg held through the flatten window)
+    params: dict = field(default_factory=dict)   # kind == "gate27": sma_window / vol_window / daily_vol_target_pct / leverage_cap / phase_in_days overrides
 
     @classmethod
     def from_dict(cls, d: dict) -> "BotLeg":

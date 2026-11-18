@@ -27,7 +27,7 @@ def test_preset_strategy_files_exist():
 def test_presets_cannot_be_deleted_but_custom_can():
     store.list_bots()
     assert store.delete_bot("bot-pass") is False
-    rec = store.create_bot(BotConfig(name="mine", legs=[BotLeg("python/NQ1! Ind Rule 15m.py", "IR")]))
+    rec = store.create_bot(BotConfig(name="mine", legs=[BotLeg("python/IndRule_NQ_15m_v1.py", "IR")]))
     assert store.delete_bot(rec["config"]["id"]) is True
 
 

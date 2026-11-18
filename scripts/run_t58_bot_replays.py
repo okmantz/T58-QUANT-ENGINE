@@ -35,9 +35,9 @@ from app.bots.risk_governor import GovernorConfig  # noqa: E402
 
 def old_presets() -> list[BotConfig]:
     """The three bots as shipped before this study (same three NQ strategies, three risk brains)."""
-    od = BotLeg("python/NQ1! Open Drive Continuation 5m.py", "Open Drive", "NQ", 1.0, 0, 45)
-    ir = BotLeg("python/NQ1! Ind Rule 15m.py", "Ind Rule", "NQ", 1.0, 1, 15)
-    cad = BotLeg("python/NQ1! Context Aligned Drive 1m v2.py", "Context Drive", "NQ", 1.0, 0, 500)
+    od = BotLeg("python/OpenDrive_NQ_5m_v1.py", "Open Drive", "NQ", 1.0, 0, 45)
+    ir = BotLeg("python/IndRule_NQ_15m_v1.py", "Ind Rule", "NQ", 1.0, 1, 15)
+    cad = BotLeg("python/ContextDriveLong_NQ_1m_v2.py", "Context Drive", "NQ", 1.0, 0, 500)
     new = {c.id: c for c in preset_configs()}
     out = []
     gov = {"bot-pass": GovernorConfig(objective="A", base_risk_pct=1.0, early_mult=1.0, mid_mult=1.0, late_mult=0.7, need_risk_mult=1.0, day_stop_frac=0.40),

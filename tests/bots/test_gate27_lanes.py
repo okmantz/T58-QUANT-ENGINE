@@ -91,7 +91,7 @@ def test_engine_builds_one_lane_per_instrument_and_gates_swing_on_rules():
     from app.bots.engine import BotEngine
     from app.bots.models import AccountLink, BotConfig, BotLeg, BotRuntime
     from app.bots.venues import PaperVenue
-    legs = [BotLeg("python/NQ1! Ind Rule 15m.py", "IR", "NQ"), BotLeg("builtin/x", "G ES", "ES", kind="gate27"), BotLeg("builtin/x", "G GC", "GC", kind="gate27")]
+    legs = [BotLeg("python/IndRule_NQ_15m_v1.py", "IR", "NQ"), BotLeg("builtin/x", "G ES", "ES", kind="gate27"), BotLeg("builtin/x", "G GC", "GC", kind="gate27")]
     cfg = BotConfig(name="t", objective="NET", legs=legs, account=AccountLink(venue="paper", account_id="p", size=50_000.0, preset_key=""))
     src = {"IR": object(), "G ES": object(), "G GC": object()}
     live, mx, mm = __import__("app.bots.engine", fromlist=["rules_for_account"]).rules_for_account(cfg.account, objective="NET")
@@ -109,7 +109,7 @@ def test_builder_expands_gate27_into_two_swing_legs_and_keeps_their_symbols():
     cat = {r["id"]: r for r in builder.strategy_catalog()}
     assert builder.GATE27_ID in cat and cat[builder.GATE27_ID]["supported"]
     cfg, errors, warnings = builder.build_config({"name": "n", "objective": "NET", "strategies": [
-        {"strategy": "python/NQ1! Ind Rule 15m.py"}, {"strategy": builder.GATE27_ID, "weight": 0.5}], "instrument": "NQ"})
+        {"strategy": "python/IndRule_NQ_15m_v1.py"}, {"strategy": builder.GATE27_ID, "weight": 0.5}], "instrument": "NQ"})
     assert not errors, errors
     swing = [lg for lg in cfg.legs if lg.kind == "gate27"]
     assert sorted(lg.symbol for lg in swing) == ["ES", "GC"] and all(lg.weight == 0.5 for lg in swing)

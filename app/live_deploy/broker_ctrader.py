@@ -38,7 +38,7 @@ from typing import Optional
 import pandas as pd
 
 from app.live_deploy.broker_base import (
-    BrokerAdapter, ConnectionResult, OpenPosition, OrderResult,
+    BrokerAdapter, ConnectionResult, OpenPosition, OrderResult, PendingOrder,
 )
 
 try:
@@ -390,3 +390,100 @@ class CTraderBrokerAdapter(BrokerAdapter):
             return OrderResult(ok=True, message="Closed.", ticket=str(ticket), price=px)
         except Exception as exc:
             return OrderResult(ok=False, message=str(exc))
+
+    # ------------------------------------------------------------ stop / limit orders (fake-transport tested, NOT live-tested)
+    supports_limit_orders = True
+    supports_stop_orders = True
+    supports_order_modify = True
+    supports_position_stops = True
+
+    def _pending(self, symbol, direction, volume, otype, price=None, stop_price=None, comment="") -> OrderResult:
+        try:
+            symbol_id = self._resolve_symbol_id(symbol)
+            meta = self._symbol_details(symbol_id)
+            vol = self._round_volume(volume, meta)
+            if vol <= 0:
+                return OrderResult(ok=False, message=f"{volume} lots is below the minimum size for {symbol}.")
+            req = ProtoOANewOrderReq(ctidTraderAccountId=self.account_id, symbolId=symbol_id, orderType=otype,
+                                     tradeSide=ProtoOATradeSide.BUY if direction == 1 else ProtoOATradeSide.SELL, volume=vol, comment=comment[:100])
+            if otype == ProtoOAOrderType.LIMIT:
+                req.limitPrice = float(price)
+            elif otype == ProtoOAOrderType.STOP:
+                req.stopPrice = float(stop_price)
+            else:
+                req.stopPrice = float(stop_price)
+                req.limitPrice = float(price)
+            ev = self._call(req)
+            oid = int(getattr(getattr(ev, "order", None), "orderId", 0) or 0)
+            if not oid:
+                return OrderResult(ok=False, message="cTrader accepted the request but returned no order id; check the platform.")
+            return OrderResult(ok=True, message="Order working.", ticket=str(oid), volume=volume)
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def place_limit_order(self, symbol, direction, volume, limit_price, sl_price=None, tp_price=None, comment="T58 Live", reduce_only=False) -> OrderResult:
+        return self._pending(symbol, direction, volume, ProtoOAOrderType.LIMIT, price=limit_price, comment=comment)
+
+    def place_stop_order(self, symbol, direction, volume, stop_price, sl_price=None, tp_price=None, comment="T58 Live", reduce_only=False,
+                         limit_price=None) -> OrderResult:
+        if limit_price:
+            return self._pending(symbol, direction, volume, ProtoOAOrderType.STOP_LIMIT, price=limit_price, stop_price=stop_price, comment=comment)
+        return self._pending(symbol, direction, volume, ProtoOAOrderType.STOP, stop_price=stop_price, comment=comment)
+
+    def cancel_order(self, order_id: str) -> OrderResult:
+        try:
+            from ctrader_open_api.messages.OpenApiMessages_pb2 import ProtoOACancelOrderReq
+            self._call(ProtoOACancelOrderReq(ctidTraderAccountId=self.account_id, orderId=int(order_id)))
+            return OrderResult(ok=True, message="Cancelled.", ticket=str(order_id))
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def modify_order(self, order_id, *, price=None, stop_price=None, volume=None, sl_price=None, tp_price=None) -> OrderResult:
+        try:
+            from ctrader_open_api.messages.OpenApiMessages_pb2 import ProtoOAAmendOrderReq
+            req = ProtoOAAmendOrderReq(ctidTraderAccountId=self.account_id, orderId=int(order_id))
+            if price is not None:
+                req.limitPrice = float(price)
+            if stop_price is not None:
+                req.stopPrice = float(stop_price)
+            if sl_price is not None:
+                req.stopLoss = float(sl_price)
+            if tp_price is not None:
+                req.takeProfit = float(tp_price)
+            self._call(req)
+            return OrderResult(ok=True, message="Modified.", ticket=str(order_id))
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def modify_position_stops(self, ticket, sl_price=None, tp_price=None) -> OrderResult:
+        if sl_price is None and tp_price is None:
+            return OrderResult(ok=False, message="Nothing to change: give a stop and/or a target.")
+        try:
+            req = ProtoOAAmendPositionSLTPReq(ctidTraderAccountId=self.account_id, positionId=int(ticket))
+            if sl_price is not None:
+                req.stopLoss = float(sl_price)
+            if tp_price is not None:
+                req.takeProfit = float(tp_price)
+            self._call(req)
+            return OrderResult(ok=True, message="Stops updated.", ticket=str(ticket))
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def get_pending_orders(self, symbol=None) -> list[PendingOrder]:
+        try:
+            raw = list(self._call(ProtoOAReconcileReq(ctidTraderAccountId=self.account_id)).order)
+            self._ensure_symbol_cache()
+        except Exception:  # noqa: BLE001
+            return []
+        names = {ProtoOAOrderType.LIMIT: "limit", ProtoOAOrderType.STOP: "stop", ProtoOAOrderType.STOP_LIMIT: "stop_limit"}
+        out = []
+        for o in raw:
+            sid = int(o.tradeData.symbolId)
+            sym = self._symbol_cache.get(sid, {}).get("name", str(sid))
+            if symbol and sym.upper() != str(symbol).upper():
+                continue
+            lot = self._symbol_details(sid)["lot_size"] if sid in self._symbol_cache else 100000
+            out.append(PendingOrder(order_id=str(o.orderId), symbol=sym, direction=1 if o.tradeData.tradeSide == ProtoOATradeSide.BUY else -1,
+                                    volume=o.tradeData.volume / float(lot), order_type=names.get(o.orderType, "limit"),
+                                    price=float(getattr(o, "limitPrice", 0.0) or 0.0), stop_price=float(getattr(o, "stopPrice", 0.0) or 0.0)))
+        return out

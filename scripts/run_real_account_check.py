@@ -1,7 +1,7 @@
 """Run the real-account check (2026-10 audit): same strategy, same sessions as a REAL account, then compare.
 
     python scripts/run_real_account_check.py --real data/real_account/real_trades.csv \
-        --data data/raw/NQ1!/futures_NQ.F_1m.parquet --strategy "strategies/python/NQ1! Opening Drive 5m.py" \
+        --data data/raw/NQ1!/futures_NQ.F_1m.parquet --strategy "strategies/python/OpenDrive_NQ_5m_v1.py" \
         --instrument NQ --preset lucid_50k
 
 Writes data/real_account/last_check.json and last_check.md. Exit code 0 = agrees, 1 = does not agree, 2 = could not run.

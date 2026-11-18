@@ -24,6 +24,8 @@ import pandas as pd
 
 from app.bots import gate27 as g27
 from app.bots import store
+from app.bots.arbiter import Arbiter, account_key
+from app.bots.reconcile import reconcile
 from app.bots.engine import BotEngine, rules_for_account
 from app.bots.models import BotConfig, BotRuntime, now_iso
 from app.bots.signals import PrecomputedSignals, RollingSignals, load_strategy, strategy_timeframe_minutes
@@ -110,7 +112,7 @@ def _build_sim_sources(cfg: BotConfig, start: pd.Timestamp, end: pd.Timestamp, e
         sources[lg.label] = PrecomputedSignals(strat, seg, tf)
         frames.setdefault(lg.symbol, df)
     if g27_closes:
-        shared = g27.Gate27Source(g27_closes)
+        shared = g27.Gate27Source(g27_closes, g27.config_from_params(next((lg.params for lg in cfg.legs if lg.kind == "gate27" and lg.params), None)))
         for lg in cfg.legs:
             if lg.kind == "gate27" and lg.symbol in g27_closes:
                 sources[lg.label] = shared
@@ -300,7 +302,7 @@ def _feed_loop(bot_id: str, adapter, poll_seconds: float, stop: threading.Event)
                 else:
                     closes[lg.symbol] = fr
             if closes:
-                g27_src = g27.Gate27Source(closes)
+                g27_src = g27.Gate27Source(closes, g27.config_from_params(next((lg.params for lg in g27_legs if lg.params), None)))
                 for lg in g27_legs:
                     if lg.symbol in closes:
                         sources[lg.label] = g27_src
@@ -310,7 +312,10 @@ def _feed_loop(bot_id: str, adapter, poll_seconds: float, stop: threading.Event)
         if hasattr(venue, "symbol_map"):
             venue.symbol_map = {sym: _broker_symbol(cfg, sym) for sym in bot_symbols(cfg)}
         rules, mx, mm = rules_for_account(cfg.account, objective=cfg.objective)
-        eng = BotEngine(cfg, rt, trades, events, venue, sources, rules=rules, max_minis=mx, max_micros=mm)
+        eng = BotEngine(cfg, rt, trades, events, venue, sources, rules=rules, max_minis=mx, max_micros=mm,
+                        arbiter=Arbiter.persistent(account_key(cfg.account)))
+        reconcile(eng, venue)                       # a restart must not forget open positions or today's trades, and must trust the broker over its memory
+        _persist(bot_id, cfg, rt, trades, events)
         need = max([lg.lookback_days for lg in cfg.legs if lg.kind != "gate27"] or [30]) * 1440
         last_t: dict = {prim: pd.Timestamp(rt.last_bar_time) if rt.last_bar_time else None}
         syms = [s for s in bot_symbols(cfg) if any(lg.symbol == s and lg.label in sources for lg in cfg.legs)]
@@ -352,7 +357,10 @@ def _feed_loop(bot_id: str, adapter, poll_seconds: float, stop: threading.Event)
                     merged.setdefault(pd.Timestamp(r.timestamp), {})[sym] = (float(r.open), float(r.high), float(r.low), float(r.close))
                     last_t[sym] = pd.Timestamp(r.timestamp)
             for t in sorted(merged):
+                before = (len(trades), tuple(sorted((x.symbol, x.ticket) for x in eng.open_positions())))
                 eng.on_bars(t, merged[t])
+                if (len(trades), tuple(sorted((x.symbol, x.ticket) for x in eng.open_positions()))) != before:
+                    _persist(bot_id, cfg, rt, trades, events)      # a fill or a close hits the database at once, not at the end of the poll
                 if rt.status != "running":
                     break
             if merged:

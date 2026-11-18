@@ -36,7 +36,7 @@ import pandas as pd
 import requests
 
 from app.live_deploy.broker_base import (
-    BrokerAdapter, ConnectionResult, OpenPosition, OrderResult,
+    BrokerAdapter, ConnectionResult, OpenPosition, OrderResult, PendingOrder,
 )
 
 _LIVE_BASE = "https://live.tradovateapi.com/v1"
@@ -298,3 +298,83 @@ class TradovateBrokerAdapter(BrokerAdapter):
             )
         px = self._fill_price(data["orderId"]) if isinstance(data, dict) and data.get("orderId") else None
         return OrderResult(ok=True, message="Close submitted.", ticket=ticket, price=px)
+
+    # ------------------------------------------------------------ stop / limit orders (mocked-tested, NOT live-tested)
+    supports_limit_orders = True
+    supports_stop_orders = True
+    supports_order_modify = True
+
+    def _place(self, order_type: str, symbol: str, direction: int, volume: float, price=None, stop=None, comment: str = "") -> OrderResult:
+        try:
+            body = {
+                "accountSpec": self.account_name or self.username, "accountId": self.account_id, "symbol": symbol,
+                "action": "Buy" if direction == 1 else "Sell", "orderQty": int(volume), "orderType": order_type, "isAutomated": True,
+            }
+            if price is not None:
+                body["price"] = float(price)
+            if stop is not None:
+                body["stopPrice"] = float(stop)
+            status, data = self._post("/order/placeorder", body)
+            if status >= 400 or not isinstance(data, dict):
+                return OrderResult(ok=False, message=f"HTTP {status}: {data}")
+            if data.get("failureReason") or data.get("failureText") or "orderId" not in data:
+                return OrderResult(ok=False, message=data.get("failureText") or data.get("errorText") or str(data))
+            return OrderResult(ok=True, message="Order working.", ticket=str(data["orderId"]), volume=volume)
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def place_limit_order(self, symbol, direction, volume, limit_price, sl_price=None, tp_price=None, comment="T58 Live", reduce_only=False) -> OrderResult:
+        return self._place("Limit", symbol, direction, volume, price=limit_price, comment=comment)
+
+    def place_stop_order(self, symbol, direction, volume, stop_price, sl_price=None, tp_price=None, comment="T58 Live", reduce_only=False,
+                         limit_price=None) -> OrderResult:
+        if limit_price:
+            return self._place("StopLimit", symbol, direction, volume, price=limit_price, stop=stop_price, comment=comment)
+        return self._place("Stop", symbol, direction, volume, stop=stop_price, comment=comment)
+
+    def cancel_order(self, order_id: str) -> OrderResult:
+        try:
+            status, data = self._post("/order/cancelorder", {"orderId": int(order_id)})
+            if status >= 400 or (isinstance(data, dict) and (data.get("failureReason") or data.get("failureText"))):
+                return OrderResult(ok=False, message=f"Cancel refused: {data}")
+            return OrderResult(ok=True, message="Cancelled.", ticket=str(order_id))
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def modify_order(self, order_id, *, price=None, stop_price=None, volume=None, sl_price=None, tp_price=None) -> OrderResult:
+        try:
+            cur = next((o for o in self._raw_orders() if str(o.get("id")) == str(order_id)), None)
+            if cur is None:
+                return OrderResult(ok=False, message=f"Order {order_id} is not working on Tradovate.")
+            body = {"orderId": int(order_id), "orderQty": int(volume if volume is not None else cur.get("orderQty", 0)),
+                    "orderType": cur.get("orderType") or "Limit", "isAutomated": True}
+            if price is not None:
+                body["price"] = float(price)
+            if stop_price is not None:
+                body["stopPrice"] = float(stop_price)
+            status, data = self._post("/order/modifyorder", body)
+            if status >= 400 or (isinstance(data, dict) and (data.get("failureReason") or data.get("failureText"))):
+                return OrderResult(ok=False, message=f"Modify refused: {data}")
+            return OrderResult(ok=True, message="Modified.", ticket=str(order_id))
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def _raw_orders(self) -> list:
+        orders = self._session.get(f"{self.base_url}/order/list", timeout=15).json()
+        return [o for o in orders if o.get("accountId") == self.account_id and str(o.get("ordStatus", "")).lower() in ("working", "pendingnew", "suspended")]
+
+    def get_pending_orders(self, symbol=None) -> list[PendingOrder]:
+        try:
+            raw = self._raw_orders()
+        except Exception:  # noqa: BLE001
+            return []
+        out = []
+        for o in raw:
+            sym = o.get("contractName") or self._contract_name(o.get("contractId"))
+            if symbol and sym != symbol:
+                continue
+            t = str(o.get("orderType", "")).lower().replace("stoplimit", "stop_limit")
+            out.append(PendingOrder(order_id=str(o.get("id")), symbol=sym, direction=1 if o.get("action") == "Buy" else -1,
+                                    volume=float(o.get("orderQty") or 0), order_type=t if t in ("limit", "stop", "stop_limit") else "limit",
+                                    price=float(o.get("price") or 0.0), stop_price=float(o.get("stopPrice") or 0.0)))
+        return out

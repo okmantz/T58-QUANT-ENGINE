@@ -70,6 +70,30 @@ class OpenPosition:
     profit: float
 
 
+@dataclass
+class PendingOrder:
+    """A working (not yet filled) order at the broker: a limit, a stop or a stop-limit, entry or protective exit."""
+    order_id: str
+    symbol: str
+    direction: int            # 1 buy, -1 sell
+    volume: float             # broker-native units, like OrderResult.volume
+    order_type: str           # "limit" | "stop" | "stop_limit"
+    price: float = 0.0        # the limit price (limit / stop_limit) or the trigger (stop)
+    stop_price: float = 0.0   # the trigger of a stop_limit
+    sl: float = 0.0
+    tp: float = 0.0
+    reduce_only: bool = False
+    comment: str = ""
+
+
+ORDER_TYPES = ("market", "limit", "stop", "stop_limit")
+
+
+def not_supported(platform: str, what: str) -> "OrderResult":
+    """The honest answer of an adapter that has no implementation of ``what`` yet. Never raises, never pretends."""
+    return OrderResult(ok=False, message=f"{platform} adapter does not support {what} yet. Use a market order, or a platform that does.")
+
+
 class BrokerAdapter(ABC):
     """Every method here mirrors a method MT5Connector already had, so
     execution_engine.LiveExecutionSession (the generalized successor to
@@ -91,6 +115,13 @@ class BrokerAdapter(ABC):
     # that cannot do one of these overrides the flag to False.
     supports_bars: bool = True
     supports_broker_stops: bool = True
+    # Order-type capabilities. An adapter that implements place_limit_order / place_stop_order / cancel_order / modify_order /
+    # get_pending_orders / modify_position_stops sets the matching flag True. Everything defaults to "not supported" and the
+    # default methods below say so in plain words instead of raising, so a bot can ask first and fall back to market orders.
+    supports_limit_orders: bool = False
+    supports_stop_orders: bool = False
+    supports_order_modify: bool = False
+    supports_position_stops: bool = False      # modify_position_stops: move / attach a position's stop and target after the fill
 
     @abstractmethod
     def connect(self) -> ConnectionResult: ...
@@ -181,3 +212,77 @@ class BrokerAdapter(ABC):
           real capital -- there are NO silent defaults here.
         """
         ...
+
+    # ------------------------------------------------------------------------------------------------------ stop / limit orders
+    # ``volume`` is broker-native (see to_broker_qty). ``direction`` is the side of the ORDER (a protective stop on a long is a SELL stop).
+    # ``reduce_only`` asks the broker to refuse an order that would open or flip a position (where the platform has the flag).
+    def place_limit_order(
+        self, symbol: str, direction: int, volume: float, limit_price: float,
+        sl_price: float | None = None, tp_price: float | None = None,
+        comment: str = "T58 Live", reduce_only: bool = False,
+    ) -> OrderResult:
+        """A resting limit order: buy at ``limit_price`` or lower, sell at ``limit_price`` or higher. Returns the ORDER id in ``ticket``."""
+        return not_supported(self.platform_name, "limit orders")
+
+    def place_stop_order(
+        self, symbol: str, direction: int, volume: float, stop_price: float,
+        sl_price: float | None = None, tp_price: float | None = None,
+        comment: str = "T58 Live", reduce_only: bool = False, limit_price: float | None = None,
+    ) -> OrderResult:
+        """A stop order: becomes a market order when ``stop_price`` trades (buy above the market, sell below it). With ``limit_price`` it is a
+        stop-limit. A protective stop is a stop order on the closing side. Returns the ORDER id in ``ticket``."""
+        return not_supported(self.platform_name, "stop orders")
+
+    def cancel_order(self, order_id: str) -> OrderResult:
+        return not_supported(self.platform_name, "cancelling orders")
+
+    def modify_order(self, order_id: str, *, price: float | None = None, stop_price: float | None = None,
+                     volume: float | None = None, sl_price: float | None = None, tp_price: float | None = None) -> OrderResult:
+        return not_supported(self.platform_name, "modifying orders")
+
+    def modify_position_stops(self, ticket: str, sl_price: float | None = None, tp_price: float | None = None) -> OrderResult:
+        """Move or attach an open position's stop-loss / take-profit (trail to break-even, add a target after the fill)."""
+        return not_supported(self.platform_name, "changing a position's stop and target")
+
+    def get_pending_orders(self, symbol: Optional[str] = None) -> list[PendingOrder]:
+        """Working orders on the account (never filled yet). Used by a bot's restart reconciliation. [] when the platform cannot list them."""
+        return []
+
+    def place_order(self, order_type: str, symbol: str, direction: int, volume: float, *, price: float | None = None,
+                    stop_price: float | None = None, sl_price: float | None = None, tp_price: float | None = None,
+                    comment: str = "T58 Live", reduce_only: bool = False) -> OrderResult:
+        """One entry point for the four order types, so a bot maps a level to an order without branching on the platform.
+
+            market      price ignored
+            limit       ``price`` is the limit
+            stop        ``stop_price`` (or ``price``) is the trigger
+            stop_limit  ``stop_price`` is the trigger, ``price`` the limit
+        """
+        t = str(order_type or "market").lower().replace("-", "_")
+        if t not in ORDER_TYPES:
+            return OrderResult(ok=False, message=f"Unknown order type {order_type!r}; use one of {', '.join(ORDER_TYPES)}.")
+        if t == "market":
+            return self.place_market_order(symbol, direction, volume, sl_price=sl_price, tp_price=tp_price, comment=comment)
+        if t == "limit":
+            if not price:
+                return OrderResult(ok=False, message="A limit order needs a price.")
+            return self.place_limit_order(symbol, direction, volume, float(price), sl_price=sl_price, tp_price=tp_price, comment=comment, reduce_only=reduce_only)
+        trig = stop_price or price
+        if not trig:
+            return OrderResult(ok=False, message="A stop order needs a trigger price.")
+        return self.place_stop_order(symbol, direction, volume, float(trig), sl_price=sl_price, tp_price=tp_price, comment=comment, reduce_only=reduce_only,
+                                     limit_price=float(price) if (t == "stop_limit" and price) else None)
+
+    def place_protective_orders(self, symbol: str, position_direction: int, volume: float, stop_price: float | None,
+                                target_price: float | None, comment: str = "T58 protect") -> dict:
+        """Attach a stop-loss and a take-profit to a position that already exists, as resting EXIT orders (opposite side, reduce-only).
+
+        For platforms whose market order cannot carry stops (``supports_broker_stops`` False) and that have no per-position SL/TP edit. Returns
+        {'stop': OrderResult | None, 'target': OrderResult | None}. If the stop is refused the caller must flatten: a position without a stop is not allowed."""
+        exit_side = -int(position_direction)
+        out: dict = {"stop": None, "target": None}
+        if stop_price:
+            out["stop"] = self.place_stop_order(symbol, exit_side, volume, float(stop_price), comment=comment, reduce_only=True)
+        if target_price:
+            out["target"] = self.place_limit_order(symbol, exit_side, volume, float(target_price), comment=comment, reduce_only=True)
+        return out

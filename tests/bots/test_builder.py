@@ -6,8 +6,8 @@ from app.bots import builder, store
 from app.bots.models import BotConfig
 from app.web.server import app
 
-GOOD = "python/NQ1! Open Drive Continuation 5m.py"
-GOOD2 = "python/NQ1! Ind Rule 15m.py"
+GOOD = "python/OpenDrive_NQ_5m_v1.py"
+GOOD2 = "python/IndRule_NQ_15m_v1.py"
 
 
 @pytest.fixture()

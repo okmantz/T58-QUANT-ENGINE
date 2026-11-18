@@ -31,7 +31,7 @@ import pandas as pd
 import requests
 
 from app.live_deploy.broker_base import (
-    BrokerAdapter, ConnectionResult, OpenPosition, OrderResult,
+    BrokerAdapter, ConnectionResult, OpenPosition, OrderResult, PendingOrder,
 )
 
 _LIVE_BASE = "https://live.tradelocker.com/backend-api"
@@ -375,3 +375,101 @@ class TradeLockerBrokerAdapter(BrokerAdapter):
             return OrderResult(ok=True, message="Close order sent.", ticket=str(ticket), price=price)
         except Exception as exc:
             return OrderResult(ok=False, message=str(exc))
+
+    # ------------------------------------------------------------ stop / limit orders (mocked-tested, NOT live-tested)
+    supports_limit_orders = True
+    supports_stop_orders = True
+    supports_order_modify = True
+    supports_position_stops = True
+
+    def _place_pending(self, symbol, direction, volume, otype, price=None, stop_price=None, sl_price=None, tp_price=None) -> OrderResult:
+        try:
+            inst = self._instrument(symbol)
+            body: dict[str, Any] = {
+                "price": float(price) if price is not None else None, "qty": str(volume), "routeId": self._route(inst, "TRADE"),
+                "side": "buy" if direction == 1 else "sell", "validity": "GTC", "tradableInstrumentId": str(inst["tradableInstrumentId"]),
+                "type": otype,
+            }
+            if stop_price is not None:
+                body["stopPrice"] = float(stop_price)
+            if sl_price:
+                body.update(stopLoss=float(sl_price), stopLossType="absolute")
+            if tp_price:
+                body.update(takeProfit=float(tp_price), takeProfitType="absolute")
+            data = self._req("POST", f"/trade/accounts/{self.account_id}/orders", json=body)
+            oid = (data.get("d") or {}).get("orderId")
+            if not oid:
+                return OrderResult(ok=False, message=f"Order not accepted: {data}")
+            return OrderResult(ok=True, message="Order working.", ticket=str(oid), volume=volume)
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def place_limit_order(self, symbol, direction, volume, limit_price, sl_price=None, tp_price=None, comment="T58 Live", reduce_only=False) -> OrderResult:
+        return self._place_pending(symbol, direction, volume, "limit", price=limit_price, sl_price=sl_price, tp_price=tp_price)
+
+    def place_stop_order(self, symbol, direction, volume, stop_price, sl_price=None, tp_price=None, comment="T58 Live", reduce_only=False,
+                         limit_price=None) -> OrderResult:
+        if limit_price:
+            return self._place_pending(symbol, direction, volume, "stop", price=limit_price, stop_price=stop_price, sl_price=sl_price, tp_price=tp_price)
+        return self._place_pending(symbol, direction, volume, "stop", stop_price=stop_price, sl_price=sl_price, tp_price=tp_price)
+
+    def cancel_order(self, order_id: str) -> OrderResult:
+        try:
+            self._req("DELETE", f"/trade/orders/{order_id}")
+            return OrderResult(ok=True, message="Cancelled.", ticket=str(order_id))
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def modify_order(self, order_id, *, price=None, stop_price=None, volume=None, sl_price=None, tp_price=None) -> OrderResult:
+        body: dict[str, Any] = {}
+        if price is not None:
+            body["price"] = float(price)
+        if stop_price is not None:
+            body["stopPrice"] = float(stop_price)
+        if volume is not None:
+            body["qty"] = str(volume)
+        if sl_price is not None:
+            body.update(stopLoss=float(sl_price), stopLossType="absolute")
+        if tp_price is not None:
+            body.update(takeProfit=float(tp_price), takeProfitType="absolute")
+        try:
+            self._req("PATCH", f"/trade/orders/{order_id}", json=body)
+            return OrderResult(ok=True, message="Modified.", ticket=str(order_id))
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def modify_position_stops(self, ticket, sl_price=None, tp_price=None) -> OrderResult:
+        body: dict[str, Any] = {}
+        if sl_price is not None:
+            body.update(stopLoss=float(sl_price), stopLossType="absolute")
+        if tp_price is not None:
+            body.update(takeProfit=float(tp_price), takeProfitType="absolute")
+        if not body:
+            return OrderResult(ok=False, message="Nothing to change: give a stop and/or a target.")
+        try:
+            self._req("PATCH", f"/trade/positions/{ticket}", json=body)
+            return OrderResult(ok=True, message="Stops updated.", ticket=str(ticket))
+        except Exception as exc:  # noqa: BLE001
+            return OrderResult(ok=False, message=str(exc))
+
+    def get_pending_orders(self, symbol=None) -> list[PendingOrder]:
+        try:
+            cols = self._cols("ordersConfig", ["id", "tradableInstrumentId", "routeId", "qty", "side", "type", "status", "price", "stopPrice"])
+            d = self._req("GET", f"/trade/accounts/{self.account_id}/orders").get("d", {})
+            rows = d.get("orders", [])
+            inv = {str(i.get("tradableInstrumentId")): i.get("name") for i in self._load_instruments()}
+        except Exception:  # noqa: BLE001
+            return []
+        out = []
+        for row in rows:
+            o = dict(zip(cols, row)) if isinstance(row, (list, tuple)) else dict(row)
+            if str(o.get("status", "")).lower() not in ("working", "placed", "new", "pending"):
+                continue
+            sym = inv.get(str(o.get("tradableInstrumentId")), str(o.get("tradableInstrumentId")))
+            if symbol and sym != symbol:
+                continue
+            t = str(o.get("type", "limit")).lower()
+            out.append(PendingOrder(order_id=str(o.get("id")), symbol=sym, direction=1 if str(o.get("side")).lower() == "buy" else -1,
+                                    volume=float(o.get("qty") or 0), order_type=t if t in ("limit", "stop", "stop_limit") else "limit",
+                                    price=float(o.get("price") or 0.0), stop_price=float(o.get("stopPrice") or 0.0)))
+        return out

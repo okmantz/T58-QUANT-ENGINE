@@ -21,6 +21,7 @@ from app.bots.models import AccountLink, BotConfig, BotLeg
 from app.bots.risk_governor import GovernorConfig
 from app.bots.signals import STRATEGIES_DIR
 from app.objectives import OBJECTIVES, SPECS, normalize_objective
+from app.strategy.naming import display_label, parse_strategy_filename
 
 MAX_LEGS = 8
 ALLOWED_SUFFIXES = (".py", ".pine", ".mq5")
@@ -153,6 +154,9 @@ def _first_line(text: str, suffix: str) -> str:
 
 
 def _guess_instrument(name: str, text: str, meta: dict) -> str:
+    parsed = parse_strategy_filename(name)          # the convention [NAME]_[MARKET]_[TF]_[VERSION] names the market outright
+    if parsed is not None and parsed.instruments:
+        return parsed.instruments[0] if parsed.instruments[0] in INSTRUMENTS else ""
     m = str(meta.get("market") or "").upper()
     for k in ("NQ", "ES", "GC"):
         if k in m:
@@ -163,11 +167,23 @@ def _guess_instrument(name: str, text: str, meta: dict) -> str:
 
 
 def _short_label(name: str) -> str:
+    if parse_strategy_filename(name) is not None:
+        return display_label(name)[:28]
     stem = Path(name).stem
     stem = re.sub(r"^(?:MNQ|NQ|ES|GC|MES|MGC)\s*1?!?\s*(?:&\s*(?:NQ|ES)\s*1?!?\s*)?", "", stem).strip()
     stem = re.sub(r"\s+\d+[mhd]\b.*$", "", stem).strip() or stem
     stem = re.sub(r"\b(EA|v\d+)\b", "", stem).strip()
     return (stem or Path(name).stem)[:28]
+
+
+def _lookback_days(filename: str) -> int:
+    """Calendar days of 1-minute history a strategy needs to warm up (Context Drive reads about 500 days of higher-timeframe context)."""
+    n = filename.lower().replace(" ", "").replace("_", "")
+    if "contextdrive" in n or "contextaligned" in n:
+        return 500
+    if "opendrive" in n:
+        return 45
+    return 30
 
 
 def _library_roots() -> list[tuple[str, Path]]:
@@ -211,7 +227,8 @@ def strategy_catalog(*, include_unsupported: bool = True) -> list[dict]:
                                 meta = json.loads(mp.read_text(encoding="utf-8"))
                             except Exception:  # noqa: BLE001
                                 meta = {}
-                        tf = _tf_label(text[:6000])
+                        parsed = parse_strategy_filename(f.name)
+                        tf = _tf_label(text[:6000]) or (parsed.timeframe.lower() if parsed else "")
                         inst = _guess_instrument(f.name, text[:3000], meta)
                         daily = _is_daily(tf) or ("daily" in f.name.lower()) or bool(re.search(r"\b1D\b", f.name))
                         reasons = []
@@ -221,7 +238,7 @@ def strategy_catalog(*, include_unsupported: bool = True) -> list[dict]:
                                "timeframe": tf or ("5m" if sub == "python" else ""), "idea": _first_line(text[:4000], f.suffix),
                                "supported": not reasons, "reason": " ".join(reasons),
                                "experimental": sub != "python",
-                               "lookback_days": 500 if "context aligned" in f.name.lower() else (45 if "open drive" in f.name.lower() else 30),
+                               "lookback_days": _lookback_days(f.name),
                                "status": str(meta.get("status") or "")}
                         _CATALOG_CACHE[key] = row
                     out.append(dict(row))

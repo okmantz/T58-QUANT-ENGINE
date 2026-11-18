@@ -278,9 +278,21 @@ def simple_run_name(instrument: str = "", timeframe: str = "",
 
 def simple_run_filename(instrument: str = "", timeframe: str = "",
                         indicator: str = "", tag: str = "", extension: str = "") -> str:
-    """simple_run_name as a filename: only the characters Windows
-    forbids are neutralized; spaces, '!' and parentheses survive, per
-    Owen's example."""
+    """The saved name of a run's output, in the repository convention ``[STRATEGY_NAME]_[MARKET]_[TIMEFRAME]_[VERSION]``
+    (app/strategy/naming.py): ``simple_run_filename('ES1!', '15m', 'RSI', 'optimized', '.json')`` -> ``'RsiOptimized_ES_15m_v1.json'``.
+
+    One canonical file per (strategy, market, timeframe): re-running the same tool updates that file (the previous version is archived by
+    save_strategy_replacing_version), so the version stays v1 here; a hand-made new version is ``next_version_filename``. When the instrument or
+    the timeframe is unknown the old human formula (``simple_run_name``) is used, with only the characters Windows forbids neutralised."""
+    from app.strategy.naming import format_strategy_filename, normalize_market, normalize_timeframe
+    if instrument and str(instrument).strip() and re.fullmatch(
+            r"(?i)\s*(\d+\s*(s|sec|m|min|mins|minutes?|h|hr|hours?|d|day|days|w|wk|week|weeks)?|[mhdw]\d+|daily|weekly|monthly)\s*", str(timeframe or "")):
+        try:
+            if normalize_market(instrument) and normalize_timeframe(timeframe):
+                label = " ".join(x for x in (str(indicator or "").strip(), str(tag or "").strip()) if x) or "Strategy"
+                return format_strategy_filename(label, instrument, timeframe, 1, extension)
+        except Exception:  # noqa: BLE001 - an exotic instrument / timeframe string falls back to the readable formula below
+            pass
     name = _UNSAFE_FILENAME_CHARS.sub("-", simple_run_name(instrument, timeframe, indicator, tag))
     return f"{name}{extension}"
 
