@@ -230,8 +230,10 @@ def _ladder(progress: float, cfg: GovernorConfig) -> float:
     return cfg.late_mult
 
 
-def decide_risk(state: AccountState, cfg: GovernorConfig) -> RiskDecision:
-    """Dollars to risk on the next trade (at its stop), or a skip with the reason spelled out."""
+def decide_risk(state: AccountState, cfg: GovernorConfig, open_risk: float = 0.0) -> RiskDecision:
+    """Dollars to risk on the next trade (at its stop), or a skip with the reason spelled out.
+
+    ``open_risk`` is the dollars already at risk in other open positions (another instrument): it comes off the room the new trade may use."""
     r = state.rules
     if state.phase in ("passed", "breached"):
         return RiskDecision(False, 0.0, 0.0, "evaluation finished" if state.phase == "passed" else "account breached")
@@ -243,7 +245,7 @@ def decide_risk(state: AccountState, cfg: GovernorConfig) -> RiskDecision:
         mult = min(max(thr, cfg.min_mult), cfg.max_mult)
         risk = base * mult
         if cfg.cushion_risk_frac is not None and state.rules.loss_limit > 0:      # on a prop account: never risk more than this share of the cushion
-            risk = min(risk, max(state.cushion, 0.0) * cfg.cushion_risk_frac)
+            risk = min(risk, max(state.cushion - open_risk, 0.0) * cfg.cushion_risk_frac)
         if cfg.max_risk_dollars:
             risk = min(risk, cfg.max_risk_dollars)
         if risk < cfg.min_risk_dollars:
@@ -274,13 +276,13 @@ def decide_risk(state: AccountState, cfg: GovernorConfig) -> RiskDecision:
     mult = min(max(mult, 0.0), cfg.max_mult)
     risk = base * mult
     if cfg.cushion_risk_frac is not None:
-        risk = min(risk, max(state.cushion, 0.0) * cfg.cushion_risk_frac)
+        risk = min(risk, max(state.cushion - open_risk, 0.0) * cfg.cushion_risk_frac)
     if cfg.need_risk_mult is not None and state.phase == "evaluation":
         need = max(r.profit_target - state.profit, 0.0)
         risk = min(risk, max(need * cfg.need_risk_mult, cfg.min_risk_dollars))
         why.append("need taper")
     # never risk more than the cushion left above the floor, or the room left in today's soft limit
-    risk = min(risk, max(state.cushion, 0.0) * 0.9, max(soft + state.day_pnl, 0.0) * 0.9)
+    risk = min(risk, max(state.cushion - open_risk, 0.0) * 0.9, max(soft + state.day_pnl - open_risk, 0.0) * 0.9)
     if cfg.max_risk_dollars:
         risk = min(risk, cfg.max_risk_dollars)
     if risk < cfg.min_risk_dollars:

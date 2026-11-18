@@ -22,6 +22,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from app.bots import gate27 as g27
 from app.bots import store
 from app.bots.engine import BotEngine, rules_for_account
 from app.bots.models import BotConfig, BotRuntime, now_iso
@@ -58,6 +59,21 @@ def history_span(symbol: str = "NQ") -> tuple[pd.Timestamp, pd.Timestamp]:
     return pd.Timestamp(df["timestamp"].iloc[0]), pd.Timestamp(df["timestamp"].iloc[-1])
 
 
+def bot_symbols(cfg: BotConfig) -> list:
+    """Every instrument the bot's legs use, first-use order."""
+    out: list = []
+    for lg in cfg.legs:
+        if lg.symbol not in out:
+            out.append(lg.symbol)
+    return out
+
+
+def bot_span(cfg: BotConfig) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """The stretch of history every one of the bot's instruments has."""
+    spans = [history_span(s) for s in bot_symbols(cfg)]
+    return max(a for a, _ in spans), min(b for _, b in spans)
+
+
 def _persist(bot_id: str, cfg: BotConfig, rt: BotRuntime, trades: list, events: list) -> None:
     def fn(rec):
         rec["runtime"], rec["trades"], rec["events"] = rt.to_dict(), trades, events
@@ -70,14 +86,19 @@ def is_running(bot_id: str) -> bool:
 
 
 # --------------------------------------------------------------------------------------------------------------------- simulation
-def _build_sim_sources(cfg: BotConfig, start: pd.Timestamp, end: pd.Timestamp, events: list) -> tuple[dict, pd.DataFrame]:
-    sources, primary = {}, None
-    sym0 = cfg.legs[0].symbol
+def _build_sim_sources(cfg: BotConfig, start: pd.Timestamp, end: pd.Timestamp, events: list) -> tuple[dict, dict]:
+    """(sources by leg label, {symbol: 1-minute bars inside [start, end]}) for every instrument the bot trades."""
+    sources, frames = {}, {}
+    g27_closes: dict = {}
     for lg in cfg.legs:
-        if lg.symbol != sym0:
-            events.append({"t": now_iso(), "kind": "warn", "text": f"{lg.label}: multi-instrument bots are not supported yet; leg skipped."})
+        try:
+            df = load_history(lg.symbol)
+        except FileNotFoundError:
+            events.append({"t": now_iso(), "kind": "warn", "text": f"{lg.label}: no history bundled for {lg.symbol}; leg skipped."})
             continue
-        df = load_history(lg.symbol)
+        if lg.kind == "gate27":
+            g27_closes[lg.symbol] = g27.session_closes(df[df["timestamp"] <= end])
+            continue
         w0 = start - pd.Timedelta(days=int(lg.lookback_days))
         seg = df[(df["timestamp"] >= w0) & (df["timestamp"] <= end)].reset_index(drop=True)
         try:
@@ -87,12 +108,45 @@ def _build_sim_sources(cfg: BotConfig, start: pd.Timestamp, end: pd.Timestamp, e
             continue
         tf = strategy_timeframe_minutes(strat)
         sources[lg.label] = PrecomputedSignals(strat, seg, tf)
-        if primary is None:
-            primary = df
+        frames.setdefault(lg.symbol, df)
+    if g27_closes:
+        shared = g27.Gate27Source(g27_closes)
+        for lg in cfg.legs:
+            if lg.kind == "gate27" and lg.symbol in g27_closes:
+                sources[lg.label] = shared
+                frames.setdefault(lg.symbol, load_history(lg.symbol))
     if not sources:
         raise ValueError("None of this bot's strategies could be loaded. Open Settings and pick strategies that exist in the library.")
-    bars = primary[(primary["timestamp"] >= start) & (primary["timestamp"] <= end)].reset_index(drop=True)
+    bars = {sym: df[(df["timestamp"] >= start) & (df["timestamp"] <= end)].reset_index(drop=True) for sym, df in frames.items()}
     return sources, bars
+
+
+def _merged_bars(bars: dict):
+    """Yield (timestamp, {symbol: (o, h, l, c)}) over the union of the instruments' minutes, in time order."""
+    syms = list(bars)
+    if len(syms) == 1:
+        sym = syms[0]
+        b = bars[sym]
+        ts = pd.DatetimeIndex(b["timestamp"])
+        o, h, l, c = (b[k].to_numpy(float) for k in ("open", "high", "low", "close"))
+        for k in range(len(b)):
+            yield ts[k], {sym: (o[k], h[k], l[k], c[k])}
+        return
+    def _ns(col) -> np.ndarray:                                   # epoch nanoseconds whatever unit pandas stored the timestamps in
+        ix = pd.DatetimeIndex(col)
+        ix = ix.tz_localize("UTC") if ix.tz is None else ix.tz_convert("UTC")
+        return ix.as_unit("ns").asi8
+    ns = {s: _ns(bars[s]["timestamp"]) for s in syms}
+    allts = np.unique(np.concatenate(list(ns.values())))
+    pos = {s: np.searchsorted(ns[s], allts) for s in syms}
+    arr = {s: tuple(bars[s][k].to_numpy(float) for k in ("open", "high", "low", "close")) for s in syms}
+    for k, tns in enumerate(allts):
+        d = {}
+        for s in syms:
+            j = pos[s][k]
+            if j < len(ns[s]) and ns[s][j] == tns:
+                d[s] = (arr[s][0][j], arr[s][1][j], arr[s][2][j], arr[s][3][j])
+        yield pd.Timestamp(int(tns), tz="UTC"), d
 
 
 def start_simulation(bot_id: str, *, months: float = 3.0, speed: str = "fast", from_date: Optional[str] = None) -> dict:
@@ -116,7 +170,7 @@ def start_simulation(bot_id: str, *, months: float = 3.0, speed: str = "fast", f
             a = demo.load()
             if a.status != "active":
                 return {"ok": False, "message": f"The T58 demo account is {a.status}. Start a new attempt on the demo account first."}
-        lo, hi = history_span(cfg.legs[0].symbol)
+        lo, hi = bot_span(cfg)
         if rt.replay_cursor:
             start = max(pd.Timestamp(rt.replay_cursor) + pd.Timedelta(minutes=1), lo)
         elif from_date:
@@ -144,27 +198,24 @@ def _sim_loop(bot_id: str, start: pd.Timestamp, end: pd.Timestamp, pause: float,
         venue = venue_for(cfg.account)
         rules, mx, mm = rules_for_account(cfg.account, objective=cfg.objective)
         eng = BotEngine(cfg, rt, trades, events, venue, sources, rules=rules, max_minis=mx, max_micros=mm)
-        ts = pd.DatetimeIndex(bars["timestamp"])
-        o, h, l, c = (bars[k].to_numpy(float) for k in ("open", "high", "low", "close"))
-        n, chunk, i = len(bars), 1380, 0
-        while i < n and not stop.is_set() and rt.status == "running":
-            j = min(n, i + chunk)
-            for k in range(i, j):
-                eng.on_bar(ts[k], o[k], h[k], l[k], c[k])
-                rt.replay_cursor = ts[k].isoformat()
-                if rt.status != "running":
-                    break
-            i = j
-            _persist(bot_id, cfg, rt, trades, events)
-            if pause:
-                time.sleep(pause)
+        chunk, i, since = 1380, 0, 0
+        for ts, dbars in _merged_bars(bars):
+            if stop.is_set() or rt.status != "running":
+                break
+            eng.on_bars(ts, dbars)
+            rt.replay_cursor = ts.isoformat()
+            i += 1
+            if i % chunk == 0:
+                _persist(bot_id, cfg, rt, trades, events)
+                if pause:
+                    time.sleep(pause)
         if rt.status == "running":
             if stop.is_set():
                 rt.status, rt.message = "stopped", "Stopped. Press Start to continue from here."
             else:
                 rt.status, rt.message = "stopped", "Replay reached the end of the bundled data. Reset to run again, or connect a live feed to continue in real time."
-        if eng.pos is not None and rt.status != "running":
-            eng._close_position(float(rt.last_price), pd.Timestamp(rt.last_bar_time), "bot stopped: flattened")
+        if eng.open_positions() and rt.status != "running":
+            eng.close_all("bot stopped: flattened")
         eng._persist_state()
         rt.stopped_at = now_iso()
     except Exception as e:  # noqa: BLE001
@@ -199,33 +250,81 @@ def start_feed(bot_id: str, adapter, *, live_ok: bool, poll_seconds: float = 15.
     return {"ok": True, "message": "Bot started on the live feed."}
 
 
+def _broker_symbol(cfg: BotConfig, sym: str) -> str:
+    """The broker's contract symbol for a research instrument: the account's own symbol for the primary instrument, the micro for the others."""
+    from app.bots.builder import INSTRUMENTS
+    prim = cfg.legs[0].symbol if cfg.legs else "NQ"
+    return cfg.account.broker_symbol if sym == prim else INSTRUMENTS.get(sym, {}).get("micro", sym)
+
+
+def _daily_closes_from_adapter(adapter, broker_sym: str) -> Optional[pd.DataFrame]:
+    """Daily history for the Gate 27 legs from the broker (None when the adapter cannot provide it)."""
+    try:
+        df = adapter.fetch_completed_bars(broker_sym, 1440, 400)
+    except Exception:  # noqa: BLE001
+        return None
+    if df is None or len(df) < g27.SMA_WINDOW:
+        return None
+    ts = pd.to_datetime(df["timestamp"])
+    ts = ts.dt.tz_localize(None) if ts.dt.tz is None else ts.dt.tz_convert("UTC").dt.tz_localize(None)
+    c = df["close"].astype(float).to_numpy()
+    return pd.DataFrame({"close": c, "raw": c}, index=pd.DatetimeIndex(ts.dt.normalize()))
+
+
 def _feed_loop(bot_id: str, adapter, poll_seconds: float, stop: threading.Event) -> None:
     rec = store.get_bot(bot_id)
     cfg, rt = BotConfig.from_dict(rec["config"]), BotRuntime.from_dict(rec["runtime"])
     trades, events = rec["trades"], rec["events"]
-    window = {"df": None}
+    windows: dict = {}
     try:
-        sym = cfg.account.broker_symbol
-        sources = {}
+        prim = cfg.legs[0].symbol
+        sources, g27_legs = {}, []
         for lg in cfg.legs:
+            if lg.kind == "gate27":
+                g27_legs.append(lg)
+                continue
             try:
                 strat = load_strategy(lg.strategy)
             except FileNotFoundError as exc:
                 events.append({"t": now_iso(), "kind": "warn", "text": f"{lg.label}: strategy file not found ({exc}); leg skipped."})
                 continue
             tf = strategy_timeframe_minutes(strat)
-            sources[lg.label] = RollingSignals(strat, tf, lambda: window["df"])
+            sources[lg.label] = RollingSignals(strat, tf, (lambda s=lg.symbol: windows.get(s)))
+        g27_src = None
+        if g27_legs:
+            closes = {}
+            for lg in g27_legs:
+                fr = _daily_closes_from_adapter(adapter, _broker_symbol(cfg, lg.symbol))
+                if fr is None:
+                    events.append({"t": now_iso(), "kind": "warn", "text": f"{lg.label}: the broker gave no daily history (210+ sessions needed); leg skipped."})
+                else:
+                    closes[lg.symbol] = fr
+            if closes:
+                g27_src = g27.Gate27Source(closes)
+                for lg in g27_legs:
+                    if lg.symbol in closes:
+                        sources[lg.label] = g27_src
         if not sources:
             raise ValueError("None of this bot's strategies could be loaded. Open Settings and pick strategies that exist in the library.")
         venue = venue_for(cfg.account, adapter=adapter) if cfg.account.venue == "broker" else venue_for(cfg.account)
+        if hasattr(venue, "symbol_map"):
+            venue.symbol_map = {sym: _broker_symbol(cfg, sym) for sym in bot_symbols(cfg)}
         rules, mx, mm = rules_for_account(cfg.account, objective=cfg.objective)
         eng = BotEngine(cfg, rt, trades, events, venue, sources, rules=rules, max_minis=mx, max_micros=mm)
-        need = max(lg.lookback_days for lg in cfg.legs) * 1440
-        last_t = pd.Timestamp(rt.last_bar_time) if rt.last_bar_time else None
+        need = max([lg.lookback_days for lg in cfg.legs if lg.kind != "gate27"] or [30]) * 1440
+        last_t: dict = {prim: pd.Timestamp(rt.last_bar_time) if rt.last_bar_time else None}
+        syms = [s for s in bot_symbols(cfg) if any(lg.symbol == s and lg.label in sources for lg in cfg.legs)]
         failures = 0
         while not stop.is_set() and rt.status == "running":
             try:
-                df = adapter.fetch_completed_bars(sym, 1, min(need, 50_000))
+                fetched = {}
+                for sym in syms:
+                    try:
+                        fetched[sym] = adapter.fetch_completed_bars(_broker_symbol(cfg, sym), 1, min(need, 50_000))
+                    except Exception:  # noqa: BLE001
+                        if sym == prim:
+                            raise
+                        events.append({"t": now_iso(), "kind": "warn", "text": f"No bars for {sym} from the broker this poll."})
                 failures = 0
             except Exception as e:  # noqa: BLE001
                 failures += 1
@@ -236,27 +335,37 @@ def _feed_loop(bot_id: str, adapter, poll_seconds: float, stop: threading.Event)
                     break
                 time.sleep(poll_seconds)
                 continue
-            if df is not None and len(df):
+            merged: dict = {}
+            for sym, df in fetched.items():
+                if df is None or not len(df):
+                    continue
                 df = df.reset_index(drop=True)
                 ts = pd.to_datetime(df["timestamp"])
                 if ts.dt.tz is None:
                     df["timestamp"] = ts.dt.tz_localize("UTC")
-                window["df"] = df
-                new = df if last_t is None else df[df["timestamp"] > last_t]
-                if last_t is None:
-                    new = df.tail(1)       # first connect: arm on the latest bar, never replay old bars into live orders
+                windows[sym] = df
+                lt = last_t.get(sym)
+                new = df if lt is not None else df.tail(1)       # first connect: arm on the latest bar, never replay old bars into live orders
+                if lt is not None:
+                    new = df[df["timestamp"] > lt]
                 for r in new.itertuples():
-                    eng.on_bar(pd.Timestamp(r.timestamp), float(r.open), float(r.high), float(r.low), float(r.close))
-                    last_t = pd.Timestamp(r.timestamp)
-                    if rt.status != "running":
-                        break
+                    merged.setdefault(pd.Timestamp(r.timestamp), {})[sym] = (float(r.open), float(r.high), float(r.low), float(r.close))
+                    last_t[sym] = pd.Timestamp(r.timestamp)
+            for t in sorted(merged):
+                eng.on_bars(t, merged[t])
+                if rt.status != "running":
+                    break
+            if merged:
                 _persist(bot_id, cfg, rt, trades, events)
             stop.wait(poll_seconds)
         if rt.status == "running":
             rt.status, rt.message = "stopped", "Stopped."
-        if eng.pos is not None and rt.status != "running":
+        if eng.open_positions() and rt.status != "running":
             venue.flatten_all()
-            eng._close_position(float(rt.last_price), pd.Timestamp(rt.last_bar_time or pd.Timestamp.utcnow()), "bot stopped: flattened", broker_closed=True)
+            for ln in eng.lanes.values():
+                if ln.pos is not None:
+                    eng._lane = ln
+                    eng._close_position(ln.last_price or float(rt.last_price), pd.Timestamp(ln.last_time or rt.last_bar_time or pd.Timestamp.utcnow()), "bot stopped: flattened", broker_closed=True)
         rt.stopped_at = now_iso()
     except Exception as e:  # noqa: BLE001
         rt.status, rt.halted_reason, rt.message = "halted", f"{type(e).__name__}: {e}", f"Halted: {e}"

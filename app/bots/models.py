@@ -27,6 +27,7 @@ class BotLeg:
     priority: int = 0                  # lower wins when two legs signal on the same instrument at once
     lookback_days: int = 30            # history the strategy needs to warm up (calendar days of 1-minute bars)
     note: str = ""
+    kind: str = "intraday"             # "intraday" (a strategy file read bar by bar) | "gate27" (monthly swing leg held through the flatten window)
 
     @classmethod
     def from_dict(cls, d: dict) -> "BotLeg":
@@ -62,6 +63,7 @@ class BotConfig:
     flatten_hhmm_et: str = "16:45"                 # flat by this time (Lucid-style 4:45 pm ET / 15:45 CT) ...
     reopen_hhmm_et: str = "18:00"                  # ... and no new entries until the Globex session reopens
     max_trades_per_day: int = 6
+    max_open_positions: int = 2                    # intraday positions open at once across instruments (one per instrument)
     created_at: str = field(default_factory=now_iso)
 
     def governor_cfg(self) -> GovernorConfig:

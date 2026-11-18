@@ -95,6 +95,10 @@ class BrokerVenue(Venue):
         self.adapter, self.symbol, self.label = adapter, symbol, label
         self.contract_size, self.units_per_lot = float(contract_size), units_per_lot
         self._start_balance: Optional[float] = None
+        self.symbol_map: dict = {}               # research instrument (NQ / ES / GC) -> the broker's contract symbol; empty = everything on ``symbol``
+
+    def _sym(self, pos: OpenPos) -> str:
+        return self.symbol_map.get(pos.symbol, self.symbol)
 
     def sync_state(self, state: AccountState) -> None:
         try:
@@ -113,7 +117,7 @@ class BrokerVenue(Venue):
         qty = self.adapter.to_broker_qty(float(pos.qty) * self.contract_size, self.contract_size, self.units_per_lot)
         if qty <= 0:
             return False, None, "", "broker quantity rounds to zero: order skipped"
-        res = self.adapter.place_market_order(self.symbol, int(pos.direction), qty, sl_price=pos.stop_price, tp_price=pos.tp_price,
+        res = self.adapter.place_market_order(self._sym(pos), int(pos.direction), qty, sl_price=pos.stop_price, tp_price=pos.tp_price,
                                               comment=f"T58 bot {pos.leg}")
         return bool(res.ok), res.price, str(res.ticket or ""), str(res.message or "")
 
@@ -126,7 +130,7 @@ class BrokerVenue(Venue):
     def poll(self, pos: OpenPos) -> Optional[dict]:
         """None while the broker still holds the position; a dict {'closed': True} once it is gone (stop / target hit at the broker)."""
         try:
-            open_ = self.adapter.get_open_positions(self.symbol)
+            open_ = self.adapter.get_open_positions(self._sym(pos))
         except Exception:  # noqa: BLE001
             return None
         if any(str(p.ticket) == str(pos.ticket) for p in open_):

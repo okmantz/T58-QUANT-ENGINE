@@ -29,6 +29,8 @@ INSTRUMENTS = {
     "ES": {"name": "S&P 500 futures", "micro": "MES"},
     "GC": {"name": "Gold futures", "micro": "MGC"},
 }
+GATE27_ID = "builtin/Gate 27 swing basket (US500 + Gold)"
+GATE27_LEGS = (("ES", "Gate 27 US500"), ("GC", "Gate 27 Gold"))
 RISK_STYLES = ("conservative", "balanced", "aggressive")
 STYLE_LABELS = {
     "conservative": "Conservative: smaller size, slower, much less likely to breach",
@@ -225,6 +227,10 @@ def strategy_catalog(*, include_unsupported: bool = True) -> list[dict]:
                     out.append(dict(row))
                 except OSError:
                     continue
+    out.append({"id": GATE27_ID, "name": "Gate 27 swing basket", "file": "(built in)", "type": "builtin", "label": "Gate 27", "instrument": "ES",
+                "timeframe": "1d", "idea": "Monthly trend gate (price above its 210-day average) on US500 and Gold, volatility-sized and held overnight. "
+                "Swing holds: use it on a live or sandbox account with no prop-firm rules.",
+                "supported": True, "reason": "", "experimental": False, "lookback_days": 400, "status": "swing"})
     if not include_unsupported:
         out = [r for r in out if r["supported"]]
     out.sort(key=lambda r: (not r["supported"], r["instrument"] or "zz", r["name"].lower()))
@@ -337,6 +343,12 @@ def build_config(payload: dict, *, existing: Optional[BotConfig] = None) -> tupl
             pr = int(_num(item.get("priority", i)) or 0)
         except (TypeError, ValueError):
             pr = i
+        if sid == GATE27_ID:
+            for gsym, glabel in GATE27_LEGS:
+                legs.append(BotLeg(strategy=sid, label=glabel, symbol=gsym, weight=w2, priority=min(max(pr, 0), 20), lookback_days=400,
+                                   note=str(item.get("note") or entry["idea"])[:200], kind="gate27"))
+            warnings.append("Gate 27 holds positions overnight and is only switched on for a net-profit bot on an account with no prop-firm rules.")
+            continue
         legs.append(BotLeg(strategy=sid, label=label, symbol="NQ", weight=w2, priority=min(max(pr, 0), 20),
                            lookback_days=int(entry["lookback_days"]), note=str(item.get("note") or entry["idea"] or "")[:200]))
         if entry["lookback_days"] >= 400:
@@ -347,7 +359,8 @@ def build_config(payload: dict, *, existing: Optional[BotConfig] = None) -> tupl
             instrument = entry["instrument"]
     instrument = instrument or "NQ"
     for lg in legs:
-        lg.symbol = instrument
+        if lg.kind != "gate27":
+            lg.symbol = instrument
 
     # ---- risk
     style = str(p.get("style") or "")
