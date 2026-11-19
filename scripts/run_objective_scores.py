@@ -72,17 +72,30 @@ def pf(d: pd.DataFrame) -> float:
     return float(p[p > 0].sum() / gl) if gl > 0 else float("inf")
 
 
-def bundle(legs, *, daily_cap=None, max_open: int = 99) -> pd.DataFrame:
+def bundle(legs, *, daily_cap=None, max_open: int = 99, as_weight: bool = False) -> pd.DataFrame:
     """legs = [(name, trades_at_1x, multiplier, priority)] -> one account. Rules, identical to the bots' arbiter: one position per instrument (the earlier entry
-    keeps the slot), at most ``max_open`` positions at once account-wide, and a combined daily realised-loss cap that blocks NEW entries."""
+    keeps the slot), at most ``max_open`` positions at once account-wide, and a combined daily realised-loss cap that blocks NEW entries.
+
+    The cap reads REALISED P&L only: a trade counts toward its day once it has closed before the new entry (until 2026-11-19 it counted the moment it was
+    entered, so a still-open loser could block, and a still-open winner unblock, a later entry: lookahead).
+
+    ``as_weight`` keeps each trade's 1x P&L and puts the leg multiplier in a ``w`` column instead of multiplying it in, so the scorer hands it to the risk
+    governor as the leg weight BEFORE the caps, exactly as the bot engine does (``decide_risk(..., weight=leg.weight)``)."""
     rows = []
     for (n, t, m, p) in legs:
         for r in t.to_dict("records"):
-            rows.append({**r, "pnl": r["pnl"] * m, "leg": n, "prio": p})
+            rows.append({**r, "pnl": r["pnl"] * m, "w": float(m), "leg": n, "prio": p})
     rows.sort(key=lambda r: (r["entry"], r["prio"]))
-    out, busy, dpn, live = [], {}, {}, []
+    out, busy, dpn, live, unreal = [], {}, {}, [], []
     for r in rows:
         live = [e for e in live if e > r["entry"]]
+        still = []
+        for (x, dd, pn) in unreal:                      # book the trades that have closed by this entry
+            if x <= r["entry"]:
+                dpn[dd] = dpn.get(dd, 0.0) + pn
+            else:
+                still.append((x, dd, pn))
+        unreal = still
         if r["entry"] < busy.get(r["inst"], pd.Timestamp.min) or len(live) >= max_open:
             continue
         day = (r["entry"] - pd.Timedelta(hours=17)).normalize()
@@ -91,8 +104,15 @@ def bundle(legs, *, daily_cap=None, max_open: int = 99) -> pd.DataFrame:
         out.append(r)
         busy[r["inst"]] = r["exit"]
         live.append(r["exit"])
-        dpn[day] = dpn.get(day, 0.0) + r["pnl"]
-    return sc.frame(out) if out else pd.DataFrame(columns=["entry", "exit", "pnl", "dir"])
+        unreal.append((r["exit"], day, r["pnl"]))
+    if not out:
+        return pd.DataFrame(columns=["entry", "exit", "pnl", "dir"])
+    df = sc.frame(out)
+    if as_weight:
+        df["pnl"] = df["pnl"] / df["w"].where(df["w"] > 0, 1.0)
+    else:
+        df = df.drop(columns=["w"])
+    return df
 
 
 # ------------------------------------------------------------------------------------------------------------- per-objective scores

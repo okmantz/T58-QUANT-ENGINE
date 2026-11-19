@@ -335,3 +335,13 @@ def test_chromebook_platform_is_packaged(tmp_path):
     names = {a for _, a in entries}
     assert "install_chromebook.sh" in names or any(n.endswith("install_chromebook.sh") for n in names)
     assert pr.validate_names(entries, zip_stem="T58-Web-App-Chromebook") == []
+
+
+@pytest.mark.parametrize("arc_root", ["research", "_internal/research", "strategies", "_internal/strategies"])
+def test_bundled_files_fit_windows_path_limit_in_the_longest_release_zip(arc_root):
+    # The release zips are named T58-Quant-Engine-<label>.zip (desktop-cross-platform.yml); Chromebook-ARM is the longest label.
+    # A research PDF with a 76-character name broke both Chromebook packages on 2026-11-19.
+    src = REPO_ROOT / arc_root.split("/")[-1]
+    entries = pr._walk(src, arc_root)
+    assert entries
+    assert pr.validate_names(entries, zip_stem="T58-Quant-Engine-Chromebook-ARM") == []

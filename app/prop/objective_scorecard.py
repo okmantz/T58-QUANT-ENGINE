@@ -97,7 +97,12 @@ def simulate_starts(df: pd.DataFrame, win: Window, horizon: int, *, stride: int 
 
     With ``gov`` every trade is first re-sized by the bot risk governor from the evolving account state (the same ``decide_risk`` the bots call). A ``w`` column
     in ``df`` is each trade's leg weight: it goes to ``decide_risk`` as the weight, so the caps apply AFTER it exactly as in the bot engine. ``session_days`` groups
-    trades by the CME session day (rolls at 18:00 ET) instead of the UTC calendar day, which is the clock the firm's daily limit and trailing floor run on."""
+    trades by the CME session day (rolls at 18:00 ET) instead of the UTC calendar day, which is the clock the firm's daily limit and trailing floor run on.
+
+    No lookahead: a trade is sized from the account as it stands at the trade's ENTRY. Trades that are still open then (another instrument's position) are
+    booked only once they close, in exit order, and the dollars they still have at risk come off the room the new trade may use, exactly as the bot engine
+    passes ``open_risk``. (Before 2026-11-19 each trade was booked the moment it was sized, so an overlapping NQ and ES pair was sized, and allowed or blocked
+    by the day stop, already knowing the first trade's result.)"""
     from app.prop.presets import get_preset
     from app.prop.simulator import simulate_account
     rl = prop_rules or get_preset("lucid_50k").to_prop_rules()
@@ -128,21 +133,36 @@ def simulate_starts(df: pd.DataFrame, win: Window, horizon: int, *, stride: int 
         else:
             st = AccountState.fresh(lite)
             o_p, o_d, o_en, o_ex, o_di = [], [], [], [], []
+            pending: list = []                         # trades taken but not yet closed: (exit time, P&L, session day, dollars at risk)
+
+            def realise(upto) -> None:
+                """Book every pending trade that has closed by ``upto``, in the order they closed (what the bot's account knows at that moment)."""
+                pending.sort(key=lambda x: x[0])
+                while pending and pending[0][0] <= upto:
+                    _x, pnl_, day_, risk_ = pending.pop(0)
+                    if st.day and day_ < st.day:        # an overnight hold closing after a later entry: book it on the account's current day
+                        day_ = st.day
+                    st.update(pnl_, day_, risk=risk_)
+                    if st.phase == "passed":
+                        st.to_funded()
+                    if st.phase == "funded":
+                        st.take_payout()
+
             for i in range(i0, len(d)):
                 if entries[i] >= end:
                     break
+                realise(entries[i])                    # size from closed trades only: an open trade's result is not known yet
                 st.roll_day(str(dayv[i].date()))
                 if st.phase == "passed":
                     st.to_funded()
-                dec = decide_risk(st, gov, weight=float(ws[i]))
+                open_risk = sum(x[3] for x in pending)
+                dec = decide_risk(st, gov, open_risk=open_risk, weight=float(ws[i]))
                 if not dec.allow:
                     continue
                 m = dec.risk_dollars / base_total if base_total else 1.0
                 p = float(pnls[i]) * m
                 o_p.append(p); o_d.append(dayv[i].date()); o_en.append(entries[i]); o_ex.append(exits[i]); o_di.append(dirs[i])
-                st.update(p, str(dayv[i].date()), risk=dec.risk_dollars)
-                if st.phase == "funded":
-                    st.take_payout()
+                pending.append((exits[i], p, str(dayv[i].date()), dec.risk_dollars))
         if not o_p:
             out.append({"start": sd, "passed": False, "cal": None, "payout": False, "bust_before_pass": False, "failed": False, "payout_days": None,
                         "payout_usd": 0.0, "n_payouts": 0, "n": 0, "best_day_share": None, "breach_day": None})
@@ -272,25 +292,38 @@ def score_net(trades, *, equity0: float = 50_000.0, gov=None, extra_daily: Optio
     if df.empty and extra_daily is None:
         return {"n": 0, "net": 0.0, "cagr": 0.0, "max_dd_pct": 0.0, "calmar": None}
     st = AccountState.fresh(AccountRulesLite.live_account(equity0))
-    d = df.sort_values("exit").reset_index(drop=True) if not df.empty else df
+    # sized at ENTRY from the closed trades only (no lookahead), booked at EXIT; trades still open at an entry hold their risk out of the room (open_risk)
+    d = df.sort_values("entry").reset_index(drop=True) if not df.empty else df
     pn = d["pnl"].to_numpy(float) if not d.empty else np.array([])
-    exits = d["exit"].dt.normalize().tolist() if not d.empty else []
+    entries = d["entry"].tolist() if not d.empty else []
+    exits = d["exit"].tolist() if not d.empty else []
     base_total = equity0 * gov.base_risk_pct / 100.0
     events: dict = {}
-    for i, x in enumerate(exits):
-        events.setdefault(x, []).append(i)
-    days = sorted(set(exits) | (set(extra_daily.index) if extra_daily is not None else set()))
+    for i, x in enumerate(entries):
+        events.setdefault(x.normalize(), []).append(i)
+    days = sorted(set(pd.Timestamp(x).normalize() for x in entries) | set(pd.Timestamp(x).normalize() for x in exits)
+                  | (set(extra_daily.index) if extra_daily is not None else set()))
     curve, peak, mdd_pct, mdd_usd, taken = [], equity0, 0.0, 0.0, []
+    pending: list = []                                  # (exit time, P&L, dollars at risk)
     wn = d["w"].to_numpy(float) if (not d.empty and "w" in d.columns) else None
+
+    def realise(upto) -> None:
+        pending.sort(key=lambda z: z[0])
+        while pending and pending[0][0] <= upto:
+            ex_, p_, r_ = pending.pop(0)
+            st.update(p_, str(pd.Timestamp(ex_).date()), risk=r_)
+
     for x in days:
         for i in events.get(x, []):
-            dec = decide_risk(st, gov, weight=float(wn[i]) if wn is not None else 1.0)
+            realise(entries[i])
+            dec = decide_risk(st, gov, open_risk=sum(z[2] for z in pending), weight=float(wn[i]) if wn is not None else 1.0)
             if not dec.allow:
                 continue
             m = min(dec.risk_dollars / base_total, size_cap / equity0)
             p = float(pn[i]) * m
-            st.update(p, str(x.date()), risk=m * base_total)
+            pending.append((exits[i], p, m * base_total))
             taken.append(p)
+        realise(x + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1))
         if extra_daily is not None and x in extra_daily.index:
             st.balance += float(extra_daily.loc[x]) * max(st.balance, 0.0)
             st.peak_equity = max(st.peak_equity, st.balance)

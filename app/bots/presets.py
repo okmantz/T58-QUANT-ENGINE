@@ -1,12 +1,15 @@
 """The three shipped bots, one per objective (app/objectives.py ENGINE DIRECTIVE: each has its own books, sizing and risk governor; none is tuned with another's priorities).
 
-  Objective A  Evaluation Passer      Open Drive x1 + Ind Rule 15m x3 + Context Drive long-only x1 (NQ); progress-tapering governor, combined day stop 40% of the soft limit
-  Objective B  Payout Hunter          Ind Rule 15m x1 + Context Drive long-only x1 (NQ); risk capped at a quarter of the cushion, 0.6x size once funded
+  Objective A  Evaluation Passer      Open Drive x1 + Ind Rule 15m x3 + Context Drive long-only x1 (NQ); progress-tapering governor with pace sizing, combined day stop
+                                      40% of the soft limit
+  Objective B  Payout Hunter          Ind Rule 15m x1 + Open Drive x0.25 + Context Drive Long Bracket 3R x0.5 (NQ) + Compression ORB x0.25 (ES); risk capped at a quarter
+                                      of the cushion, 0.6x size once funded, stand down once the day already counts toward the payout
   Objective C  Net Profit Compounder  six intraday sleeves at 2x (Ind Rule 15m, Open Drive, Liquidity Sweep Reclaim, Context Drive long-only on NQ; Context Drive long-only and
                                       Ind Rule 30m A on ES) + the Gate 27 US500 / Gold swing basket with the re-tuned parameters (SMA 150, vol window 40, 1.0%/day);
                                       compounding with a drawdown throttle on a rule-free account (overnight allowed)
 
-How they were chosen, with every number: docs/T58_STRATEGY_EVALUATION_2026-11.md and the PDF next to it. Reproduce with scripts/run_objective_study.py (trades),
+How they were chosen, with every number: docs/T58_BOT_AB_COMBOS_2026-11-19.md (the 2026-11-19 Payout Hunter book and the A / B books tested with it, scored after the scorer's lookahead fix),
+docs/T58_STRATEGY_EVALUATION_2026-11.md and the PDF next to it. Reproduce with scripts/run_objective_study.py (trades),
 scripts/run_objective_scores.py (selection: train picks, validation confirms, the locked 2025-01..2026-11 test is read once), scripts/run_gate27_study.py and
 scripts/run_objective_c_final.py. Only strategy files that exist in strategies/ may be used here (tests/bots/test_store_models.py checks it)."""
 from __future__ import annotations
@@ -14,7 +17,7 @@ from __future__ import annotations
 from app.bots.models import AccountLink, BotConfig, BotLeg
 from app.bots.risk_governor import GovernorConfig
 
-PRESET_REV = 3     # bump when a shipped bot's legs or governor change: stopped, untouched copies in the bots database are refreshed (store._seed)
+PRESET_REV = 4     # bump when a shipped bot's legs or governor change: stopped, untouched copies in the bots database are refreshed (store._seed)
 
 def _od(w: float, prio: int) -> BotLeg:
     return BotLeg("python/OpenDrive_NQ_5m_v1.py", "Open Drive", "NQ", w, prio, 45, "Opening-drive continuation, one shot a day.")
@@ -43,6 +46,11 @@ def _cad_long(w: float, prio: int) -> BotLeg:
 
 
 GATE27_TUNED = {"sma_window": 150, "vol_window": 40, "daily_vol_target_pct": 1.0, "leverage_cap": 5.0, "phase_in_days": 3}
+
+
+def _cdlb_nq(w: float, prio: int) -> BotLeg:
+    return BotLeg("python/ContextDriveLongBracket_NQ_1m_v1.py", "Context Drive Long Bracket", "NQ", w, prio, 500,
+                  "Context Drive long-only entries, stop 0.2 x the 14-day range, target 3x the stop, at half size (needs ~500 days of history).")
 
 
 def _gate27(w: float, prio: int, params: dict | None = None) -> list:
@@ -94,9 +102,10 @@ def preset_configs() -> list[BotConfig]:
                   tagline="Objective B: get paid and keep the account alive.",
                   description="Paid under the 5-winning-days rule: five days of $250 or more, not necessarily in a row, with the wins bigger than the losses. "
                               "Ind Rule at normal size plus two quarter-size legs (Compression ORB on the S&P 500, Open Drive) that add trading days, because a payout "
-                              "needs many ordinary winning days rather than a few big ones. Risk is limited to a quarter of the cushion and the day stop is tight. "
+                              "needs many ordinary winning days rather than a few big ones, and a half-size Context Drive Long with a 3R bracket that turns the "
+                              "best drive days into qualifying days. Risk is limited to a quarter of the cushion and the day stop is tight. "
                               "Built for payouts without a breach, not speed.",
-                  legs=[_ir(1.0, 0), _cob(0.25, 1), _od_light(0.25, 2)], governor=gov_b.to_dict(), account=_acct(), preset_rev=PRESET_REV),
+                  legs=[_ir(1.0, 0), _cob(0.25, 1), _od_light(0.25, 2), _cdlb_nq(0.5, 3)], governor=gov_b.to_dict(), account=_acct(), preset_rev=PRESET_REV),
         BotConfig(id="bot-profit", name="Net Profit Compounder", objective="NET", preset_key="profit",
                   tagline="Objective C: grow capital and maximise net wealth.",
                   description="Six intraday sleeves on Nasdaq-100 and the S&P 500 plus the Gate 27 US500 + Gold swing basket (re-tuned: 150-day trend, 40-day volatility, 1% a day). "

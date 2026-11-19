@@ -61,7 +61,10 @@ def test_forward_test_close_populates_journal_with_all_fields(jstore, tmp_path, 
     t = trades[0]
     assert t["strategy"] == "alpha.py" and t["instrument"] == "MES" and t["source"] == "Forward Test"
     assert t["rMultiple"] == -1.0 and t["session"] and t["setup"] == "stopped out" and t["regime"] == "unclassified"
-    assert t["screenshot"]  # auto-generated trade card
+    # auto-generated trade card: render_trade_png needs matplotlib, which config/requirements.txt (and so CI) does not install
+    import importlib.util
+    if importlib.util.find_spec("matplotlib") is not None:
+        assert t["screenshot"]
     assert capture.sync_forward_test() == 1 and len(journal_store.load()["trades"]) == 1
 
 

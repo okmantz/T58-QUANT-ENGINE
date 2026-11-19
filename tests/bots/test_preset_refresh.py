@@ -7,9 +7,9 @@ from app.bots import store
 from app.bots.presets import PRESET_REV, preset_configs
 
 
-def test_payout_hunter_is_the_three_leg_winning_days_book():
+def test_payout_hunter_is_the_four_leg_winning_days_book():
     b = next(c for c in preset_configs() if c.id == "bot-payout")
-    assert [(lg.label, lg.weight) for lg in b.legs] == [("Ind Rule", 1.0), ("Compression ORB", 0.25), ("Open Drive", 0.25)]
+    assert [(lg.label, lg.weight) for lg in b.legs] == [("Ind Rule", 1.0), ("Compression ORB", 0.25), ("Open Drive", 0.25), ("Context Drive Long Bracket", 0.5)]
     assert b.preset_rev == PRESET_REV and "5-winning-days" in b.description
 
 
@@ -26,7 +26,7 @@ def test_old_idle_copy_is_refreshed_and_history_cleared():
     store.list_bots()
     _age("bot-payout", "stopped")
     rec = next(r for r in store.list_bots() if r["config"]["id"] == "bot-payout")
-    assert rec["config"]["preset_rev"] == PRESET_REV and len(rec["config"]["legs"]) == 3
+    assert rec["config"]["preset_rev"] == PRESET_REV and len(rec["config"]["legs"]) == 4
     assert rec["trades"] == [] and any("newest recipe" in e["text"] for e in rec["events"])
 
 
