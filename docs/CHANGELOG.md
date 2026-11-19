@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-18 (later) - why the Evaluation Passer stopped, bots in every dropdown, adaptive governors
+- **"6 trades then nothing" / "12 months and no trade"**: the demo account's day only advanced when a trade was booked, so one -$526 day made every later bar "down $526 today" and the day stop blocked all entries for months. `demo_account.roll_day`, a session-day key (rolls 18:00 ET), a stale-day guard in `bots/venues.py`, and `row["day"]` on booked trades fix it. A bot backtested on a full NQ/ES contract also rounded to zero contracts; `BotStrategy.risk_overlay` now sizes in micros like the live bot.
+- **Risk governor**: leg weight is applied before the cap (a 3x leg could exceed the cushion share); slippage-aware contract sizing; pace-aware sizing, loss-streak / cold-expectancy damping, win-day lock, cushion floor. Presets retuned (`PRESET_REV` 3): the Evaluation Passer was selected on train+validation (hold-out read once); the other two use conservative, unsearched values.
+- **Bots everywhere**: Simulator and Replay dropdowns (Manual, Python, PineScript, MQL5, Bots), edge probe and payout forecast accept `bot`, Bots tab on all strategy-tab pages, replay widens to 30,000 bars for a bot.
+- **Trading Bots tabs**: the global glossary no longer hijacks tab buttons (`t58-metrics.js` skips controls).
+- **Research**: `docs/T58_OBJECTIVES_RESEARCH_2026-11-18.md`, `scripts/run_objectives_research.py`.
+
 ## 2026-11-18 - bots everywhere, profit lock, Objective B payout rule
 - **Bots as strategies** (`app/strategy/bot_strategy.py`, picker value `bot::<id>`): Test, Optimize, Validate, Full Pipeline, Compare, Payout Planner, Risk Sweep and Replay list bots next to strategies. Leg weights reach the sizer (`StrategyResult.size_multiplier`); the bot's profit lock and loser cut reach the engine. A one-instrument test names the legs it leaves out (Gate 27 swing, other instruments); Trading Bots > Simulation runs the whole bot.
 - **Bot optimizer** (`app/optimize/bot_optimizer.py`): leg weights + overlays on train / validation / hold-out; adopts a change only when train AND validation both improve; saves an "(optimized)" copy.

@@ -105,6 +105,13 @@ class BotStrategy(Strategy):
         cap = int(getattr(self.cfg, "max_trades_per_day", 0) or 0)
         if cap and cap < int(getattr(risk, "max_trades_per_day", cap) or cap):
             kw["max_trades_per_day"] = cap
+        # The bot sizes in MICRO contracts (risk dollars / stop, floored to whole micros), so a backtest of it must too: on a full NQ/ES
+        # contract a 60-250 point stop costs $1,200-$5,000 and a $500-$1,000 risk budget rounds to ZERO contracts -- a bot "that took no trades".
+        cs = float(getattr(risk, "contract_size", 0) or 0)
+        micro = {20.0: 2.0, 50.0: 5.0}.get(cs)
+        if micro is not None:
+            kw["contract_size"] = micro
+            kw["commission_per_contract"] = float(getattr(risk, "micro_commission_per_contract", 1.32) or 1.32)
         return replace(risk, **kw) if kw else risk
 
     # ----------------------------------------------------------------------------------------------------------- generation

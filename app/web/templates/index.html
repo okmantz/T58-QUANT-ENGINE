@@ -738,6 +738,7 @@
 
   function loadFromLibrary() {
     const mode = modeInput.value;
+    if (mode === 'bot') return;   // a bot has no source text to load: the picked id is posted as existing_strategy_bot
     const name = document.getElementById('existing_strategy_select').value;
     const panel = document.getElementById('library-manage-panel');
     if (!name) { panel.style.display = 'none'; return; }

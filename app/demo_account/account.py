@@ -92,7 +92,7 @@ class DemoAccount:
 
 
 def trading_days(acct: DemoAccount) -> int:
-    return len({t["closed_at"][:10] for t in acct.trades if t.get("closed_at")})
+    return len({(t.get("day") or t["closed_at"][:10]) for t in acct.trades if t.get("day") or t.get("closed_at")})
 
 
 def rules_sheet(acct: DemoAccount) -> list[dict]:
@@ -248,20 +248,40 @@ def _roll_day(acct: DemoAccount, today: str) -> None:
             acct.day_start = acct.balance
 
 
+def roll_day(today: str) -> DemoAccount:
+    """Move the account to trading day ``today`` (YYYY-MM-DD) even when no trade closed: yesterday's close is banked, the end-of-day floor trails and the
+    day counters (day start, soft-limit stop) reset.
+
+    A bot reads the account's day start to size its next trade. The day used to advance only when a trade was BOOKED, so after one losing day the bot saw
+    "down $526 today" forever (the day never rolled because the day stop it triggered stopped it booking anything): it skipped every later signal, for months
+    of a replay, and a longer run on the same account took no trade at all. The bots call this at the first bar of every trading day."""
+    with _LOCK:
+        acct = load()
+        if acct.status != "active" or acct.day == today:
+            return acct
+        _roll_day(acct, str(today)[:10])
+        _save(acct)
+        return acct
+
+
 def record_trade(pnl: float, *, root: str = "", side: str = "", qty: float = 1.0, entry=None, exit=None, why: str = "",
-                 source: str = "alert", closed_at: str | None = None) -> dict | None:
+                 source: str = "alert", closed_at: str | None = None, day: str | None = None) -> dict | None:
     """Book one closed trade. Returns the trade row (with running balance) or None when the account is no longer active
-    (a passed or breached evaluation stops booking until it is reset, exactly like a real one)."""
+    (a passed or breached evaluation stops booking until it is reset, exactly like a real one).
+
+    ``day`` (YYYY-MM-DD) is the trading day the trade belongs to; by default the date of ``closed_at``. A bot passes its own session day (the
+    New York day that rolls at the 18:00 ET Globex open) so the account and the bot always agree on what "today" is."""
     with _LOCK:
         acct = load()
         if acct.status != "active":
             return None
         when = closed_at or _now()
-        _roll_day(acct, when[:10])
+        today = str(day or when[:10])[:10]
+        _roll_day(acct, today)
         r = acct.rules
         acct.balance = round(acct.balance + float(pnl), 2)
         day_pnl = acct.balance - acct.day_start
-        row = {"n": len(acct.trades) + 1, "closed_at": when, "root": root, "side": side, "qty": qty, "entry": entry, "exit": exit,
+        row = {"n": len(acct.trades) + 1, "closed_at": when, "day": today, "root": root, "side": side, "qty": qty, "entry": entry, "exit": exit,
                "pnl": round(float(pnl), 2), "result": "win" if pnl > 0 else "loss" if pnl < 0 else "flat", "why": why, "source": source,
                "balance": acct.balance, "day_pnl": round(day_pnl, 2)}
         acct.trades.append(row)

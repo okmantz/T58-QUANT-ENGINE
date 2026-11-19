@@ -86,6 +86,7 @@
       <button type="button" data-mode="python">Python</button>
       <button type="button" data-mode="pinescript">PineScript</button>
       <button type="button" data-mode="mql5">MQL5</button>
+      <button type="button" data-mode="bot">Bots</button>
     </div>
     <input type="hidden" name="strategy_mode" id="strategy_mode" value="manual">
 
@@ -254,7 +255,7 @@
     items.forEach(s => {
       const opt = document.createElement('option');
       opt.value = s.name;
-      const label = s.description ? `${s.name} — ${s.description}` : s.name;
+      const label = s.label || (s.description ? `${s.name} — ${s.description}` : s.name);
       opt.textContent = `[${s.status}] ${label}`;
       select.appendChild(opt);
     });
@@ -273,6 +274,7 @@
 
   function loadFromLibrary() {
     const mode = modeInput.value;
+    if (mode === 'bot') return;   // a bot has no source text to load: the picked id is posted as existing_strategy_bot
     const name = document.getElementById('existing_strategy_select').value;
     if (!name) return;
     fetch(`/strategies/${encodeURIComponent(mode)}/${encodeURIComponent(name)}`)

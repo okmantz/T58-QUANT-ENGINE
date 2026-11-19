@@ -82,7 +82,7 @@
   <div id="d-progress"></div>
   <svg id="d-eq" viewBox="0 0 800 160" preserveAspectRatio="none" style="width:100%; height:170px; margin-top:6px"></svg>
 
-  <div class="tb-tabs"><div class="tb-tab on" data-t="trades">Trades</div><div class="tb-tab" data-t="legs">Strategies</div><div class="tb-tab" data-t="log">Activity</div><div class="tb-tab" data-t="settings">Settings &amp; account</div></div>
+  <div class="tb-tabs" role="tablist" data-no-metric><div class="tb-tab on" role="tab" tabindex="0" aria-selected="true" data-no-metric data-t="trades">Trades</div><div class="tb-tab" role="tab" tabindex="0" aria-selected="false" data-no-metric data-t="legs">Strategies</div><div class="tb-tab" role="tab" tabindex="0" aria-selected="false" data-no-metric data-t="log">Activity</div><div class="tb-tab" role="tab" tabindex="0" aria-selected="false" data-no-metric data-t="settings">Settings &amp; account</div></div>
   <div id="t-trades"><div class="tb-scroll"><table class="tb"><thead><tr><th>Closed</th><th>Strategy</th><th>Side</th><th class="r">Qty</th><th class="r">Entry</th><th class="r">Exit</th><th class="r">P&amp;L</th><th class="r">R</th><th>Exit</th></tr></thead><tbody id="d-trades"></tbody></table></div></div>
   <div id="t-legs" hidden><table class="tb"><thead><tr><th>Strategy</th><th class="r">Trades</th><th class="r">Win %</th><th class="r">P&amp;L</th></tr></thead><tbody id="d-legs"></tbody></table><div class="tb-note" id="d-legnote"></div></div>
   <div id="t-log" hidden><div class="tb-scroll"><table class="tb"><tbody id="d-events"></tbody></table></div></div>
@@ -225,7 +225,9 @@
   $('b-stop').onclick=function(){api('bot/'+cur+'/stop',{}).then(function(){toast('Stopped.'); refresh(false); loadList()})};
   $('b-reset').onclick=function(){if(!confirm('Clear this bot\'s trades and start a fresh run?'))return; api('bot/'+cur+'/reset',{}).then(function(r){toast(r.ok?'Run cleared.':r.error); if(r.ok){draw(r.bot,true);loadList()}})};
   $('tb-kill').onclick=function(){api('kill',{}).then(function(r){toast('Stopped '+(r.stopped||0)+' running bot(s).'); loadList(); refresh(false)})};
-  [].forEach.call(document.querySelectorAll('.tb-tab'),function(t){t.onclick=function(){[].forEach.call(document.querySelectorAll('.tb-tab'),function(x){x.classList.toggle('on',x===t)}); ['trades','legs','log','settings'].forEach(function(k){$('t-'+k).hidden=(k!==t.getAttribute('data-t'))})}});
+  [].forEach.call(document.querySelectorAll('.tb-tab'),function(t){
+    function pick(){[].forEach.call(document.querySelectorAll('.tb-tab'),function(x){x.classList.toggle('on',x===t); x.setAttribute('aria-selected',x===t?'true':'false')}); ['trades','legs','log','settings'].forEach(function(k){$('t-'+k).hidden=(k!==t.getAttribute('data-t'))})}
+    t.onclick=pick; t.onkeydown=function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); pick() } } });
   ['s-name','s-risk','s-day','s-cush','s-mtd','s-size'].forEach(function(i){$(i).oninput=function(){$('s-name')._dirty=true}});
 
   /* ---------------------------------------------------------------- bot builder wizard */

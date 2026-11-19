@@ -89,6 +89,11 @@ class AccountState:
     stopped_today: bool = False
     last_payout_balance: float = 50_000.0
     cycle_days: dict = field(default_factory=dict)      # winning_days_net_positive mode: day -> realised P&L since the last payout / funded start
+    # ---- memory the adaptive sizing reads (a bot restores it with the rest of the state; all of it is optional for older saved states)
+    start_day: str = ""                     # first trading day of this attempt (the evaluation clock the pace control reads)
+    recent_r: list = field(default_factory=list)        # realised result of the last trades in multiples of the risk each one carried (newest last)
+    loss_streak: int = 0                    # consecutive losing trades (a win or a flat trade resets it)
+    day_high: float = 0.0                   # best realised P&L of the current day (the day-profit giveback guard reads it)
 
     @classmethod
     def fresh(cls, rules: Optional[AccountRulesLite] = None, *, phase: str = "evaluation") -> "AccountState":
@@ -118,11 +123,27 @@ class AccountState:
         return self.balance - self.day_start
 
     @property
+    def elapsed_days(self) -> int:
+        """Calendar days since the attempt began (0 on the first day). The clock the evaluation's 30-day goal runs on."""
+        try:
+            from datetime import date
+            return max((date.fromisoformat(self.day[:10]) - date.fromisoformat(self.start_day[:10])).days, 0) if self.start_day and self.day else 0
+        except ValueError:
+            return 0
+
+    def recent_expectancy(self, n: int = 8) -> Optional[float]:
+        """Mean result, in multiples of the risk taken, over the last ``n`` trades; None until there are at least 4."""
+        r = [float(x) for x in self.recent_r[-max(int(n), 1):]]
+        return (sum(r) / len(r)) if len(r) >= 4 else None
+
+    @property
     def drawdown_from_peak(self) -> float:
         return max(self.peak_equity - self.balance, 0.0)
 
     # transitions -----------------------------------------------------------------------------------------------------------
     def roll_day(self, day: str) -> None:
+        if not self.start_day:
+            self.start_day = day
         if self.day and self.day != day:
             self.eod_high = max(self.eod_high, self.balance)
             if self.rules.trailing:
@@ -131,15 +152,20 @@ class AccountState:
             self.day_start = self.balance
             self.trades_today = 0
             self.stopped_today = False
+            self.day_high = 0.0
         if self.day != day:
             self.day = day
 
-    def update(self, pnl: float, day: str) -> None:
-        """Book one closed trade (dollars)."""
+    def update(self, pnl: float, day: str, risk: Optional[float] = None) -> None:
+        """Book one closed trade (dollars). ``risk`` is the dollars the trade carried at its stop: it feeds the recent-results memory the adaptive sizing reads."""
         if self.phase in ("passed", "breached"):
             return
         self.roll_day(day)
         self.balance += float(pnl)
+        if risk is not None and risk > 0:
+            self.recent_r = (self.recent_r + [float(pnl) / float(risk)])[-20:]
+        self.loss_streak = (self.loss_streak + 1) if pnl < 0 else 0
+        self.day_high = max(self.day_high, self.balance - self.day_start)
         if self.phase == "funded" and self.rules.payout_mode == "winning_days_net_positive":
             self.cycle_days[day] = self.cycle_days.get(day, 0.0) + float(pnl)
         self.trades_today += 1
@@ -156,6 +182,7 @@ class AccountState:
         self.floor, self.eod_high, self.day_start = r.account_size - r.loss_limit, r.account_size, r.account_size
         self.peak_equity, self.last_payout_balance, self.trades_today, self.stopped_today = r.account_size, r.account_size, 0, False
         self.cycle_days = {}
+        self.start_day, self.loss_streak, self.day_high = self.day, 0, 0.0
 
     def winning_days_count(self) -> int:
         """Days since the last payout (or funded start) whose P&L reached ``winning_day_profit``; they need not be consecutive."""
@@ -233,6 +260,18 @@ class GovernorConfig:
     loss_cut_frac: Optional[float] = None   # close a trade that never worked once it is down this share of its risk (None = off)
     loss_cut_min_minutes: int = 10          # ... and it has been open at least this many minutes
     loss_cut_max_mfe_frac: float = 0.25     # ... and its best open profit stayed under this share of its risk
+    # --- adaptive sizing (every one is OFF unless set; the shipped bots switch on the ones that held up on the research splits, see docs/T58_OBJECTIVES_RESEARCH_2026-11-18.md)
+    streak_mult: Optional[float] = None     # after ``streak_after`` losing trades in a row, multiply the next trade's risk by this (a win restores full size)
+    streak_after: int = 2
+    cold_mult: Optional[float] = None       # while the last 8 trades averaged below ``cold_expectancy`` x their risk, multiply risk by this
+    cold_expectancy: float = -0.30
+    pace_max_mult: Optional[float] = None   # A: behind the evaluation clock, raise risk up to this multiple (never past the cushion cap); None = no pace control
+    pace_min_mult: float = 0.85             # A: ahead of the clock, trim risk down to this multiple
+    pace_gain: float = 1.0                  # how hard the pace control reacts to being behind / ahead (progress units per unit of multiplier)
+    pace_target_days: int = 30              # the clock: pass inside this many calendar days
+    pace_after_days: int = 5                # no pace control before this many days have elapsed (too little data to call a pace)
+    win_day_lock_mult: Optional[float] = None   # B: once today's P&L reaches this multiple of the qualifying-day profit, stand down (the day already counts)
+    cushion_floor_mult: float = 0.0         # never size below this multiple of base risk because of the adaptive controls (0 = they may shrink size freely)
 
     def with_(self, **kw) -> "GovernorConfig":
         return replace(self, **kw)
@@ -262,11 +301,38 @@ def _ladder(progress: float, cfg: GovernorConfig) -> float:
     return cfg.late_mult
 
 
-def decide_risk(state: AccountState, cfg: GovernorConfig, open_risk: float = 0.0) -> RiskDecision:
+def _adaptive_mult(state: AccountState, cfg: GovernorConfig, *, pace: bool) -> tuple[float, list]:
+    """The adaptive controls as one multiplier (and the reasons): results-based (loss streak, cold stretch) and clock-based (pace to the evaluation target).
+
+    They scale the DOLLARS risked before the hard caps (cushion share, day room, need to the target) are applied, so none of them can push a trade past
+    a cap; they only decide how much of the room the bot is willing to use."""
+    m, why = 1.0, []
+    if cfg.streak_mult is not None and state.loss_streak >= max(int(cfg.streak_after), 1):
+        m *= float(cfg.streak_mult)
+        why.append(f"{state.loss_streak} losses in a row x{cfg.streak_mult:g}")
+    if cfg.cold_mult is not None:
+        e = state.recent_expectancy(8)
+        if e is not None and e < cfg.cold_expectancy:
+            m *= float(cfg.cold_mult)
+            why.append(f"cold stretch x{cfg.cold_mult:g}")
+    if pace and cfg.pace_max_mult is not None and state.phase == "evaluation" and state.elapsed_days >= int(cfg.pace_after_days):
+        expected = min(state.elapsed_days / max(float(cfg.pace_target_days), 1.0), 1.0)
+        gap = expected - min(state.progress, 1.0)                        # > 0: behind the clock, < 0: ahead of it
+        pm = min(max(1.0 + float(cfg.pace_gain) * gap, float(cfg.pace_min_mult)), float(cfg.pace_max_mult))
+        if abs(pm - 1.0) > 0.02:
+            m *= pm
+            why.append(f"{'behind' if pm > 1 else 'ahead of'} the clock x{pm:.2f}")
+    return max(m, float(cfg.cushion_floor_mult)), why
+
+
+def decide_risk(state: AccountState, cfg: GovernorConfig, open_risk: float = 0.0, weight: float = 1.0) -> RiskDecision:
     """Dollars to risk on the next trade (at its stop), or a skip with the reason spelled out.
 
-    ``open_risk`` is the dollars already at risk in other open positions (another instrument): it comes off the room the new trade may use."""
+    ``open_risk`` is the dollars already at risk in other open positions (another instrument): it comes off the room the new trade may use.
+    ``weight`` is the leg's size multiplier. It scales the risk BEFORE every cap, so a 3x leg can never risk more than the cushion share, the room left today or
+    the need to the target allow (it used to be multiplied on afterwards, which let a 3x leg risk $1,500 with $1,200 of cushion left)."""
     r = state.rules
+    weight = max(float(weight), 0.0)
     if state.phase in ("passed", "breached"):
         return RiskDecision(False, 0.0, 0.0, "evaluation finished" if state.phase == "passed" else "account breached")
     if cfg.objective == "NET":
@@ -275,15 +341,16 @@ def decide_risk(state: AccountState, cfg: GovernorConfig, open_risk: float = 0.0
         dd_pct = 100.0 * state.drawdown_from_peak / max(state.peak_equity, 1.0)
         thr = max(cfg.min_mult, 1.0 - dd_pct / max(cfg.dd_throttle_tol_pct, 0.1) * (1.0 - cfg.min_mult))
         mult = min(max(thr, cfg.min_mult), cfg.max_mult)
-        risk = base * mult
+        am, awhy = _adaptive_mult(state, cfg, pace=False)
+        risk = base * mult * am * weight
         if cfg.cushion_risk_frac is not None and state.rules.loss_limit > 0:      # on a prop account: never risk more than this share of the cushion
             risk = min(risk, max(state.cushion - open_risk, 0.0) * cfg.cushion_risk_frac)
         if cfg.max_risk_dollars:
             risk = min(risk, cfg.max_risk_dollars)
         if risk < cfg.min_risk_dollars:
             return RiskDecision(False, 0.0, mult, "risk below one micro contract")
-        why = "full size" if mult >= 0.999 else f"drawdown throttle x{mult:.2f}"
-        return RiskDecision(True, risk, mult, why)
+        why = ["full size" if mult >= 0.999 else f"drawdown throttle x{mult:.2f}"] + awhy
+        return RiskDecision(True, risk, (risk / base) if base else mult, ", ".join(why))
 
     # ---- prop objectives (A, B)
     soft = r.soft_daily_limit
@@ -293,6 +360,9 @@ def decide_risk(state: AccountState, cfg: GovernorConfig, open_risk: float = 0.0
         goal = r.payout_goal if state.phase == "funded" else r.profit_target
         if state.day_pnl >= cfg.day_profit_lock_frac * goal:
             return RiskDecision(False, 0.0, 0.0, "day profit lock: today's gain is banked")
+    if cfg.win_day_lock_mult is not None and state.phase == "funded" and r.payout_mode == "winning_days_net_positive" \
+            and state.day_pnl >= cfg.win_day_lock_mult * r.winning_day_profit:
+        return RiskDecision(False, 0.0, 0.0, f"winning day banked: ${state.day_pnl:,.0f} today already counts toward the payout")
     base = r.account_size * cfg.base_risk_pct / 100.0
     mult = _ladder(state.progress, cfg)
     cushion_frac = state.cushion / max(r.loss_limit, 1.0)
@@ -305,8 +375,11 @@ def decide_risk(state: AccountState, cfg: GovernorConfig, open_risk: float = 0.0
         why.append("low cushion")
     if state.phase == "funded":
         mult *= cfg.funded_mult
+    am, awhy = _adaptive_mult(state, cfg, pace=True)
+    mult *= am
+    why += awhy
     mult = min(max(mult, 0.0), cfg.max_mult)
-    risk = base * mult
+    risk = base * mult * weight
     if cfg.cushion_risk_frac is not None:
         risk = min(risk, max(state.cushion - open_risk, 0.0) * cfg.cushion_risk_frac)
     if cfg.need_risk_mult is not None and state.phase == "evaluation":
@@ -324,16 +397,19 @@ def decide_risk(state: AccountState, cfg: GovernorConfig, open_risk: float = 0.0
 
 # ------------------------------------------------------------------------------------------------------------------ contract sizing
 def contracts_for_risk(risk_dollars: float, stop_points: float, point_value_mini: float, point_value_micro: float,
-                       max_minis: int, max_micros: int, *, cost_per_contract: float = 0.0) -> tuple[str, int]:
-    """Whole contracts so that (stop x point value + cost) x n <= risk. Prefers minis, falls back to micros; returns (kind, n) with n == 0 to skip.
+                       max_minis: int, max_micros: int, *, cost_per_contract: float = 0.0, slip_points: float = 0.0,
+                       cost_per_micro: Optional[float] = None) -> tuple[str, int]:
+    """Whole contracts so that ((stop + round-trip slippage) x point value + cost) x n <= risk. Prefers minis, falls back to micros; returns (kind, n) with n == 0 to skip.
 
-    Floors (never rounds up), never exceeds the account's contract caps, and never shrinks the strategy's stop to fit."""
+    ``slip_points`` is the slippage the fills add to a stopped-out trade (entry and exit, in price points): the dollars at risk are what the trade can really lose at
+    its stop, not the strategy's stop distance alone. Floors (never rounds up), never exceeds the account's contract caps, and never shrinks the strategy's stop to fit."""
     if not (risk_dollars > 0 and stop_points > 0):
         return "micro", 0
-    per_mini = stop_points * point_value_mini + cost_per_contract
+    eff = stop_points + max(float(slip_points), 0.0)
+    per_mini = eff * point_value_mini + cost_per_contract
     n = int(math.floor(risk_dollars / per_mini)) if per_mini > 0 else 0
     if n >= 1:
         return "mini", min(n, max_minis)
-    per_micro = stop_points * point_value_micro + cost_per_contract / 10.0
+    per_micro = eff * point_value_micro + (cost_per_contract / 10.0 if cost_per_micro is None else float(cost_per_micro))
     n = int(math.floor(risk_dollars / per_micro)) if per_micro > 0 else 0
     return "micro", min(max(n, 0), max_micros)

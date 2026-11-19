@@ -55,6 +55,13 @@ def instrument_costs(symbol: str) -> InstrumentCosts:
                            slip=float(r.slippage_pips or 0.0) * float(r.pip_size or 1.0))
 
 
+def session_day(et: pd.Timestamp) -> str:
+    """The trading day a New York timestamp belongs to: the calendar day shifted by the 18:00 ET Globex open (Sunday 18:00 belongs to Monday).
+
+    Prop-firm daily limits and the end-of-day trailing floor reset on this clock, not at midnight: an evening Globex trade counts for the NEXT day."""
+    return str((et + pd.Timedelta(hours=6)).date())
+
+
 def _hhmm(s: str) -> int:
     h, m = str(s).split(":")
     return int(h) * 60 + int(m)
@@ -191,7 +198,7 @@ class BotEngine:
     def _restore(self, d: dict) -> None:
         a = self.acct
         for k in ("phase", "balance", "start_balance", "floor", "eod_high", "day_start", "day", "peak_equity", "trades_today", "stopped_today",
-                  "last_payout_balance", "cycle_days"):
+                  "last_payout_balance", "cycle_days", "start_day", "recent_r", "loss_streak", "day_high"):
             if k in d:
                 setattr(a, k, d[k])
 
@@ -230,9 +237,11 @@ class BotEngine:
         t = pd.Timestamp(t)
         t = t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
         et = t.tz_convert(ET)
-        day = str(et.date())
+        day = session_day(et)
         if day != self.rt.day_key:
             self.rt.day_key, self.rt.day_trades, self.rt.day_realised = day, 0, 0.0
+            if not self.detached:
+                self.venue.roll_day(day)             # a venue with its own day counters (the demo account) moves them even when nothing was booked
         self.acct.roll_day(day)
         for sym, (o, h, l, c) in bars.items():
             lane = self.lanes.get(sym)
@@ -353,15 +362,15 @@ class BotEngine:
             return
         if self.venue.supports_sync and not self.detached:
             self.venue.sync_state(self.acct)
-        dec = decide_risk(self.acct, self.gov, open_risk=self._open_risk(exclude=lane))
+        dec = decide_risk(self.acct, self.gov, open_risk=self._open_risk(exclude=lane), weight=float(lg.weight))
         if not dec.allow:
             self.rt.next_decision = f"Standing down: {dec.reason}."
             self._event("skip", f"{lg.label} signal skipped: {dec.reason}", bar_end)
             return
         cs = self.costs[lg.symbol]
-        risk = dec.risk_dollars * float(lg.weight)
+        risk = dec.risk_dollars                      # already includes the leg's weight, and every cap was applied after it
         kind, n = contracts_for_risk(risk, ls.stop, cs.pv_mini, cs.pv_micro, self.max_minis, self.max_micros,
-                                     cost_per_contract=cs.comm_mini)
+                                     cost_per_contract=cs.comm_mini, slip_points=2.0 * cs.slip, cost_per_micro=cs.comm_micro)
         if n < 1:
             self.rt.next_decision = f"{lg.label}: risk ${risk:,.0f} is below one micro contract at a {ls.stop:,.1f}-point stop, skipped."
             self._event("skip", self.rt.next_decision, bar_end)
@@ -535,7 +544,8 @@ class BotEngine:
                "risk": round(p.risk_dollars, 2), "reason": reason, "mult": round(p.mult, 2)}
         self.rt.day_realised += pnl
         self.arbiter.on_close(self.cfg.id, p.leg, pnl, self.rt.day_key)
-        self.acct.update(pnl, str(t.tz_convert(ET).date()))
+        row["day"] = session_day(t.tz_convert(ET))
+        self.acct.update(pnl, row["day"], risk=p.risk_dollars if p.risk_dollars > 0 else None)
         row["balance"] = round(self.acct.balance, 2)
         self.trades.append(row)
         del self.trades[:-5000]
@@ -590,7 +600,7 @@ class BotEngine:
     # ------------------------------------------------------------------------------------------------------------ swing: Gate 27
     def _swing_session(self, et: pd.Timestamp) -> str:
         """CME session day: the New York calendar day shifted by the 18:00 ET Globex open (Sunday 18:00 belongs to Monday)."""
-        return str((et + pd.Timedelta(hours=6)).date())
+        return session_day(et)
 
     def _swing_qty(self, leg_label: str) -> int:
         return sum(p.qty for p in self.swing_pos if p.leg == leg_label)

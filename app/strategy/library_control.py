@@ -214,7 +214,23 @@ def control_rows() -> list[dict]:
             stem = s.name.rsplit(".", 1)[0].strip().lower()
             run = latest.get(stem) or latest.get(s.name.strip().lower()) or latest.get(str(s.metadata.get("display_name", "")).strip().lower())
             rows.append(build_row(t, s.name, s.metadata, s.status, run))
+    rows.extend(_bot_rows())
     return rows
+
+
+def _bot_rows() -> list[dict]:
+    """Every saved bot (presets and the account's own) as a selectable row, so every strategy dropdown can list them."""
+    try:
+        from app.strategy.bot_strategy import bot_catalog
+        cat = bot_catalog()
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for b in cat:
+        row = build_row("bot", b["id"], {"market": "NQ", "timeframe": "1m", "display_name": b["name"]}, "bot", None)
+        row.update(name=b["id"], label=b["name"], bot_id=b["id"], family="Trading bot", status=row.get("status") or "Bots")
+        out.append(row)
+    return out
 
 
 def summarize(rows: list[dict]) -> dict:

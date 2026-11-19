@@ -14,7 +14,7 @@ from __future__ import annotations
 from app.bots.models import AccountLink, BotConfig, BotLeg
 from app.bots.risk_governor import GovernorConfig
 
-PRESET_REV = 2     # bump when a shipped bot's legs or governor change: stopped, untouched copies in the bots database are refreshed (store._seed)
+PRESET_REV = 3     # bump when a shipped bot's legs or governor change: stopped, untouched copies in the bots database are refreshed (store._seed)
 
 def _od(w: float, prio: int) -> BotLeg:
     return BotLeg("python/OpenDrive_NQ_5m_v1.py", "Open Drive", "NQ", w, prio, 45, "Opening-drive continuation, one shot a day.")
@@ -77,10 +77,13 @@ def _acct_live() -> AccountLink:
 
 
 def preset_configs() -> list[BotConfig]:
-    gov_a = GovernorConfig(objective="A", base_risk_pct=1.0, early_mult=1.0, mid_mult=1.0, late_mult=0.7,
-                           need_risk_mult=1.0, day_stop_frac=0.40)
-    gov_b = GovernorConfig(objective="B", base_risk_pct=1.0, cushion_risk_frac=0.25, day_stop_frac=0.30, funded_mult=0.6)
-    gov_n = GovernorConfig(objective="NET", base_risk_pct=1.0, compounding=True, dd_throttle_tol_pct=10.0, min_risk_dollars=1.0)
+    gov_a = GovernorConfig(objective="A", base_risk_pct=0.75, early_mult=1.3, mid_mult=1.0, late_mult=0.7,
+                           need_risk_mult=1.0, day_stop_frac=0.40, cushion_risk_frac=0.75,
+                           pace_max_mult=1.5, pace_min_mult=0.85)
+    gov_b = GovernorConfig(objective="B", base_risk_pct=1.0, cushion_risk_frac=0.25, day_stop_frac=0.30, funded_mult=0.6,
+                           pace_max_mult=1.3, pace_min_mult=0.85, win_day_lock_mult=0.5)
+    gov_n = GovernorConfig(objective="NET", base_risk_pct=1.0, compounding=True, dd_throttle_tol_pct=10.0, min_risk_dollars=1.0,
+                           streak_mult=0.7, streak_after=3, pace_max_mult=1.25)
     return [
         BotConfig(id="bot-pass", name="Evaluation Passer", objective="A", preset_key="pass",
                   tagline="Objective A: pass the prop-firm evaluation, 30 days target, 60 days at most.",

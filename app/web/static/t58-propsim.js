@@ -176,11 +176,12 @@
       inputsBox.appendChild(el('label', null, 'Load edge from a saved strategy'));
       var stratSel = el('select');
       stratSel.appendChild(Object.assign(el('option', null, 'Manual inputs'), { value: '' }));
-      var typeNames = { python: 'Python', pinescript: 'PineScript', mql5: 'MQL5', manual: 'JSON / Manual' }, groups = {};
-      (API._rows || []).forEach(function (r) {
+      var typeNames = { python: 'Python', pinescript: 'PineScript', mql5: 'MQL5', manual: 'JSON / Manual', bot: 'Bots' }, groups = {};
+      var order = ['manual', 'python', 'pinescript', 'mql5', 'bot'], ordered = (API._rows || []).slice().sort(function (a, b) { var x = order.indexOf(a.type), y = order.indexOf(b.type); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y); });
+      ordered.forEach(function (r) {
         var g = groups[r.type]; if (!g) { g = groups[r.type] = el('optgroup'); g.label = typeNames[r.type] || r.type; stratSel.appendChild(g); }
         var has = r.win_rate != null && r.profit_factor != null;
-        var o = el('option', null, r.name + (has ? ' (' + r.win_rate + '% win, PF ' + r.profit_factor + ')' : ' (not backtested yet — will measure)'));
+        var o = el('option', null, (r.label || r.name) + (has ? ' (' + r.win_rate + '% win, PF ' + r.profit_factor + ')' : ' (not backtested yet — will measure)'));
         o.value = r.id; g.appendChild(o);
       });
       stratSel.value = API._pick || '';

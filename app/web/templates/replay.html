@@ -145,14 +145,22 @@
   function populateLibraryDropdown() {
     const select = document.getElementById('library_strategy_select');
     let count = 0;
-    Object.keys(SAVED_STRATEGIES).sort((a, b) => (a === 'bot') - (b === 'bot')).forEach((type) => {
-      (SAVED_STRATEGIES[type] || []).forEach((s) => {
+    const names = { manual: 'Manual', python: 'Python', pinescript: 'PineScript', mql5: 'MQL5', bot: 'Bots' };
+    const order = ['manual', 'python', 'pinescript', 'mql5', 'bot'];
+    const types = order.concat(Object.keys(SAVED_STRATEGIES).filter((t) => order.indexOf(t) < 0));
+    types.forEach((type) => {
+      const items = SAVED_STRATEGIES[type] || [];
+      if (!items.length) return;
+      const group = document.createElement('optgroup');
+      group.label = names[type] || type;
+      items.forEach((s) => {
         const opt = document.createElement('option');
         opt.value = JSON.stringify({ type: type, name: s.name });
-        opt.textContent = type === 'bot' ? `${s.label || s.name} (bot)` : `${s.name} (${type}${s.market ? ', ' + s.market : ''})`;
-        select.appendChild(opt);
+        opt.textContent = type === 'bot' ? (s.label || s.name) : `${s.name}${s.market ? ' (' + s.market + ')' : ''}`;
+        group.appendChild(opt);
         count++;
       });
+      select.appendChild(group);
     });
     document.getElementById('library-empty-note').textContent =
       count ? `${count} saved strategies available.` : 'No saved strategies yet. Save one in Create first. Until then a simple starter strategy is used.';

@@ -58,6 +58,37 @@ def _save_cache(cache: dict) -> None:
         pass
 
 
+class _BotStored:
+    """Stand-in for a saved-strategy record so a stored bot flows through the same measure/forecast code."""
+    def __init__(self, bot_id: str):
+        from app.strategy.bot_strategy import bot_config
+        cfg = bot_config(bot_id)
+        self.name = bot_id
+        self.metadata = {"market": "NQ", "timeframe": "1m", "display_name": cfg.name}
+        self.status = "bot"
+        self.modified = str(getattr(cfg, "updated_at", "") or hash(repr(cfg.to_dict())))
+        self.bot_id = bot_id
+
+
+def _resolve_saved(strategy_type: str, name: str):
+    if strategy_type == "bot":
+        try:
+            return _BotStored(name)
+        except FileNotFoundError:
+            return None
+    from app.strategy.library import list_saved_strategies
+    return next((s for s in list_saved_strategies(strategy_type) if s.name == name), None)
+
+
+def _strategy_object(stored, strategy_type: str):
+    if strategy_type == "bot":
+        from app.strategy.bot_strategy import build_bot_strategy
+        return build_bot_strategy(stored.bot_id)
+    from app.strategy.library_loader import load_strategy_object
+    return load_strategy_object(stored)
+
+
+
 def suggest_dataset(strategy_type: str, name: str, meta: dict | None = None) -> str | None:
     """Best stored dataset (value usable as ``existing_dataset``) for a strategy: matches the
     instrument named in its market tag / filename, preferring a bar size close to the one in
@@ -144,7 +175,7 @@ def measure_edge(strategy_type: str, name: str, dataset: str | None = None,
     from app.strategy.library import list_saved_strategies
     from app.strategy.library_loader import load_strategy_object
 
-    stored = next((s for s in list_saved_strategies(strategy_type) if s.name == name), None)
+    stored = _resolve_saved(strategy_type, name)
     if stored is None:
         raise ValueError(f"Saved strategy '{name}' ({strategy_type}) was not found in the library.")
 
@@ -170,7 +201,7 @@ def measure_edge(strategy_type: str, name: str, dataset: str | None = None,
     if len(df) > max_raw_bars:
         df = df.tail(max_raw_bars).reset_index(drop=True)
 
-    strategy = load_strategy_object(stored)
+    strategy = _strategy_object(stored, strategy_type)
     symbol = guess_instrument_symbol(dataset)
     risk = RiskConfig(initial_balance=100000.0, risk_mode="percent", risk_value=0.5,
                       pip_size=suggest_pip_size(df), contract_size=None)
@@ -231,7 +262,7 @@ def backtest_saved_strategy(strategy_type: str, name: str, dataset: str | None =
     from app.strategy.library import list_saved_strategies
     from app.strategy.library_loader import load_strategy_object
 
-    stored = next((s for s in list_saved_strategies(strategy_type) if s.name == name), None)
+    stored = _resolve_saved(strategy_type, name)
     if stored is None:
         raise ValueError(f"Saved strategy '{name}' ({strategy_type}) was not found in the library.")
     dataset = dataset or suggest_dataset(strategy_type, name, stored.metadata)
@@ -246,7 +277,7 @@ def backtest_saved_strategy(strategy_type: str, name: str, dataset: str | None =
     df = imported.dataframe
     if len(df) > max_raw_bars:
         df = df.tail(max_raw_bars).reset_index(drop=True)
-    strategy = load_strategy_object(stored)
+    strategy = _strategy_object(stored, strategy_type)
     symbol = guess_instrument_symbol(dataset)
     risk = RiskConfig(initial_balance=float(initial_balance), risk_mode="percent", risk_value=0.5,
                       pip_size=suggest_pip_size(df), contract_size=None)

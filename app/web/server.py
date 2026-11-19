@@ -4465,6 +4465,8 @@ def replay_prepare():
     # generated the trades, instead of a mismatched pre-resample slice.
     df, _tf_warnings = prepare_timeframe_aligned_data(df, strategy)
     max_bars = int(form.get("max_bars", 2000) or 2000)
+    if getattr(strategy, "source_type", "") == "bot":
+        max_bars = max(max_bars, 30000)      # a bot trades a few times a day on 1-minute bars: 2,000 bars (~1.4 days) would show nothing
     if len(df) > max_bars:
         df = df.tail(max_bars).reset_index(drop=True)
 

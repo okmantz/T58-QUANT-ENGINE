@@ -84,17 +84,28 @@ def _payout_stats(r, start, horizon: int) -> tuple[Optional[float], float, int]:
     return first, tot, n
 
 
-def simulate_starts(df: pd.DataFrame, win: Window, horizon: int, *, stride: int = 2, gov=None, lite=None, prop_rules=None, data_end=None) -> list[dict]:
+def _session_dates(ts: pd.Series) -> pd.Series:
+    """Naive-UTC timestamps -> the trading day each belongs to (New York day shifted by the 18:00 ET Globex open), as normalised naive dates."""
+    ix = pd.DatetimeIndex(ts)
+    et = ix.tz_localize("UTC").tz_convert("America/New_York") + pd.Timedelta(hours=6)
+    return pd.Series(et.tz_localize(None).normalize(), index=ts.index)
+
+
+def simulate_starts(df: pd.DataFrame, win: Window, horizon: int, *, stride: int = 2, gov=None, lite=None, prop_rules=None, data_end=None,
+                    session_days: bool = False) -> list[dict]:
     """Start a fresh evaluation on every ``stride``-th trading day inside ``win`` and replay the trades through the real simulator.
 
-    With ``gov`` every trade is first re-sized by the bot risk governor from the evolving account state (the same ``decide_risk`` the bots call)."""
+    With ``gov`` every trade is first re-sized by the bot risk governor from the evolving account state (the same ``decide_risk`` the bots call). A ``w`` column
+    in ``df`` is each trade's leg weight: it goes to ``decide_risk`` as the weight, so the caps apply AFTER it exactly as in the bot engine. ``session_days`` groups
+    trades by the CME session day (rolls at 18:00 ET) instead of the UTC calendar day, which is the clock the firm's daily limit and trailing floor run on."""
     from app.prop.presets import get_preset
     from app.prop.simulator import simulate_account
     rl = prop_rules or get_preset("lucid_50k").to_prop_rules()
     if df is None or len(df) == 0:
         return []
     d = df.sort_values("entry").reset_index(drop=True)
-    d["day"] = d["entry"].dt.normalize()
+    d["day"] = _session_dates(d["entry"]) if session_days else d["entry"].dt.normalize()
+    ws = d["w"].to_numpy(float) if "w" in d.columns else np.ones(len(d))
     last = pd.Timestamp(data_end) if data_end is not None else d["exit"].max()
     cand = [x for x in sorted(d["day"].unique()) if win.start <= x < win.end][::max(1, stride)]
     entries, exits, pnls, dirs, dayv = d["entry"].tolist(), d["exit"].tolist(), d["pnl"].to_numpy(float), d["dir"].tolist(), d["day"].tolist()
@@ -123,13 +134,13 @@ def simulate_starts(df: pd.DataFrame, win: Window, horizon: int, *, stride: int 
                 st.roll_day(str(dayv[i].date()))
                 if st.phase == "passed":
                     st.to_funded()
-                dec = decide_risk(st, gov)
+                dec = decide_risk(st, gov, weight=float(ws[i]))
                 if not dec.allow:
                     continue
                 m = dec.risk_dollars / base_total if base_total else 1.0
                 p = float(pnls[i]) * m
                 o_p.append(p); o_d.append(dayv[i].date()); o_en.append(entries[i]); o_ex.append(exits[i]); o_di.append(dirs[i])
-                st.update(p, str(dayv[i].date()))
+                st.update(p, str(dayv[i].date()), risk=dec.risk_dollars)
                 if st.phase == "funded":
                     st.take_payout()
         if not o_p:
@@ -160,7 +171,7 @@ def _n_eff(df: pd.DataFrame, win: Window, horizon: int) -> float:
 
 # ---------------------------------------------------------------------------------------------------------------------- OBJECTIVE A
 def score_pass(trades, win: Window, *, target_days: int = A_TARGET_DAYS, max_days: int = A_MAX_DAYS, stride: int = 2, gov=None, lite=None,
-               prop_rules=None) -> dict:
+               prop_rules=None, session_days: bool = False) -> dict:
     """Objective A. Primary: P(pass within ``target_days``, no breach). The same starts are read again at ``max_days`` (the longest acceptable horizon).
 
     Returns percentages: p_pass_30 / p_pass_60 (+ 95% lower bounds), median_days_to_pass, breach_30 / breach_60 (a breach before the pass),
@@ -172,7 +183,7 @@ def score_pass(trades, win: Window, *, target_days: int = A_TARGET_DAYS, max_day
              "breach_60": 0.0, "risk_of_ruin": 0.0, "pass_per_breach": None, "target_efficiency": None}
     if df.empty:
         return empty
-    res = simulate_starts(df, win, max_days, stride=stride, gov=gov, lite=lite, prop_rules=rl)
+    res = simulate_starts(df, win, max_days, stride=stride, gov=gov, lite=lite, prop_rules=rl, session_days=session_days)
     n = len(res)
     if n == 0:
         return empty
@@ -211,7 +222,7 @@ def losing_streak(pnl: np.ndarray) -> int:
 
 
 def score_payout(trades, win: Window, *, horizon: int = B_PAYOUT_HORIZON_DAYS, fee: float = FEE_DEFAULT, stride: int = 3, gov=None, lite=None,
-                 prop_rules=None, consistency_cap: float = 0.40) -> dict:
+                 prop_rules=None, consistency_cap: float = 0.40, session_days: bool = False) -> dict:
     """Objective B. Primary: P(first payout within ``horizon`` days, no breach on the way). Also: median days to the first payout, payout expectancy per
     attempt (mean payout dollars inside the horizon less the fee, counting a repurchase after every breach), survival (share of starts never breached),
     max drawdown of the trade stream, the worst losing streak, consistency compliance (share of paid starts whose best day stayed under ``consistency_cap``
@@ -221,7 +232,7 @@ def score_payout(trades, win: Window, *, horizon: int = B_PAYOUT_HORIZON_DAYS, f
              "repeat_payout": None, "consistency_compliance": None, "max_dd_usd": 0.0, "worst_losing_streak": 0}
     if df.empty:
         return empty
-    res = simulate_starts(df, win, horizon, stride=stride, gov=gov, lite=lite, prop_rules=prop_rules)
+    res = simulate_starts(df, win, horizon, stride=stride, gov=gov, lite=lite, prop_rules=prop_rules, session_days=session_days)
     n = len(res)
     if n == 0:
         return empty
@@ -270,14 +281,15 @@ def score_net(trades, *, equity0: float = 50_000.0, gov=None, extra_daily: Optio
         events.setdefault(x, []).append(i)
     days = sorted(set(exits) | (set(extra_daily.index) if extra_daily is not None else set()))
     curve, peak, mdd_pct, mdd_usd, taken = [], equity0, 0.0, 0.0, []
+    wn = d["w"].to_numpy(float) if (not d.empty and "w" in d.columns) else None
     for x in days:
         for i in events.get(x, []):
-            dec = decide_risk(st, gov)
+            dec = decide_risk(st, gov, weight=float(wn[i]) if wn is not None else 1.0)
             if not dec.allow:
                 continue
             m = min(dec.risk_dollars / base_total, size_cap / equity0)
             p = float(pn[i]) * m
-            st.update(p, str(x.date()))
+            st.update(p, str(x.date()), risk=m * base_total)
             taken.append(p)
         if extra_daily is not None and x in extra_daily.index:
             st.balance += float(extra_daily.loc[x]) * max(st.balance, 0.0)

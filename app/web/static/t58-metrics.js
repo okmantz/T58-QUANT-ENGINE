@@ -14,6 +14,11 @@
   if (window.T58Metrics) return;
   var labels = null, labelsPromise = null, box = null, lastEl = null;
   var SKIP = { A: 1, BUTTON: 1, OPTION: 1, SELECT: 1, INPUT: 1, TEXTAREA: 1, SCRIPT: 1, STYLE: 1, LABEL: 1, H1: 1, TITLE: 1 };
+  // Anything that is a control in its own right must keep its own click: a tab called "Trades" is a tab, not the glossary entry for "Trades".
+  // (Before this a metric-named tab -- Trading Bots > "Trades" -- was underlined and opened a definition on every click, so it could never be re-selected.)
+  var CONTROL_SEL = "[data-no-metric],[role=tab],[role=tablist],[role=menuitem],[role=option],[role=switch],[role=radio],[role=checkbox]," +
+    ".tabs,.tab,.tb-tabs,.tb-tab,.rp-tabs,.rp-tab,.t58-tabs,.t58-tab,.nav-tabs,.nav-item,[data-tab],[data-t],[data-mode],[onclick]";
+  function isControl(n) { return !!(n.closest && n.closest(CONTROL_SEL)) || (n.hasAttribute && n.hasAttribute("onclick")); }
 
   function norm(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -115,7 +120,12 @@
   function bind(node, key) {
     if (node.getAttribute("data-metric")) return;
     node.setAttribute("data-metric", key); node.setAttribute("role", "button"); node.setAttribute("tabindex", "0");
+    node.setAttribute("data-t58-auto", "1");
     node.setAttribute("title", "Click for the definition, formula and history");
+  }
+
+  function unbind(node) {
+    ["data-metric", "data-t58-auto", "role", "tabindex", "title"].forEach(function (a) { node.removeAttribute(a); });
   }
 
   // Check cards, method cards and result rows sit inside forms/labels (where a whole-element click means something else), so they
@@ -143,7 +153,11 @@
       var nodes = (root || document).querySelectorAll("th, td, span, div, p, small, h2, h3, h4, dt, strong, b, em, label, li, legend");
       for (var i = 0; i < nodes.length; i++) {
         var n = nodes[i];
-        if (n.children.length || n.getAttribute("data-metric") || n.closest("a,button,select,option,form,[data-ve],.t58-mx,nav,.t58-sidebar,#t58-sidebar")) continue;
+        if (n.children.length || n.getAttribute("data-metric") || n.closest("a,button,select,option,form,[data-ve],.t58-mx,nav,.t58-sidebar,#t58-sidebar") || isControl(n)) {
+          // a node that earlier scans already bound but is really a control (the page re-rendered into a tab bar): give it its click back
+          if (n.getAttribute && n.getAttribute("data-metric") && n.getAttribute("data-t58-auto") && isControl(n)) unbind(n);
+          continue;
+        }
         var lb = n.closest("label"); if (lb && lb.querySelector("input,select,textarea")) continue;
         var t = norm(n.textContent); if (!t || t.length > 40) continue;
         var key = map[t.replace(/:$/, "")]; if (key) bind(n, key);
@@ -154,6 +168,7 @@
 
   document.addEventListener("click", function (e) {
     var t = e.target.closest && e.target.closest("[data-metric]");
+    if (t && t.getAttribute("data-t58-auto") && isControl(t)) return;
     if (t && !t.closest(".t58-mx")) { e.preventDefault(); e.stopPropagation(); open(t, t.getAttribute("data-metric")); }
   }, true);
   document.addEventListener("keydown", function (e) {
@@ -161,7 +176,7 @@
     if ((e.key === "Enter" || e.key === " ") && e.target.getAttribute && e.target.getAttribute("data-metric")) { e.preventDefault(); open(e.target, e.target.getAttribute("data-metric")); }
   });
 
-  window.T58Metrics = { scan: scan, open: open, bind: bind };
+  window.T58Metrics = { scan: scan, open: open, bind: bind, isControl: isControl };
   function start() { scan(document); var t = null; new MutationObserver(function () { clearTimeout(t); t = setTimeout(function () { scan(document); }, 400); }).observe(document.body, { childList: true, subtree: true }); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();

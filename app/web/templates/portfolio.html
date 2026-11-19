@@ -91,6 +91,7 @@
       <button type="button" data-mode="python">Python</button>
       <button type="button" data-mode="pinescript">PineScript</button>
       <button type="button" data-mode="mql5">MQL5</button>
+      <button type="button" data-mode="bot">Bots</button>
     </div>
     <input type="hidden" name="strategy_mode" id="strategy_mode" value="manual">
 
@@ -168,6 +169,7 @@
         <option value="python">Load from library: Python</option>
         <option value="pinescript">Load from library: PineScript</option>
         <option value="mql5">Load from library: MQL5</option>
+        <option value="bot">Load from library: Bots</option>
       </select>
       <select name="leg{{ i }}_library_name" id="leg{{ i }}_library_name" style="display:none;"></select>
       <p class="help" style="margin:4px 0 0;">Pick a saved strategy to give this leg its own edge instead of the shared one -- this is how a portfolio combines genuinely different strategies (e.g. a trend-follower + a mean-reversion strategy) into one book.</p>
@@ -241,13 +243,14 @@
     all.forEach(s => {
       const opt = document.createElement('option');
       opt.value = s.name;
-      opt.textContent = s.description ? `${s.name} — ${s.description}` : s.name;
+      opt.textContent = s.label || (s.description ? `${s.name} — ${s.description}` : s.name);
       select.appendChild(opt);
     });
   }
 
   function loadFromLibrary() {
     const mode = modeInput.value;
+    if (mode === 'bot') return;   // a bot has no source text to load: the picked id is posted as existing_strategy_bot
     const name = document.getElementById('existing_strategy_select').value;
     if (!name) return;
     fetch(`/strategies/${encodeURIComponent(mode)}/${encodeURIComponent(name)}`)
@@ -270,7 +273,7 @@
     all.forEach(s => {
       const opt = document.createElement('option');
       opt.value = s.name;
-      opt.textContent = s.description ? `${s.name} — ${s.description}` : s.name;
+      opt.textContent = s.label || (s.description ? `${s.name} — ${s.description}` : s.name);
       nameSelect.appendChild(opt);
     });
     nameSelect.style.display = 'block';

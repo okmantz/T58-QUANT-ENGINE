@@ -25,6 +25,9 @@ class Venue:
     def sync_state(self, state: AccountState) -> None:  # noqa: D401
         """Overwrite ``state`` from the venue's own source of truth (no-op for the sandbox)."""
 
+    def roll_day(self, day: str) -> None:
+        """The bot's first bar of a new trading day (``YYYY-MM-DD``): venues that keep their own day counters move them forward (no-op elsewhere)."""
+
     def open(self, pos: OpenPos, *, symbol_hint: str = "") -> tuple[bool, Optional[float], str, str]:
         return True, None, "", ""
 
@@ -59,12 +62,20 @@ class DemoVenue(Venue):
         from app.demo_account import account as demo
         return demo.load()
 
+    def roll_day(self, day: str) -> None:
+        from app.demo_account import account as demo
+        demo.roll_day(day)
+
     def sync_state(self, state: AccountState) -> None:
         a = self._acct()
         rules = a.rules
         state.rules = AccountRulesLite.from_v2(rules)
         state.balance, state.start_balance, state.floor = float(a.balance), float(a.start_balance), float(a.floor)
         state.eod_high, state.day_start = float(a.eod_high), float(a.day_start)
+        if state.day and a.day and a.day != state.day:
+            # the demo account has not seen today yet (no trade booked, no roll): today starts from the current balance and nothing is stopped
+            state.day_start = float(a.balance)
+            state.eod_high = max(float(a.eod_high), float(a.balance))
         state.peak_equity = max(state.peak_equity, state.balance)
         if a.status == "active" and state.phase not in ("funded",):
             state.phase = "evaluation"
@@ -72,13 +83,13 @@ class DemoVenue(Venue):
             state.phase = "breached"
         elif a.status == "passed" and state.phase == "evaluation":
             state.phase = "passed"
-        state.stopped_today = bool(a.day_stopped)
+        state.stopped_today = bool(a.day_stopped) and not (state.day and a.day and a.day != state.day)
 
     def book(self, trade: dict) -> None:
         from app.demo_account import account as demo
         demo.record_trade(float(trade["pnl"]), root=trade.get("symbol", ""), side=trade.get("side", ""), qty=float(trade.get("qty", 1)),
                           entry=trade.get("entry"), exit=trade.get("exit"), why=f"{trade.get('bot', 'bot')}: {trade.get('leg', '')} ({trade.get('reason', '')})",
-                          source="bot", closed_at=str(trade.get("exit_time") or ""))
+                          source="bot", closed_at=str(trade.get("exit_time") or ""), day=trade.get("day") or None)
 
     def describe(self) -> dict:
         a = self._acct()
