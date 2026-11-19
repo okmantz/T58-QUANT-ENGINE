@@ -14,6 +14,8 @@ from __future__ import annotations
 from app.bots.models import AccountLink, BotConfig, BotLeg
 from app.bots.risk_governor import GovernorConfig
 
+PRESET_REV = 2     # bump when a shipped bot's legs or governor change: stopped, untouched copies in the bots database are refreshed (store._seed)
+
 def _od(w: float, prio: int) -> BotLeg:
     return BotLeg("python/OpenDrive_NQ_5m_v1.py", "Open Drive", "NQ", w, prio, 45, "Opening-drive continuation, one shot a day.")
 
@@ -24,6 +26,15 @@ def _ir(w: float, prio: int) -> BotLeg:
 
 def _ir30(w: float, prio: int) -> BotLeg:
     return BotLeg("python/IndRuleA_NQ_30m_v1.py", "Ind Rule 30m", "NQ", w, prio, 30, "Second timeframe of the Ind Rule: long-only, afternoon window.")
+
+
+def _od_light(w: float, prio: int) -> BotLeg:
+    return BotLeg("python/OpenDrive_NQ_5m_v1.py", "Open Drive", "NQ", w, prio, 45, "Opening-drive continuation, one shot a day, at a quarter size so it adds winning days without adding risk.")
+
+
+def _cob(w: float, prio: int) -> BotLeg:
+    return BotLeg("python/CompressionORB_ES_5m_v1.py", "Compression ORB", "ES", w, prio, 30,
+                  "S&P 500 opening-range breakout after a quiet day; about six trades a month, at a quarter size.")
 
 
 def _cad_long(w: float, prio: int) -> BotLeg:
@@ -75,17 +86,19 @@ def preset_configs() -> list[BotConfig]:
                   tagline="Objective A: pass the prop-firm evaluation, 30 days target, 60 days at most.",
                   description="Open Drive, Ind Rule at triple size and a long-only Context Drive. Full size early, trimming as the target nears; risk is "
                               "capped by the cushion above the drawdown floor and the day stops at 40% of the daily limit. The goal is to pass, not to preserve the account.",
-                  legs=[_od(1.0, 0), _ir(3.0, 1), _cad_long(1.0, 2)], governor=gov_a.to_dict(), account=_acct()),
+                  legs=[_od(1.0, 0), _ir(3.0, 1), _cad_long(1.0, 2)], governor=gov_a.to_dict(), account=_acct(), preset_rev=PRESET_REV),
         BotConfig(id="bot-payout", name="Payout Hunter", objective="B", preset_key="payout",
                   tagline="Objective B: get paid and keep the account alive.",
-                  description="Ind Rule and a long-only Context Drive at normal size. Risk is limited to a quarter of the cushion, "
-                              "the day stop is tighter, and size drops to 60% once funded. Built for payouts without a breach, not speed.",
-                  legs=[_ir(1.0, 0), _cad_long(1.0, 1)], governor=gov_b.to_dict(), account=_acct()),
+                  description="Paid under the 5-winning-days rule: five days of $250 or more, not necessarily in a row, with the wins bigger than the losses. "
+                              "Ind Rule at normal size plus two quarter-size legs (Compression ORB on the S&P 500, Open Drive) that add trading days, because a payout "
+                              "needs many ordinary winning days rather than a few big ones. Risk is limited to a quarter of the cushion and the day stop is tight. "
+                              "Built for payouts without a breach, not speed.",
+                  legs=[_ir(1.0, 0), _cob(0.25, 1), _od_light(0.25, 2)], governor=gov_b.to_dict(), account=_acct(), preset_rev=PRESET_REV),
         BotConfig(id="bot-profit", name="Net Profit Compounder", objective="NET", preset_key="profit",
                   tagline="Objective C: grow capital and maximise net wealth.",
                   description="Six intraday sleeves on Nasdaq-100 and the S&P 500 plus the Gate 27 US500 + Gold swing basket (re-tuned: 150-day trend, 40-day volatility, 1% a day). "
                               "Size follows equity (capped at $250K of sizing equity) and shrinks as drawdown deepens. Runs on a sandbox account with no prop-firm limits: "
                               "Gate 27 holds overnight, which a prop evaluation would not allow.",
                   legs=_net_legs() + _gate27(1.0, 6, GATE27_TUNED), governor=gov_n.to_dict(), account=_acct_live(),
-                  max_open_positions=3, max_trades_per_day=20),
+                  max_open_positions=3, max_trades_per_day=20, preset_rev=PRESET_REV),
     ]

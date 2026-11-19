@@ -64,7 +64,7 @@
     <div class="pick-list">
       {% for s in strategies %}
       <label><input type="radio" name="strategy_pick" value="{{ s.type }}::{{ s.name }}"
-        {{ 'checked' if form_values.get('strategy_pick') == s.type ~ '::' ~ s.name else '' }}> [{{ s.type }}] {{ s.name }}</label>
+        {{ 'checked' if form_values.get('strategy_pick') == s.type ~ '::' ~ s.name else '' }}> [{{ s.type }}] {{ s.label or s.name }}</label>
       {% endfor %}
       {% if not strategies %}<p style="color:var(--text-muted);font-size:13px;">No saved strategies yet -- save one from Run &amp; Report first.</p>{% endif %}
     </div>

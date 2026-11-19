@@ -268,8 +268,20 @@
       <button type="button" data-mode="python">Python</button>
       <button type="button" data-mode="pinescript">PineScript</button>
       <button type="button" data-mode="mql5">MQL5</button>
+      <button type="button" data-mode="bot">Bots</button>
     </div>
     <input type="hidden" name="strategy_mode" id="strategy_mode" value="manual">
+
+    <div id="bot-fields" style="display:none;">
+      <label>Run a T58 Trading Bot instead of a single strategy</label>
+      <select id="existing_strategy_bot_select" name="existing_strategy_bot">
+        <option value="">— pick a bot —</option>
+      </select>
+      <p style="font-size:12px;color:var(--t-faint);margin-top:6px;" id="bot-note">
+        The bot's legs run together on the dataset you pick above (legs on another instrument, and the Gate 27 swing basket, are left out and named in the
+        results). Leg weights, the profit-lock ladder and the loser cut are all applied.
+      </p>
+    </div>
 
     <div id="manual-fields">
       <div style="font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--violet, #8b7cff);text-transform:uppercase;margin:4px 0 8px;">
@@ -801,6 +813,21 @@
     // "load from library" dropdown/search/filter panel now shows for
     // Manual as well, instead of only exposing the quick SMA-crossover
     // builder fields with no way to load anything previously saved.
+    const botFields = document.getElementById('bot-fields');
+    if (btn.dataset.mode === 'bot') {
+      manualFields.style.display = 'none';
+      codeFields.style.display = 'none';
+      botFields.style.display = 'block';
+      const sel = document.getElementById('existing_strategy_bot_select');
+      if (sel.options.length <= 1) {
+        (SAVED_STRATEGIES.bot || []).forEach(b => {
+          const o = document.createElement('option');
+          o.value = b.name; o.textContent = b.label || b.name; sel.appendChild(o);
+        });
+      }
+      return;
+    }
+    botFields.style.display = 'none';
     manualFields.style.display = 'block';
     codeFields.style.display = 'block';
     const fileInput = document.getElementById('strategy_file_input');

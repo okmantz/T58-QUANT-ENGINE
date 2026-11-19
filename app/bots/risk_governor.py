@@ -35,6 +35,15 @@ class AccountRulesLite:
     trailing: bool = True
     funded_buffer: float = 2_100.0          # cushion a funded account keeps above its floor before it requests a payout
     payout_goal: float = 500.0              # profit above the buffer a funded cycle needs
+    # Objective B payout rule: "standard" = payout_goal + funded_buffer (above). "winning_days_net_positive" = ``winning_days`` days that each made at
+    # least ``winning_day_profit`` since the last payout (not necessarily consecutive) AND the cycle's wins outweigh its losses (net P&L > 0).
+    payout_mode: str = "standard"
+    winning_days: int = 5
+    winning_day_profit: float = 250.0
+
+    def with_winning_days_payout(self, days: int = 5, day_profit: float = 250.0) -> "AccountRulesLite":
+        """The same account under the "5 days of $250, wins bigger than losses" payout rule (Objective B)."""
+        return replace(self, payout_mode="winning_days_net_positive", winning_days=int(days), winning_day_profit=float(day_profit))
 
     @classmethod
     def from_v2(cls, v2) -> "AccountRulesLite":
@@ -79,6 +88,7 @@ class AccountState:
     trades_today: int = 0
     stopped_today: bool = False
     last_payout_balance: float = 50_000.0
+    cycle_days: dict = field(default_factory=dict)      # winning_days_net_positive mode: day -> realised P&L since the last payout / funded start
 
     @classmethod
     def fresh(cls, rules: Optional[AccountRulesLite] = None, *, phase: str = "evaluation") -> "AccountState":
@@ -130,6 +140,8 @@ class AccountState:
             return
         self.roll_day(day)
         self.balance += float(pnl)
+        if self.phase == "funded" and self.rules.payout_mode == "winning_days_net_positive":
+            self.cycle_days[day] = self.cycle_days.get(day, 0.0) + float(pnl)
         self.trades_today += 1
         self.peak_equity = max(self.peak_equity, self.balance)
         if self.balance <= self.floor:
@@ -143,6 +155,11 @@ class AccountState:
         self.phase, self.balance, self.start_balance = "funded", r.account_size, r.account_size
         self.floor, self.eod_high, self.day_start = r.account_size - r.loss_limit, r.account_size, r.account_size
         self.peak_equity, self.last_payout_balance, self.trades_today, self.stopped_today = r.account_size, r.account_size, 0, False
+        self.cycle_days = {}
+
+    def winning_days_count(self) -> int:
+        """Days since the last payout (or funded start) whose P&L reached ``winning_day_profit``; they need not be consecutive."""
+        return sum(1 for v in self.cycle_days.values() if v >= self.rules.winning_day_profit)
 
     def payout_due(self) -> float:
         """Dollars a funded account may withdraw now (0 when not eligible): profit since the last payout beats the goal AND the cushion
@@ -151,6 +168,11 @@ class AccountState:
             return 0.0
         r = self.rules
         gain = self.balance - self.last_payout_balance
+        if r.payout_mode == "winning_days_net_positive":
+            # wins bigger than losses over the cycle, enough qualifying days; never withdraw below the starting balance
+            if self.winning_days_count() >= r.winning_days and gain > 0 and sum(self.cycle_days.values()) > 0:
+                return float(max(min(gain, self.balance - r.account_size, 2_000.0 * r.account_size / 50_000.0), 0.0))
+            return 0.0
         spare = self.cushion - r.funded_buffer
         if gain >= r.payout_goal and spare >= r.payout_goal:
             return float(min(gain, spare, 2_000.0 * r.account_size / 50_000.0))
@@ -161,6 +183,7 @@ class AccountState:
         if amt > 0:
             self.balance -= amt
             self.last_payout_balance = self.balance
+            self.cycle_days = {}                                # a payout starts a new winning-day cycle
         return amt
 
     def to_dict(self) -> dict:
@@ -201,6 +224,15 @@ class GovernorConfig:
     # --- hard floors/caps in dollars
     min_risk_dollars: float = 30.0          # about one micro contract at a typical stop; below this the trade is skipped
     max_risk_dollars: Optional[float] = None
+    # --- cut losers short, let winners run (app.backtest.profit_lock): the same ladder the backtester uses, applied to every bot trade
+    profit_lock: bool = False               # once a trade is positive, ratchet its stop up in dollar steps so a reversal cannot give the day back
+    lock_tiers: Optional[tuple] = None      # ((open profit $, locked $), ...) for a 50K account; None = the default ladder ($200 -> $75, $400 -> $250, ...)
+    lock_trail_frac: float = 0.72           # beyond the last rung the stop trails at this share of the peak open profit (0 = no trail)
+    lock_scale: float = 1.0                 # multiplies every rung
+    lock_scale_by_risk: bool = True         # also scale the rungs by (the trade's risk / $500), so a small-risk trade ratchets sooner in dollars
+    loss_cut_frac: Optional[float] = None   # close a trade that never worked once it is down this share of its risk (None = off)
+    loss_cut_min_minutes: int = 10          # ... and it has been open at least this many minutes
+    loss_cut_max_mfe_frac: float = 0.25     # ... and its best open profit stayed under this share of its risk
 
     def with_(self, **kw) -> "GovernorConfig":
         return replace(self, **kw)

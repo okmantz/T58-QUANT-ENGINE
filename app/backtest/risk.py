@@ -150,6 +150,17 @@ class RiskConfig:
     time_stop_hours: float | None = None
     # Stagnation band for the time stop, in multiples of the 14-bar ATR (astra-quant-agent used 0.15).
     time_stop_atr_band: float = 0.15
+    # Profit-lock ladder + adaptive loser cut ("cut losers short, let winners run"; see app.backtest.profit_lock). All off by default =
+    # byte-identical to every run before they existed. profit_lock_tiers is ((open profit $, lock $), ...) for a 50K account, scaled by
+    # profit_lock_scale; beyond the last rung the stop trails at profit_lock_trail_frac of the peak open profit (0 = no trail).
+    profit_lock_tiers: tuple | None = None
+    profit_lock_trail_frac: float = 0.0
+    profit_lock_scale: float = 1.0
+    # loss_cut_frac (None = off): close a trade that never worked once it is down this fraction of its initial risk (after loss_cut_min_bars
+    # bars, if its best open profit stayed under loss_cut_max_mfe_frac of that risk).
+    loss_cut_frac: float | None = None
+    loss_cut_min_bars: int = 3
+    loss_cut_max_mfe_frac: float = 0.25
     # Part C fix 2 (opt-in): when True, the dead-lock rescue fires at ANY equity level, not just
     # equity < initial_balance; rescued trades are tagged sized_above_risk_target=True.
     allow_single_contract_minimum: bool = False

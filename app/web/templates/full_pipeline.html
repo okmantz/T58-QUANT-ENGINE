@@ -491,7 +491,7 @@
   // type). Picking one fills the same strategy_mode / existing_strategy_*
   // fields the backend has always read; the quick builder, paste box and
   // upload live in Advanced and only apply when nothing is picked.
-  const FP_TYPE_LABELS = [['manual', 'Manual'], ['python', 'Python'], ['pinescript', 'PineScript'], ['mql5', 'MQL5']];
+  const FP_TYPE_LABELS = [['manual', 'Manual'], ['python', 'Python'], ['pinescript', 'PineScript'], ['mql5', 'MQL5'], ['bot', 'Bots']];
   (function buildStrategyPick() {
     FP_TYPE_LABELS.forEach(([t, label]) => {
       const items = SAVED_STRATEGIES[t] || [];
@@ -501,7 +501,7 @@
       items.forEach(s => {
         const o = document.createElement('option');
         o.value = t + '::' + s.name;
-        o.textContent = s.name;
+        o.textContent = s.label || s.name;
         og.appendChild(o);
       });
       strategyPick.appendChild(og);

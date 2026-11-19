@@ -82,6 +82,14 @@ GOVERNOR_FIELDS: list[dict] = [
          help="On: risk is a share of current equity (winners grow size, losers shrink it). Off: a share of the starting account."),
     dict(key="day_profit_lock_frac", label="Stop for the day after winning (share of the target / payout goal)", kind="frac", lo=0.05, hi=1.5, step=0.05, goals=["A", "B"], optional=True, advanced=True,
          help="Bank a great day instead of giving it back. Useful for consistency rules that cap how much one day may contribute. Blank = off."),
+    dict(key="profit_lock", label="Lock in profit on winning trades (ratchet the stop up as a trade runs)", kind="bool", goals=["A", "B", "NET"], optional=False, advanced=True,
+         help="A trade that is up $100 moves its stop to break-even, $200 locks $75, $300 locks $150, $400 locks $250 and beyond that the stop trails the peak. The stop only ever "
+              "tightens. Measured on 6 years of NQ/ES it protects winning days but gives up some of the biggest trend moves, so it ships off; try it on your own data first."),
+    dict(key="lock_scale", label="Profit-lock ladder size (1.0 = the $100 / $200 / $300 / $400 rungs for a 50K account)", kind="mult", lo=0.5, hi=10.0, step=0.5, goals=["A", "B", "NET"], optional=False, advanced=True,
+         help="Widen the rungs for strategies that need room to run. 6.0 costs almost nothing on the shipped strategies; 3.0 and below clipped winners too early."),
+    dict(key="loss_cut_frac", label="Cut a losing trade early once it has lost this share of its stop (and never went green)", kind="frac", lo=0.3, hi=1.0, step=0.05, goals=["A", "B", "NET"], optional=True, advanced=True,
+         help="Adaptive loser cut: a trade that has lost this share of its planned risk after a few minutes, without ever showing a real profit, is closed at the market instead of "
+              "waiting for the full stop. Blank = off."),
     dict(key="early_mult", label="Size multiplier: early (progress below the first mark)", kind="mult", lo=0.1, hi=1.5, step=0.05, goals=["A", "B"], optional=False, advanced=True,
          help="Applied while progress to the target (or payout goal) is below the first mark."),
     dict(key="mid_mult", label="Size multiplier: middle", kind="mult", lo=0.1, hi=1.5, step=0.05, goals=["A", "B"], optional=False, advanced=True,

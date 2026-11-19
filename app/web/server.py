@@ -1306,6 +1306,13 @@ def _build_strategy_inner(mode: str, form, files):
     (loaded from it, or just saved to it) -- used to stamp lookahead/search
     results back onto that entry's metadata -- or None for manual/one-off
     pasted strategies with no library tie."""
+    if mode == "bot":
+        # A T58 Trading Bot is a Strategy here (app.strategy.bot_strategy): same engine, same pipelines, no library entry.
+        from app.strategy.bot_strategy import build_bot_strategy
+        bid = (form.get("existing_strategy_bot") or "").strip()
+        if not bid:
+            raise StrategyError("Pick a bot to run.")
+        return build_bot_strategy(bid, symbol=_bot_symbol_for_form(form)), None
     if mode == "manual":
         # A saved-library pick (or an uploaded/pasted manual JSON config)
         # now takes precedence, exactly like the other three strategy
@@ -1551,6 +1558,28 @@ def _prop_rules_from_search_evo_form(form) -> PropRules:
 _SAVED_STRATEGIES_JSON_CACHE: tuple | None = None
 
 
+def _bot_picker_entries() -> list[dict]:
+    """Every stored bot as a picker row: ``name`` is the bot id (the stable key in 'bot::<id>'), ``label`` what the person reads."""
+    try:
+        from app.strategy.bot_strategy import bot_catalog
+        return [{"name": b["id"], "label": f"{b['name']} (Objective {b['objective']}, {b['legs']} legs)",
+                 "description": b.get("tagline") or ""} for b in bot_catalog()]
+    except Exception:  # noqa: BLE001 -- the bots store must never take a picker page down
+        return []
+
+
+def _bot_symbol_for_form(form) -> str | None:
+    """The instrument a bot is tested on: the dataset picked on the page (NQ1! / ES / GC ...), else the bot's own first instrument."""
+    try:
+        label = str(_instrument_label_from_form(form) or "").upper()
+    except Exception:  # noqa: BLE001
+        label = ""
+    for sym in ("NQ", "ES", "GC"):
+        if label.startswith(sym) or label.startswith("M" + sym) or f"{sym}1" in label or f"_{sym}_" in label:
+            return sym
+    return None
+
+
 def _saved_strategies_json() -> str:
     """{"python": [{"name", "description", "market", "tags", "status",
     "last_run", "lookahead", "last_search", "evolution"}, ...], "pinescript": [...],
@@ -1568,11 +1597,15 @@ def _saved_strategies_json() -> str:
     save/delete/metadata write changes the fingerprint and the next
     render rebuilds it -- never TTL-stale."""
     global _SAVED_STRATEGIES_JSON_CACHE
-    fingerprint = library_fingerprint()
+    bots = _bot_picker_entries()
+    fingerprint = (library_fingerprint(), tuple((b["name"], b["label"]) for b in bots))
     cached = _SAVED_STRATEGIES_JSON_CACHE
     if cached is not None and cached[0] == fingerprint:
         return cached[1]
     payload = json.dumps({
+        "bot": [{"name": b["name"], "label": b["label"], "description": b["description"], "market": "", "tags": [], "status": "bot",
+                 "last_run": None, "lookahead": None, "last_search": None, "evolution": None} for b in bots],
+        **{
         t: [
             {
                 "name": s.name,
@@ -1588,6 +1621,7 @@ def _saved_strategies_json() -> str:
             for s in list_saved_strategies(t)
         ]
         for t in STRATEGY_TYPES
+        },
     })
     _SAVED_STRATEGIES_JSON_CACHE = (fingerprint, payload)
     return payload
@@ -2448,8 +2482,13 @@ _OPT_LINK_ENGINES = {
 _VALIDATE_CHECKS = ("monte_carlo", "cpcv", "pbo", "walk_forward", "wfga", "sensitivity", "robustness", "regime")
 
 
-def _simple_strategy_options() -> list[dict]:
-    return [{"type": s.strategy_type, "name": s.name} for s in list_saved_strategies()]
+def _simple_strategy_options(include_bots: bool = False) -> list[dict]:
+    """Library strategies for a picker. Bots are added only where they can run (Test / Optimize / Validate / Replay style pages); the
+    Deploy pages take a library strategy file, so they never list them."""
+    rows = [{"type": s.strategy_type, "name": s.name, "label": s.name} for s in list_saved_strategies()]
+    if include_bots:
+        rows += [{"type": "bot", "name": b["name"], "label": b["label"]} for b in _bot_picker_entries()]
+    return rows
 
 
 def _lc_prefill() -> dict:
@@ -2474,7 +2513,7 @@ def _lc_prefill() -> dict:
 def _simple_pickers(form=None) -> dict:
     form = form or {}
     return {
-        "strategies": _simple_strategy_options(),
+        "strategies": _simple_strategy_options(include_bots=True),
         "stored_datasets": list_stored_datasets(),
         # v9.8: pickers group by instrument-symbol prefix (ES1! -> its
         # files, NQ1! -> its files), not by data/raw subfolder.
@@ -3017,12 +3056,39 @@ def job_strategy_name(job_id):
     return jsonify({"found": True, "strategy": str(job.get("strategy") or "")})
 
 
+def _run_bot_optimize_job(job_id: str, df, strategy, risk, form, cancel_event=None) -> None:
+    """Optimize page, a bot picked: the bot optimizer (app.optimize.bot_optimizer) replaces the strategy engines -- they search one strategy's parameters,
+    a bot's levers are its legs' size weights and the profit lock / loser cut."""
+    tracker = SimpleProgress(engine_total=1)
+    JOB_MANAGER.update(job_id, progress=tracker.begin_engine(0, "bot optimizer"))
+    try:
+        from app.optimize.bot_optimizer import optimize_bot
+        res = optimize_bot(df, strategy.cfg, risk, progress_cb=lambda m: JOB_MANAGER.log(job_id, m),
+                           save=(form.get("save_as_copy", "on") == "on"), cancel_event=cancel_event)
+        out = {"ran": True, "improved": res.improved, "result": res.note, "objective": res.objective,
+               "weights before": ", ".join(f"{k} x{v:g}" for k, v in res.weights_before.items()),
+               "weights after": ", ".join(f"{k} x{v:g}" for k, v in res.weights_after.items()),
+               "overlay adopted": res.overlay or "none"}
+        for which in ("current", "optimized"):
+            for sp, label in (("train", "train"), ("val", "validation"), ("test", "hold-out")):
+                out[f"{which} / {label}"] = "; ".join(f"{k}: {v}" for k, v in (res.cards.get(which, {}).get(sp) or {}).items())
+        if res.saved_bot_id:
+            out["saved as bot"] = f"{res.saved_bot_id} (Trading Bots page)"
+        JOB_MANAGER.finish(job_id, summary={"bot_optimizer": out}, progress=tracker.finish())
+    except Exception as exc:  # noqa: BLE001
+        msg = "cancelled" if cancel_event is not None and cancel_event.is_set() else str(exc)
+        JOB_MANAGER.finish(job_id, summary={"bot_optimizer": {"ran": False, "error": msg}}, progress=tracker.finish())
+
+
 def _run_optimize_simple_job(job_id: str, df, strategy, risk, rules, engines, form, library_ref=None, dataset_label="",
                              cancel_event=None, df_full=None, auto_widen: bool = True, setup=None) -> None:
     _stamp_job_strategy(job_id, strategy, library_ref=library_ref)
     if setup:
         JOB_MANAGER.log(job_id, setup["text"])
     summary: dict = {}
+    if getattr(strategy, "source_type", "") == "bot":
+        _run_bot_optimize_job(job_id, df, strategy, risk, form, cancel_event)
+        return
     tracker = SimpleProgress(engine_total=len(engines))
     JOB_MANAGER.update(job_id, progress=tracker.payload())
     try:
@@ -6804,6 +6870,9 @@ def _load_library_strategy_for_batch(mode: str, name: str):
     Strategy object -- the manual-JSON case needs its own branch (it isn't
     source code, so build_strategy_from_code doesn't handle it), matching
     how the desktop's Strategy Library batch queue loads items."""
+    if mode == "bot":
+        from app.strategy.bot_strategy import build_bot_strategy
+        return build_bot_strategy(name)
     code = load_strategy_text(mode, name)
     strat = ManualStrategy(json.loads(code)) if mode == "manual" else build_strategy_from_code(mode, code)
     try:

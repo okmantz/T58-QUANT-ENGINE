@@ -198,6 +198,7 @@ class PropAccount:
         # tests/search/test_v913_progress_explorer_speed.py.
         self._winning_days_total = 0
         self._winning_days_before_funded = 0
+        self._wd_cycle_base = 0           # winning_days_net_positive mode: the winning-day count when the current payout cycle started
         self.day_peak: dict = {}
         self.day_close: dict = {}
         self.day_start_balance: dict = {}
@@ -580,6 +581,7 @@ class PropAccount:
                         1 for d, p in self.day_profit_history.items()
                         if (d <= cur if getattr(r, 'funded_starts_fresh', False) else d < cur) and p >= _win_threshold
                     )
+                    self._wd_cycle_base = self._winning_days_before_funded
         elif self.stage == "funded":
             self._maybe_payout(cur)
         return OK
@@ -594,6 +596,11 @@ class PropAccount:
         _buf = r.account_size * (r.required_buffer_pct / 100.0)
         _buf_left = max(0.0, _buf - (self.payout_baseline_balance - r.account_size))
         required_profit = r.account_size * (r.payout_threshold_pct / 100.0) + _buf_left
+        _net_mode = getattr(r, "payout_rule_mode", "standard") == "winning_days_net_positive"
+        if _net_mode:
+            # "5 days of $250, wins bigger than losses": no threshold / buffer, just net-positive since the last payout.
+            _buf_left = 0.0
+            required_profit = 0.01
         self.best_day_since_baseline = max(
             self.best_day_since_baseline, self.day_profit_history.get(cur, 0.0)
         )
@@ -610,7 +617,7 @@ class PropAccount:
         # on_trade_close. funded_from always equals the frozen
         # _winning_days_before_funded boundary because _maybe_payout
         # only runs in the funded stage, whose start set it.
-        winning_days = self._winning_days_total - self._winning_days_before_funded
+        winning_days = self._winning_days_total - (self._wd_cycle_base if _net_mode else self._winning_days_before_funded)
         if (profit_since_baseline >= required_profit
                 and days_since_last_payout >= r.payout_frequency_days
                 and winning_days >= r.winning_days_for_payout
@@ -621,6 +628,8 @@ class PropAccount:
                 withdrawable = min(withdrawable, profit_since_baseline * (r.payout_cap_pct / 100.0))
             if r.payout_cap_dollars is not None:
                 withdrawable = min(withdrawable, r.payout_cap_dollars)
+            if _net_mode:
+                withdrawable = min(withdrawable, max(self.balance - r.account_size, 0.0))
             withdrawable = max(withdrawable, 0.0)
             if withdrawable > 0:
                 self.balance -= withdrawable
@@ -631,6 +640,8 @@ class PropAccount:
                 self.payout_baseline_balance = self.balance
                 self.last_payout_day_index = cur
                 self.best_day_since_baseline = 0.0
+                if _net_mode:
+                    self._wd_cycle_base = self._winning_days_total   # a payout starts a new winning-day cycle
                 # a withdrawal nets out of the trailing peak so being paid
                 # can never push the account toward its own floor.
                 self.trailing_peak = max(self.trailing_peak - withdrawable, self.balance)

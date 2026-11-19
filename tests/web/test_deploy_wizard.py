@@ -19,7 +19,7 @@ def test_wizard_page_renders_with_all_three_targets_and_the_connect_panel(client
 
 def test_wizard_preselects_the_strategy_from_the_champion_board_link(client, monkeypatch):
     import app.web.server as srv
-    monkeypatch.setattr(srv, "_simple_strategy_options", lambda: [{"type": "library", "name": "My Champ"}])
+    monkeypatch.setattr(srv, "_simple_strategy_options", lambda **_kw: [{"type": "library", "name": "My Champ"}])
     body = client.get("/deploy/wizard?strategy=library%3A%3AMy%20Champ").get_data(as_text=True)
     assert 'value="library::My Champ" selected' in body
 

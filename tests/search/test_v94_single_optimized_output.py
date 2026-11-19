@@ -88,7 +88,7 @@ def test_repeat_runs_keep_exactly_one_optimized_file():
                             _cfg(random_seed=8), progress_cb=None, instrument_label="ES1!.csv")
     files = _optimized_files()
     assert len(files) == 1, [p.name for p in files]
-    assert files[0].name == "ES1! 15m RSI (OPTIMIZED).json"
+    assert files[0].name == "RSIOptimized_ES_15m_v1.json"  # repo naming convention Name_Instrument_TF_vN
     assert r1.saved_library_path == r2.saved_library_path == files[0]
     assert "exactly one optimized copy" in (r2.saved_library_note or "")
 

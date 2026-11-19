@@ -55,7 +55,7 @@
     <h2>1. Pick 2-4 saved strategies</h2>
     <div class="pick-list">
       {% for s in strategies %}
-      <label><input type="checkbox" name="strategy_pick" value="{{ s.type }}::{{ s.name }}"> [{{ s.type }}] {{ s.name }}</label>
+      <label><input type="checkbox" name="strategy_pick" value="{{ s.type }}::{{ s.name }}"> [{{ s.type }}] {{ s.label or s.name }}</label>
       {% endfor %}
       {% if not strategies %}<p style="color:var(--text-muted);font-size:13px;">No saved strategies yet -- save some from Full Pipeline first.</p>{% endif %}
     </div>

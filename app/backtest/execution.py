@@ -184,6 +184,7 @@ def run_execution(
     intrabar_df: pd.DataFrame | None = None,
     attempt_mode: str = "chain",
     stop_on_pass: bool = False,
+    size_multiplier: pd.Series | None = None,
 ) -> tuple[list[Trade], pd.DataFrame]:
     """
     Returns (trades, equity_curve_df) where equity_curve_df has columns
@@ -695,6 +696,17 @@ def run_execution(
     sl_dist_vals = stop_loss_distance.values if stop_loss_distance is not None else None
     tp_dist_vals = take_profit_distance.values if take_profit_distance is not None else None
     trail_dist_vals = trailing_stop_distance.values if trailing_stop_distance is not None else None
+    _size_mult_vals = np.asarray(size_multiplier, dtype=float) if size_multiplier is not None and len(size_multiplier) == len(df) else None
+
+    # Profit-lock ladder + adaptive loser cut (app.backtest.profit_lock). Off unless the RiskConfig sets them.
+    from app.backtest import profit_lock as _pl
+    _pl_tiers = _pl.normalise_tiers(getattr(risk, "profit_lock_tiers", None))
+    _pl_cfg = (_pl.ProfitLockConfig(tiers=_pl_tiers, trail_frac=float(getattr(risk, "profit_lock_trail_frac", 0.0) or 0.0),
+                                    scale=float(getattr(risk, "profit_lock_scale", 1.0) or 1.0)) if _pl_tiers else None)
+    _lc_frac = getattr(risk, "loss_cut_frac", None)
+    _lc_cfg = (_pl.LoserCutConfig(cut_frac=float(_lc_frac), min_bars=int(getattr(risk, "loss_cut_min_bars", 3) or 0),
+                                  max_mfe_frac=float(getattr(risk, "loss_cut_max_mfe_frac", 0.25)))
+               if _lc_frac is not None and float(_lc_frac) > 0 else None)
 
     spread_price = risk.spread_pips * risk.pip_size
     slip_price = risk.slippage_pips * risk.pip_size
@@ -1224,6 +1236,13 @@ def run_execution(
                 continue
 
             stop = open_trade["stop_price"]
+            _pl_pending = open_trade.pop("pl_next", None)
+            if _pl_pending is not None:                       # the profit-lock rung earned on the previous bar takes effect now
+                _tight_pl = _pl.tightened(stop, _pl_pending[0], direction)
+                if _tight_pl != stop:
+                    stop = _tight_pl
+                    open_trade["stop_price"] = stop
+                    open_trade["profit_lock_level"] = _pl_pending[1]
 
             # C4 (intrabar ordering: stop before tightening). The
             # tightening blocks below (breakeven / trailing / partial
@@ -1283,6 +1302,18 @@ def run_execution(
                 candidate = open_trade["best_price"] - direction * open_trade["trailing_distance"]
                 if stop is None or (direction == 1 and candidate > stop) or (direction == -1 and candidate < stop):
                     stop = candidate
+
+            # Profit-lock ladder: as the best open profit climbs, the stop ratchets to lock dollars NET of the round-trip commission.
+            # The rung is computed from the peak INCLUDING this bar but only takes effect from the NEXT bar (a stop cannot be moved by
+            # a high this very bar printed and then be hit by the same bar's low without knowing which came first: no intrabar lookahead).
+            if _pl_cfg is not None and open_trade["size"] > 0:
+                _pk_usd = (open_trade["best_price"] - open_trade["entry_price"]) * direction * open_trade["size"]
+                _cs_pl = open_trade.get("contract_size", risk.contract_size)
+                _cost_pl = risk.commission_per_trade + open_trade.get("commission_per_contract", risk.commission_per_contract) * (
+                    open_trade["size"] / _cs_pl if _cs_pl else 0.0)
+                _lock_usd = _pl.ladder_lock_dollars(_pk_usd, _pl_cfg)
+                if _lock_usd is not None:
+                    open_trade["pl_next"] = (_pl.lock_stop_price(open_trade["entry_price"], direction, open_trade["size"], _lock_usd, _cost_pl), _lock_usd)
 
             # Partial exit / scale-out: once open profit reaches the
             # configured R multiple, close `fraction` of the ORIGINAL
@@ -1378,6 +1409,15 @@ def run_execution(
                     and _stagnation <= risk.time_stop_atr_band * _atr_now
                 ):
                     exit_price, reason = closes[i], "time_stop"
+
+            # Adaptive loser cut: a trade that never worked and is down loss_cut_frac of its initial risk is closed at this bar's close.
+            if exit_price is None and open_trade is not None and _lc_cfg is not None and open_trade["initial_risk"]:
+                _sz_lc = open_trade["size"]
+                _open_usd = (closes[i] - open_trade["entry_price"]) * direction * _sz_lc
+                _peak_usd_lc = (open_trade["best_price"] - open_trade["entry_price"]) * direction * _sz_lc
+                if _pl.should_cut_loser(i - open_trade["entry_bar_idx"], _open_usd, _peak_usd_lc,
+                                        open_trade["initial_risk"] * _sz_lc, _lc_cfg):
+                    exit_price, reason = closes[i], "loss_cut"
 
             if exit_price is not None and open_trade is not None:
                 # Every exit is a real transaction and pays the same
@@ -1596,8 +1636,9 @@ def run_execution(
                     _vol_pct = float(_v) if not math.isnan(_v) else None
                 # Sizing, stop/target construction, the dead-lock guard, adaptive throttling and the scale-mismatch
                 # checks are ONE shared routine (app.backtest.fills.plan_entry) -- the portfolio engine calls the same one.
+                _bar_size_mult = float(_size_mult_vals[i]) if _size_mult_vals is not None and not math.isnan(_size_mult_vals[i]) else 1.0
                 _memo_key = None
-                if _use_skip_memo:
+                if _use_skip_memo and _bar_size_mult == 1.0:
                     _price_derived_stop = not bar_sl_distance and not stop_loss_pips
                     _memo_key = (direction, equity, bar_sl_distance, bar_tp_distance, bar_trail_distance,
                                  raw_price if _price_derived_stop else None)
@@ -1610,6 +1651,7 @@ def run_execution(
                         bar_trail_distance=bar_trail_distance, stop_loss_pips=stop_loss_pips,
                         take_profit_pips=take_profit_pips, adaptive_risk=adaptive_risk,
                         adaptive_state=adaptive_state, vol_pct=_vol_pct, atr_now=_atr_for_mismatch_check[i],
+                        size_mult=_bar_size_mult,
                     )
                     if _memo_key is not None and plan.skipped:
                         _last_skip_key, _last_skip_plan = _memo_key, plan

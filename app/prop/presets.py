@@ -84,6 +84,7 @@ class PropFirmPreset:
     min_winning_day_profit: float = 0.0
     max_inactive_days: int = 0
     floating_drawdown_mode: str = "realized"
+    payout_rule_mode: str = "standard"     # "standard" | "winning_days_net_positive" (see PropRules.payout_rule_mode)
     # B5 (v6): funded-stage consistency rule -- gated at every funded
     # payout (best single day <= this % of profit since the payout
     # baseline), NOT at the evaluation-pass gate. See the module
@@ -149,6 +150,7 @@ class PropFirmPreset:
             required_buffer_pct=self.required_buffer_pct,
             winning_days_for_payout=self.winning_days_for_payout,
             min_winning_day_profit=self.min_winning_day_profit,
+            payout_rule_mode=self.payout_rule_mode,
             # preset convention: 0 (or negative) = inactivity rule off
             max_inactive_days=self.max_inactive_days if self.max_inactive_days > 0 else None,
             floating_drawdown_mode=self.floating_drawdown_mode,

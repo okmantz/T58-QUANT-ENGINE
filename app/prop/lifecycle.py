@@ -156,6 +156,7 @@ class LifecycleConfig:
     reset_fee: float | None = None
     profit_split_pct: float = 80.0
     funding_approval_probability: float = 100.0              # firms that review passed evaluations by hand lose some of them
+    objective_b_payout_rule: bool = True                     # Objective B (mode 'payout') is paid under the '5 days of $250, wins > losses' rule (app.prop.payout_rule)
 
     def resolved_reset_fee(self) -> float:
         return float(self.evaluation_fee if self.reset_fee is None else self.reset_fee)
@@ -257,6 +258,9 @@ def run_lifecycle(trades, rules: PropRules, cfg: LifecycleConfig | None = None, 
     if not trades:
         raise ValueError("Cannot run a lifecycle simulation with zero trades.")
     mode = normalize_objective_mode(objective_mode)
+    if mode == OBJECTIVE_PAYOUT and cfg.objective_b_payout_rule:
+        from app.prop.payout_rule import objective_b_rules
+        rules = objective_b_rules(rules)
 
     from app.monte_carlo.day_resample import PathSampler
     from app.monte_carlo.engine import _apply_slippage_stress

@@ -316,7 +316,9 @@ DIRECTIVES: dict[str, Directive] = {
          "Use conservative risk sizing and reduce exposure as drawdown increases or the account's safety buffer shrinks.",
          "Favor robust strategies, low drawdown, shorter losing streaks, consistency-rule compliance, and uncorrelated portfolio exposure.",
          "Optimize for reaching payout thresholds efficiently without jeopardizing the account.",
-         "Avoid unnecessary risk after achieving payout eligibility or daily profit objectives."),
+         "Avoid unnecessary risk after achieving payout eligibility or daily profit objectives.",
+         "Payout rule: a payout is due after 5 trading days (not necessarily consecutive) of at least $250 each, with the cycle's net P&L positive "
+         "(bigger wins than losses). Many ordinary winning days beat a few huge ones."),
         "Probability of reaching a payout without breaching account rules.",
         ("Time to first payout", "payout expectancy", "account survival", "drawdown", "consistency compliance", "repeat payout probability"),
         "The goal is to get paid and keep the account alive—not to pass aggressively or maximize raw trading profits.",

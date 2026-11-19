@@ -61,6 +61,15 @@ def _hhmm(s: str) -> int:
 
 
 def rules_for_account(account, preset_override: Optional[AccountRulesLite] = None, objective: Optional[str] = None) -> tuple[AccountRulesLite, int, int]:
+    """(rules, max minis, max micros) for a bot's AccountLink. Objective B bots are paid under the "5 days of $250, wins bigger than losses"
+    rule (``AccountRulesLite.with_winning_days_payout``); every other objective keeps the account's own payout model."""
+    rules, minis, micros = _rules_for_account(account, preset_override, objective)
+    if objective is not None and governor_objective(objective) == "B" and rules.payout_mode == "standard":
+        rules = rules.with_winning_days_payout()
+    return rules, minis, micros
+
+
+def _rules_for_account(account, preset_override: Optional[AccountRulesLite] = None, objective: Optional[str] = None) -> tuple[AccountRulesLite, int, int]:
     """(rules for the governor, max minis, max micros) for a bot's AccountLink.
 
     Objective NET on a sandbox ("paper") account or an account with no prop-firm rule set is a LIVE account: no evaluation to pass, no
@@ -182,7 +191,7 @@ class BotEngine:
     def _restore(self, d: dict) -> None:
         a = self.acct
         for k in ("phase", "balance", "start_balance", "floor", "eod_high", "day_start", "day", "peak_equity", "trades_today", "stopped_today",
-                  "last_payout_balance"):
+                  "last_payout_balance", "cycle_days"):
             if k in d:
                 setattr(a, k, d[k])
 
@@ -258,9 +267,15 @@ class BotEngine:
             elif pend["type"] == "entry":
                 self.arbiter.release(self.cfg.id, pend["leg"])          # the reserved slot never filled
 
-        # 2. stop / target inside this bar
+        # 2. stop / target inside this bar (a rung earned on the previous bar takes effect first), then ratchet / cut for the next bar
+        if lane.pos is not None:
+            self._apply_pending_lock(lane.pos)
         if lane.pos is not None and self.venue.simulated_fills:
             self._check_stops(h, l, t)
+        elif lane.pos is not None:
+            self._soft_stop(h, l, t)
+        if lane.pos is not None:
+            self._manage_open(lane.pos, h, l, c, t)
 
         # 3. flatten
         if lane.pos is not None and self._in_flatten_zone(et):
@@ -421,16 +436,67 @@ class BotEngine:
         p = self._lane.pos
         assert p is not None
         slip = self._slip(p.symbol)
+        why = "stop loss" if p.locked is None else ("profit lock" if p.locked > 0 else "break-even")
         if p.direction > 0:
             if l <= p.stop_price:
-                return self._close_position(p.stop_price - slip, t, "stop loss")
+                return self._close_position(p.stop_price - slip, t, why)
             if p.tp_price is not None and h >= p.tp_price:
                 return self._close_position(p.tp_price, t, "target")
         else:
             if h >= p.stop_price:
-                return self._close_position(p.stop_price + slip, t, "stop loss")
+                return self._close_position(p.stop_price + slip, t, why)
             if p.tp_price is not None and l <= p.tp_price:
                 return self._close_position(p.tp_price, t, "target")
+
+    # ------------------------------------------------------------------------------------------- cut losers short, let winners run
+    def _lock_cfg(self):
+        from app.backtest import profit_lock as pl
+        g = self.cfg.governor_cfg()
+        tiers = pl.normalise_tiers(g.lock_tiers if g.lock_tiers else pl.DEFAULT_TIERS)
+        return g, pl, tiers
+
+    def _usd_per_point(self, p: OpenPos) -> float:
+        cs = self.costs[p.symbol]
+        return float(p.qty) * float(cs.pv_mini if p.kind == "mini" else cs.pv_micro)
+
+    def _apply_pending_lock(self, p: OpenPos) -> None:
+        """The rung earned on the previous bar moves the stop now (never within the bar that printed the high: no intrabar lookahead)."""
+        if p.lock_next is None:
+            return
+        g, pl, tiers = self._lock_cfg()
+        lock, p.lock_next = float(p.lock_next), None
+        cs = self.costs[p.symbol]
+        cost = (cs.comm_mini if p.kind == "mini" else cs.comm_micro) * p.qty
+        new = pl.tightened(p.stop_price, pl.lock_stop_price(p.entry_price, p.direction, self._usd_per_point(p), lock, cost), p.direction)
+        if new != p.stop_price:
+            p.stop_price, p.locked = float(new), lock
+
+    def _soft_stop(self, h: float, l: float, t: pd.Timestamp) -> None:
+        """Broker venues keep their own hard stop; a ratcheted (locked) stop is engine-managed and closes at market when a bar trades through it."""
+        p = self._lane.pos
+        if p is None or p.locked is None:
+            return
+        if (p.direction > 0 and l <= p.stop_price) or (p.direction < 0 and h >= p.stop_price):
+            self._close_position(p.stop_price, t, "profit lock" if p.locked > 0 else "break-even")
+
+    def _manage_open(self, p: OpenPos, h: float, l: float, c: float, t: pd.Timestamp) -> None:
+        g, pl, tiers = self._lock_cfg()
+        if not g.profit_lock and g.loss_cut_frac is None:
+            return
+        p.minutes += 1
+        usd = self._usd_per_point(p)
+        favourable = h if p.direction > 0 else l
+        p.peak_usd = max(p.peak_usd, (favourable - p.entry_price) * p.direction * usd)
+        if g.profit_lock and tiers:
+            scale = float(g.lock_scale) * (max(p.risk_dollars, 1.0) / 500.0 if g.lock_scale_by_risk else 1.0)
+            lock = pl.ladder_lock_dollars(p.peak_usd, pl.ProfitLockConfig(tiers=tiers, trail_frac=float(g.lock_trail_frac), scale=scale))
+            if lock is not None and (p.locked is None or lock > p.locked):
+                p.lock_next = lock
+        if g.loss_cut_frac is not None and g.loss_cut_frac > 0:
+            open_usd = (c - p.entry_price) * p.direction * usd
+            cfg = pl.LoserCutConfig(cut_frac=float(g.loss_cut_frac), min_bars=int(g.loss_cut_min_minutes), max_mfe_frac=float(g.loss_cut_max_mfe_frac))
+            if pl.should_cut_loser(p.minutes, open_usd, p.peak_usd, p.risk_dollars, cfg):
+                self._close_position(c - p.direction * self._slip(p.symbol), t, "loss cut")
 
     def _broker_exit_price(self, h: float, l: float, c: float) -> float:
         p = self._lane.pos

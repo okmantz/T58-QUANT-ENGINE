@@ -66,6 +66,7 @@ class BotConfig:
     max_trades_per_day: int = 6
     max_open_positions: int = 2                    # intraday positions open at once across instruments (one per instrument)
     created_at: str = field(default_factory=now_iso)
+    preset_rev: int = 0                            # shipped presets only: which revision of the preset this copy was seeded from (store._seed)
 
     def governor_cfg(self) -> GovernorConfig:
         g = GovernorConfig.from_dict(self.governor)
@@ -104,6 +105,11 @@ class OpenPos:
     mult: float
     ticket: str = ""
     broker: bool = False
+    # trade management state (profit-lock ladder / loser cut); all inert unless the governor turns them on
+    peak_usd: float = 0.0               # best open profit (dollars) reached so far
+    lock_next: Optional[float] = None   # rung earned on the previous bar: takes effect on the next bar
+    locked: Optional[float] = None      # dollars the stop currently locks (None = the stop is still the original one)
+    minutes: int = 0                    # minutes the position has been open
 
     def to_dict(self) -> dict:
         return asdict(self)

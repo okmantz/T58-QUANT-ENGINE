@@ -131,6 +131,9 @@ def build_strategy_from_spec(spec: dict, tmp_dir: str | Path | None = None) -> S
     st = spec.get("source_type", "manual")
     if st == "manual":
         return ManualStrategy(spec["config"])
+    if st == "bot":
+        from app.strategy.bot_strategy import build_bot_strategy
+        return build_bot_strategy(spec["bot_id"], symbol=spec.get("symbol"))
     if st == "python":
         if tmp_dir is None:
             raise StrategySpaceError(

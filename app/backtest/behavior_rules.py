@@ -186,6 +186,9 @@ def _profit_target_amount(risk) -> float | None:
 def apply_strategy_behavior(risk, adaptive_risk, strategy):
     """(risk, adaptive_risk) with the strategy's declared behaviour rules layered on. Unchanged objects when the strategy
     declares nothing (byte-identical to before). Rules only ever ADD restrictions to what the caller passed in."""
+    _ov = getattr(strategy, "risk_overlay", None)      # a composite strategy (a bot) may layer its own risk rules on the caller's config
+    if callable(_ov):
+        risk = _ov(risk)
     b = resolve_behavior(strategy)
     slots = resolve_blocked_slots(strategy)
     if slots:

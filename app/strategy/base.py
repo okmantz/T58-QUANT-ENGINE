@@ -59,6 +59,9 @@ class StrategyResult:
     # fills, stop before target on ambiguous bars) instead of the per-bar
     # signal series. None keeps every existing strategy unchanged.
     entry_orders: list | None = None
+    # Optional per-bar position-size multiplier (bots: a leg's weight, e.g. Ind Rule x3). Read at the entry bar and
+    # applied to the sized position; None / 1.0 = unchanged, so every existing strategy is byte-identical.
+    size_multiplier: pd.Series | None = None
 
 
 class Strategy:

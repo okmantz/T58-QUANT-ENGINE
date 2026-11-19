@@ -472,7 +472,7 @@ def prepare_run(
     # (BacktestResult.lookahead_check_failed) and surfaced as a warning.
     _lookahead_result = None
     _lookahead_error = None
-    if lookahead_check != "skip":
+    if lookahead_check != "skip" and not getattr(strategy, "LOOKAHEAD_VERIFIED", False):
         try:
             from app.strategy.lookahead_check import check_for_lookahead
             _key = _lookahead_cache_key(strategy, df) if lookahead_check == "auto" else None
@@ -611,6 +611,7 @@ def run_backtest(
             partial_exit_config=strat_result.partial_exit,
             adaptive_risk=adaptive_risk,
             intrabar_df=intrabar_df,
+            size_multiplier=getattr(strat_result, "size_multiplier", None),
         )
     execution_warnings = [str(w.message) for w in caught if issubclass(w.category, RuntimeWarning)]
     try:                                    # D-6: heatmaps / time filters bucket on the same exchange clock the slot filter blocks on

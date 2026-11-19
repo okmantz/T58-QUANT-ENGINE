@@ -698,6 +698,8 @@ def _display_name(strategy: Strategy) -> str:
         return strategy.config.get("name", "Manual Strategy")
     if strategy.source_type == "python":
         return Path(strategy.file_path).stem
+    if strategy.source_type == "bot":
+        return str(getattr(strategy, "name", "Bot"))
     if strategy.source_type == "pinescript":
         return "PineScript Strategy"
     if strategy.source_type == "mql5":
@@ -711,6 +713,22 @@ def _spec_for_manual(config: dict) -> dict:
 
 def _spec_for_code(source_type: str, code_text: str, extension: str) -> dict:
     return {"source_type": source_type, "code_text": code_text, "code_extension": extension}
+
+
+def _bot_config_for(strategy) -> dict | None:
+    """A T58 Trading Bot is a fixed recipe (its legs, weights and governor are not code the GA can patch): it travels through the pipeline as
+    {"bot_id", "symbol"} and is rebuilt from the bots store (app.search.strategy_space.build_strategy_from_spec). None for every other strategy."""
+    if getattr(strategy, "source_type", "") != "bot":
+        return None
+    return {"bot_id": strategy.bot_id, "symbol": strategy.symbol}
+
+
+def _spec_for_any(source_type: str, config, code_text, extension) -> dict:
+    if source_type == "manual":
+        return _spec_for_manual(config)
+    if source_type == "bot":
+        return {"source_type": "bot", **(config or {})}
+    return _spec_for_code(source_type, code_text, extension)
 
 
 def _holdout_untestable_note(holdout: dict | None) -> str | None:
@@ -2770,7 +2788,12 @@ def run_full_pipeline(
     for _w in _manifest_warnings():
         log(f"  DATA MANIFEST: {_w}")
         warnings.append(f"Data manifest: {_w}")
-    if strategy.source_type in ("manual", "python", "pinescript", "mql5"):
+    if strategy.source_type == "bot":
+        # Not re-run end to end (every leg is a library strategy that passes the gate on its own, and the bot reads only CLOSED leg bars --
+        # tests/strategy/test_bot_strategy.py::test_bot_signals_do_not_change_when_later_bars_are_removed proves the composition).
+        lookahead_summary = "Bot: each leg passes the look-ahead gate on its own and the bot reads only closed leg bars (prefix-invariance tested)."
+        log(f"  Lookahead check: {lookahead_summary}")
+    elif strategy.source_type in ("manual", "python", "pinescript", "mql5"):
         try:
             from app.strategy.lookahead_check import check_for_lookahead
             lookahead_result = check_for_lookahead(strategy, _la_frame(strategy, dev_df), max_signal_checkpoints=8)
@@ -2819,9 +2842,9 @@ def run_full_pipeline(
     refinement_skip_reason = None
     ga_result: WalkforwardGAResult | None = None
     final_source_type = strategy.source_type
-    final_config = strategy.config if strategy.source_type == "manual" else None
+    final_config = strategy.config if strategy.source_type == "manual" else _bot_config_for(strategy)
     final_code_text, final_code_ext = (None, None)
-    if strategy.source_type != "manual":
+    if strategy.source_type not in ("manual", "bot"):
         final_code_text, final_code_ext = patched_source_for_strategy(strategy, [], [])
 
     ai_suggest_cb = None
@@ -2935,11 +2958,14 @@ def run_full_pipeline(
     # and searching for "better" parameters around dead logic is exactly
     # as wasted as searching around an unreliable pip_size.
     impossible_condition = has_impossible_condition(baseline_bt.warnings)
-    if cfg.skip_optimization:
+    if cfg.skip_optimization or strategy.source_type == "bot":
         refinement_skip_reason = (
             "Skipped optimization search: FullPipelineConfig.skip_optimization is set (lock-"
             "parameters / fixed-backtest mode). Every step below ran against the SUPPLIED "
             "strategy exactly as given -- no parameter was changed from what was provided."
+        ) if strategy.source_type != "bot" else (
+            "Skipped optimization search: a bot is a fixed recipe of strategies, weights and risk rules, not code with parameters to patch. "
+            "Tune a bot on the Optimize page (leg weights, profit lock, loser cut). Every step below ran on the bot exactly as stored."
         )
         log(f"  Optimization skipped: {refinement_skip_reason}")
         ga_result = None
@@ -3050,10 +3076,7 @@ def run_full_pipeline(
             log(f"  Optimization skipped: {exc}")
 
     # -- Build the final strategy -----------------------------------------------
-    if final_source_type == "manual":
-        final_spec = _spec_for_manual(final_config)
-    else:
-        final_spec = _spec_for_code(final_source_type, final_code_text, final_code_ext)
+    final_spec = _spec_for_any(final_source_type, final_config, final_code_text, final_code_ext)
 
     # SPEED (2026-10-06): when Step 2's search returns a configuration
     # identical to the one handed in (the GA's best genome IS the baseline
@@ -3067,6 +3090,8 @@ def run_full_pipeline(
     # MC was only baseline_mc_sims and is NOT reused).
     if strategy.source_type == "manual":
         _baseline_spec = _spec_for_manual(strategy.config)
+    elif strategy.source_type == "bot":
+        _baseline_spec = _spec_for_any("bot", _bot_config_for(strategy), None, None)
     else:
         _base_text, _base_ext = patched_source_for_strategy(strategy, [], [])
         _baseline_spec = _spec_for_code(strategy.source_type, _base_text, _base_ext)
@@ -3102,13 +3127,10 @@ def run_full_pipeline(
                 "re-validation -- falling back to the original baseline configuration."
             )
             final_source_type = strategy.source_type
-            final_config = strategy.config if strategy.source_type == "manual" else None
-            if strategy.source_type != "manual":
+            final_config = strategy.config if strategy.source_type == "manual" else _bot_config_for(strategy)
+            if strategy.source_type not in ("manual", "bot"):
                 final_code_text, final_code_ext = patched_source_for_strategy(strategy, [], [])
-            final_spec = (
-                _spec_for_manual(final_config) if final_source_type == "manual"
-                else _spec_for_code(final_source_type, final_code_text, final_code_ext)
-            )
+            final_spec = _spec_for_any(final_source_type, final_config, final_code_text, final_code_ext)
             final_strategy = build_strategy_from_spec(final_spec, final_tmp_dir)
             final_bt = baseline_bt
 
@@ -4111,8 +4133,8 @@ def _finish(
     # Rebuild the equivalent Strategy object here from final_config /
     # final_source_type, which _are_ passed through -- describe_resolved_timeframe
     # only reads the strategy's declared timeframe, so this is sufficient.
-    if final_source_type == "manual":
-        _report_strategy = build_strategy_from_spec(_spec_for_manual(final_config), None)
+    if final_source_type in ("manual", "bot"):
+        _report_strategy = build_strategy_from_spec(_spec_for_any(final_source_type, final_config, None, None), None)
     else:
         _tmp_report_dir = Path(mkdtemp(prefix="t58_fullpipeline_report_"))
         try:

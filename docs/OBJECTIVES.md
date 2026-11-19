@@ -30,6 +30,7 @@ Generated from `app/objectives.py` (`DIRECTIVES`, `ENGINE_DIRECTIVE`). Edit the 
 - Favor robust strategies, low drawdown, shorter losing streaks, consistency-rule compliance, and uncorrelated portfolio exposure.
 - Optimize for reaching payout thresholds efficiently without jeopardizing the account.
 - Avoid unnecessary risk after achieving payout eligibility or daily profit objectives.
+- Payout rule: a payout is due after 5 trading days (not necessarily consecutive) of at least $250 each, with the cycle's net P&L positive (bigger wins than losses). Many ordinary winning days beat a few huge ones.
 
 **Primary metric:** Probability of reaching a payout without breaching account rules.
 **Secondary metrics:** Time to first payout, payout expectancy, account survival, drawdown, consistency compliance, repeat payout probability.

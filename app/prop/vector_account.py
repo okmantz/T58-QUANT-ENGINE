@@ -50,6 +50,8 @@ def supports_vectorized(rules: Any, reset_on_breach: bool, *, have_excursions: b
     # but with reset_on_breach=True) exists for the kernel.
     if reset_on_breach or caps_active:
         return False
+    if getattr(rules, "payout_rule_mode", "standard") != "standard":
+        return False   # the winning-days / net-positive payout cycle lives in the scalar PropAccount only
     dd_basis = getattr(rules, "dd_basis", "legacy") or "legacy"
     dl_basis = getattr(rules, "daily_loss_basis", "realized") or "realized"
     if dd_basis not in ("legacy", "realized", "eod", "floating") or dl_basis not in ("realized", "floating"):

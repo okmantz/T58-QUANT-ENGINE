@@ -97,8 +97,18 @@ class PropRules:
     # (each attempt is a fresh account, so the cap is per attempt).
     # None (default) = unlimited.
     max_payouts: int | None = None
+    # Objective B payout rule. "standard" (default) = the payout threshold + safety-buffer model above, byte-identical to before.
+    # "winning_days_net_positive" = the "5 days of $250" rule: a payout is available once `winning_days_for_payout` days (they do NOT have to be
+    # consecutive) have each made at least `min_winning_day_profit` SINCE THE LAST PAYOUT and the wins since then outweigh the losses (net
+    # P&L since the last payout is positive). Example (250 / 5 days): +250, -50, +300, -100, +127, +260, -200, +250, -98, +271 -> eligible on day 10.
+    # Each payout starts a new cycle. The funded consistency rule (if any) still applies. The withdrawal never takes the balance below account_size.
+    payout_rule_mode: str = "standard"            # "standard" | "winning_days_net_positive"
 
     def __post_init__(self):
+        if self.payout_rule_mode not in ("standard", "winning_days_net_positive"):
+            raise ValueError(
+                f"payout_rule_mode must be 'standard' or 'winning_days_net_positive', got {self.payout_rule_mode!r}"
+            )
         # B13/B15 (v6): reject misspelled/unknown enum values at
         # construction instead of silently misbehaving mid-simulation.
         if self.daily_loss_action not in ("fail", "lock_day"):

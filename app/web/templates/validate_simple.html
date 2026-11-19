@@ -42,10 +42,10 @@
              Deploy/Forward-Test pickers already use. Option values are
              unchanged ('type::name'), so _simple_load_strategy and the
              guided prefill keep working exactly as before. #}
-          {% for t, label in [('manual', 'Manual'), ('python', 'Python'), ('pinescript', 'PineScript'), ('mql5', 'MQL5')] %}
+          {% for t, label in [('manual', 'Manual'), ('python', 'Python'), ('pinescript', 'PineScript'), ('mql5', 'MQL5'), ('bot', 'Bots')] %}
           <optgroup label="{{ label }}">
             {% for s in strategies if s.type == t %}
-            <option value="{{ s.type }}::{{ s.name }}"{% if prefill.strategy_pick == s.type ~ '::' ~ s.name or (not prefill.strategy_pick and prefill.strategy_name and prefill.strategy_name.lower() in s.name.lower()) %} selected{% endif %}>{{ s.name }}</option>
+            <option value="{{ s.type }}::{{ s.name }}"{% if prefill.strategy_pick == s.type ~ '::' ~ s.name or (not prefill.strategy_pick and prefill.strategy_name and prefill.strategy_name.lower() in s.name.lower()) %} selected{% endif %}>{{ s.label or s.name }}</option>
             {% endfor %}
           </optgroup>
           {% endfor %}

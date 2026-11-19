@@ -245,7 +245,7 @@ def test_handoff_prefill_marks_options_selected(client, monkeypatch, raw_dir):
     """Guided flow: the previous step's Next button puts the picks in
     the URL; the receiving page renders them selected."""
     monkeypatch.setattr(server, "_simple_strategy_options",
-                        lambda: [{"type": "manual", "name": "stub.json",
+                        lambda **_kw: [{"type": "manual", "name": "stub.json",
                                   "filename": "stub.json"}])
     body = client.get(
         "/validate-simple?strategy_pick=manual::stub.json"
@@ -266,7 +266,7 @@ def test_full_pipeline_and_deploy_prefill(client, monkeypatch, raw_dir):
     assert 'const want = "lucid_50k"' in body
 
     monkeypatch.setattr(server, "_simple_strategy_options",
-                        lambda: [{"type": "manual", "name": "stub.json",
+                        lambda **_kw: [{"type": "manual", "name": "stub.json",
                                   "filename": "stub.json"}])
     body = client.get("/forward-test?strategy=manual::stub.json").get_data(as_text=True)
     assert 'pick.value = "manual::stub.json"' in body

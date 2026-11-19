@@ -36,3 +36,8 @@ tests/research/
 tests/portfolio/
 tests/discovery/test_opportunity_scanner.py
 tests/validation/test_prop30_validation.py
+
+# bots as strategies, profit lock, leg weights
+tests/strategy/test_bot_strategy.py
+tests/backtest/test_profit_lock.py
+tests/bots/

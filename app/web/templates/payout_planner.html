@@ -128,7 +128,7 @@ account's own size and checked against its own rules. Fees come from the firm ta
     <select name="strategy_pick" required>
       <option value="">— choose a saved strategy —</option>
       {% for s in strategies %}
-      <option value="{{ s.type }}::{{ s.name }}" {{ 'selected' if form_values.get('strategy_pick') == s.type ~ '::' ~ s.name else '' }}>{{ s.name }} ({{ s.type }})</option>
+      <option value="{{ s.type }}::{{ s.name }}" {{ 'selected' if form_values.get('strategy_pick') == s.type ~ '::' ~ s.name else '' }}>{{ s.label or s.name }} ({{ s.type }})</option>
       {% endfor %}
     </select>
   </div>

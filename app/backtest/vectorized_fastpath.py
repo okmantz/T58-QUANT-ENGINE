@@ -177,6 +177,8 @@ def is_vectorizable(strat_result) -> bool:
     strategy must go through the real engine instead -- see module docstring."""
     if getattr(strat_result, "entry_orders", None) is not None:
         return False  # resting-order / zone strategies: slow path only, never silently mis-scored
+    if getattr(strat_result, "size_multiplier", None) is not None:
+        return False  # bot leg weights: the scalar engine sizes them
     sl = strat_result.stop_loss_distance
     tp = strat_result.take_profit_distance
     dynamic_ok = (sl is None or _is_perbar_distance(sl)) and (tp is None or _is_perbar_distance(tp))
@@ -206,6 +208,8 @@ def risk_is_vectorizable(risk) -> bool:
         return False
     if getattr(risk, "max_loss_per_trade_pct", None) is not None or getattr(risk, "allow_single_contract_minimum", False):
         return False
+    if getattr(risk, "profit_lock_tiers", None) or getattr(risk, "loss_cut_frac", None) is not None:
+        return False   # the profit-lock ladder / loser cut live in the scalar engine only
     if getattr(risk, "intrabar_replay", False):
         return False   # the scalar engine resolves stop-vs-target on the finer frame; the fast path is bar-level, stop-first
     return True

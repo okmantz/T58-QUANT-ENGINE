@@ -93,6 +93,8 @@ def exit_cause_for(reason: str, open_pos: dict) -> str:
     this taxonomy closes."""
     reason = reason.removesuffix("_invalid_pnl_skipped")
     if reason == "stop_loss":
+        if open_pos.get("profit_lock_level") is not None:
+            return "profit_lock"
         stop_now = open_pos.get("stop_price")
         entry = open_pos.get("entry_price")
         direction_ = open_pos.get("direction")
@@ -114,6 +116,7 @@ def exit_cause_for(reason: str, open_pos: dict) -> str:
         "take_profit": "take_profit",
         "signal": "signal_exit",
         "time_stop": "time_stop",
+        "loss_cut": "loss_cut",
         "daily_loss_limit_forced_close": "daily_loss_close",
         "weekend_hold_forced_close": "session_close",
         "session_flatten_forced_close": "session_close",
@@ -241,6 +244,7 @@ def plan_entry(
     adaptive_state=None,
     vol_pct: float | None = None,
     atr_now: float | None = None,
+    size_mult: float = 1.0,
 ) -> EntryPlan:
     """The entry block of ``run_execution``, verbatim, as a function of one bar's inputs.
 
@@ -265,6 +269,10 @@ def plan_entry(
     decision = risk.size_for_stop(equity, sl_price_dist, tp_distance=bar_tp_distance)
     size = decision.units
     pos_contract_size = decision.contract_size if decision.contract_size else risk.contract_size
+    if size_mult != 1.0 and size > 0 and math.isfinite(size_mult) and size_mult > 0:
+        size *= size_mult             # a bot leg's weight: whole contracts, never below the sized minimum
+        if pos_contract_size:
+            size = max(math.floor(size / pos_contract_size + 1e-9), 1) * pos_contract_size
     pos_commission_pc = decision.commission_per_contract
     rescue_above_risk_target = bool(decision.above_budget)
 

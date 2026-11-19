@@ -40,7 +40,8 @@ def test_next_version_never_overwrites(tmp_path):
 
 def test_every_committed_strategy_file_follows_the_convention():
     bad = [str(p.relative_to(ROOT)) for sub in ("python", "pinescript", "mql5") for p in sorted((ROOT / "strategies" / sub).glob("*"))
-           if p.suffix.lower() in EXT and not N.is_conforming(p.name)]
+           if p.suffix.lower() in EXT and not p.name.startswith("stub.")  # gitignored scratch other tests write
+           and not N.is_conforming(p.name)]
     assert not bad, f"strategy files that break [STRATEGY_NAME]_[MARKET]_[TIMEFRAME]_[VERSION]: {bad}"
 
 

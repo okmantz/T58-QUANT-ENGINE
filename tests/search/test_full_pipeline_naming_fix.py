@@ -74,7 +74,9 @@ def test_mutated_manual_config_saved_under_simple_formula_name(tmp_path):
     result = run_full_pipeline(df, strategy, RiskConfig(), PropRules(), tmp_path / "fp_out", cfg,
                                 report_basename="naming_fix_test")
     if result.refinement_ran and result.saved_library_path is not None:
-        assert "(FULL PIPELINE)" in result.saved_library_path.name
+        # The repo's strategy-naming convention (Name_Instrument_TF_vN) replaced the
+        # old "(FULL PIPELINE)" suffix; the stale original display name must still not leak.
+        assert "FullPipeline" in result.saved_library_path.name
         assert "SMA" in result.saved_library_path.name
         assert "seed" not in result.saved_library_path.name
         saved = json.loads(result.saved_library_path.read_text())

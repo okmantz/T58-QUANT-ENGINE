@@ -108,10 +108,21 @@ def _rec(cx: sqlite3.Connection, row: sqlite3.Row) -> dict:
 def _seed(cx: sqlite3.Connection) -> None:
     from app.bots.presets import preset_configs
     _migrate_legacy(cx)
-    have = {r["id"] for r in cx.execute("SELECT id FROM bots")}
+    have = {r["id"]: r for r in cx.execute("SELECT id, config, runtime FROM bots")}
     for cfg in preset_configs():
         if cfg.id not in have:
             _put(cx, {"config": cfg.to_dict(), "runtime": BotRuntime().to_dict(), "trades": [], "events": []})
+            continue
+        # A shipped bot whose recipe changed (a newer preset_rev) replaces an OLDER, idle copy: its history belongs to the old recipe, so the copy starts clean.
+        try:
+            old_cfg, old_rt = json.loads(have[cfg.id]["config"]), json.loads(have[cfg.id]["runtime"] or "{}")
+        except Exception:  # noqa: BLE001 -- a corrupt row is left for the user to reset
+            continue
+        if int(old_cfg.get("preset_rev", 0) or 0) < int(cfg.preset_rev) and old_cfg.get("preset_key") == cfg.preset_key \
+                and (old_rt.get("status") or "stopped") in ("stopped", "complete", "halted"):
+            rec = {"config": cfg.to_dict(), "runtime": BotRuntime().to_dict(), "trades": [],
+                   "events": [{"t": now_iso(), "kind": "info", "text": f"{cfg.name} was updated to the newest recipe (revision {cfg.preset_rev}); its earlier run history was cleared."}]}
+            _put(cx, rec)
 
 
 def _open() -> sqlite3.Connection:
