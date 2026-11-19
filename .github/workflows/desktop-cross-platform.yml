@@ -73,10 +73,10 @@ jobs:
         run: brew install libomp
       - name: Install Tk (Linux)
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y python3-tk tk
+        run: sudo apt-get -o Acquire::Retries=5 update && sudo apt-get -o Acquire::Retries=5 install -y python3-tk tk
       - name: Install system libraries (Chromebook / Debian 12 container)
         if: matrix.platform == 'chromebook'
-        run: apt-get update && apt-get install -y --no-install-recommends python3-tk tk libgomp1 zip binutils
+        run: apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends python3-tk tk libgomp1 zip binutils
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
