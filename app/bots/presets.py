@@ -114,3 +114,50 @@ def preset_configs() -> list[BotConfig]:
                   legs=_net_legs() + _gate27(1.0, 6, GATE27_TUNED), governor=gov_n.to_dict(), account=_acct_live(),
                   max_open_positions=3, max_trades_per_day=20, preset_rev=PRESET_REV),
     ]
+
+
+def _orbc(sym: str, w: float, prio: int) -> BotLeg:
+    return BotLeg("python/ORBCompression_ESNQ_15m_v1.py", f"Compression ORB 15m {sym}", sym, w, prio, 30,
+                  "Opening-range breakout on days after a compressed session (prior range < 0.7 x its 14-day mean), 2R target, flat by 16:00 ET.")
+
+
+def research_configs() -> list[BotConfig]:
+    """The three objective-specific research bots of 2026-11-20 (t58-three-bots, research/FROZEN_PICKS.md). They are NOT seeded as presets:
+    the comparison report says which, if any, beat the shipped bots on the sealed Mar-Nov 2026 holdout. Load one with
+    ``next(c for c in research_configs() if c.id == "bot-a-evaluation-passer")``."""
+    gov_a = GovernorConfig(objective="A", base_risk_pct=0.6, early_mult=1.0, mid_mult=1.0, late_mult=1.0, low_cushion_mult=1.0, crit_cushion_mult=1.0,
+                           need_risk_mult=1.0, day_stop_frac=1.0, cushion_risk_frac=0.9, pace_max_mult=1.4, pace_min_mult=0.85, pace_gain=3.0)
+    gov_b = GovernorConfig(objective="B", base_risk_pct=1.0, cushion_risk_frac=0.15, day_stop_frac=0.30, funded_mult=1.0, late_mult=0.6,
+                           pace_max_mult=1.3, pace_min_mult=0.85, win_day_lock_mult=0.5)
+    gov_n = GovernorConfig(objective="NET", base_risk_pct=1.0, compounding=True, dd_throttle_tol_pct=10.0, min_risk_dollars=1.0,
+                           streak_mult=0.7, streak_after=3, pace_max_mult=1.25)
+    c_w = {"cdl_es": 0.35, "ir": 1.18, "od": 0.31, "lsr": 0.20, "cdl_nq": 0.20, "ira_es": 0.14, "orb_es": 0.64, "orb_nq": 0.32, "g27_es": 0.16, "g27_gc": 0.28}
+    net = _net_legs()
+    for lg, k in zip(net, ("cdl_es", "ir", "od", "lsr", "cdl_nq", "ira_es")):
+        lg.weight = c_w[k]
+    g27 = _gate27(1.0, 8, GATE27_TUNED)
+    g27[0].weight, g27[1].weight = c_w["g27_es"], c_w["g27_gc"]
+    return [
+        BotConfig(id="bot-a-evaluation-passer", name="BOT_A_EVALUATION_PASSER", objective="A", preset_key="research-a",
+                  tagline="Research: pass the Lucid 50K Pro evaluation inside 30 days.",
+                  description="The shipped Evaluation Passer legs plus the Compression ORB 15m on Nasdaq-100 and the S&P 500 (last in priority). Flat sizing at "
+                              "0.6% a trade up to 90% of the cushion, no day stop before the soft limit, a tapered last stretch to the target and up to 1.4x "
+                              "when behind the 30-day clock. It beat the shipped bot on 2020-23 only, and LOST to it on the sealed 2026 holdout: keep the "
+                              "Evaluation Passer for a real evaluation.",
+                  legs=[_od(1.0, 0), _ir(3.0, 1), _cad_long(1.0, 2), _orbc("NQ", 1.0, 3), _orbc("ES", 1.0, 4)], governor=gov_a.to_dict(), account=_acct(),
+                  preset_rev=PRESET_REV),
+        BotConfig(id="bot-b-payout-hunter", name="BOT_B_PAYOUT_HUNTER", objective="B", preset_key="research-b",
+                  tagline="Research: first and repeat payouts on a Lucid 50K Flex account without a breach.",
+                  description="The shipped Payout Hunter legs on the LucidFlex payout rule (five $150 days). Full size once funded (no 0.6x funded cut), "
+                              "risk capped at 15% of the cushion and trimmed to 0.6x once the cycle is 70% of the way to a payout. On Flex, P(first payout "
+                              "inside 90 funded days) was 89 / 93 / 85% on 2020-23 / 2024 / 2025-26 vs 84 / 96 / 95% for the shipped governor: not better.",
+                  legs=[_ir(1.0, 0), _cob(0.25, 1), _od_light(0.25, 2), _cdlb_nq(0.5, 3)], governor=gov_b.to_dict(),
+                  account=AccountLink(venue="demo", account_id="t58-demo", size=50_000.0, broker_symbol="MNQ", preset_key="lucid_flex_50k"), preset_rev=PRESET_REV),
+        BotConfig(id="bot-c-net-profit-compounder", name="BOT_C_NET_PROFIT_COMPOUNDER", objective="NET", preset_key="research-c",
+                  tagline="Research: compound net wealth on an unrestricted account.",
+                  description="The shipped compounder's sleeves re-weighted by shrunk inverse-covariance (half-Kelly shape) from 2020-23 daily returns, "
+                              "plus the Compression ORB 15m on both indices, scaled to about 20% annual volatility (leg weight = % of equity risked per "
+                              "trade; Gate 27 weight = multiple of its 1% daily volatility target). Drawdown throttle as shipped. Sandbox account only.",
+                  legs=net + [_orbc("ES", c_w["orb_es"], 6), _orbc("NQ", c_w["orb_nq"], 7)] + g27, governor=gov_n.to_dict(), account=_acct_live(),
+                  max_open_positions=3, max_trades_per_day=20, preset_rev=PRESET_REV),
+    ]
