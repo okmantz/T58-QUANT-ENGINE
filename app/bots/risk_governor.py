@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Optional
 
 OBJECTIVES = ("A", "B", "NET")
+CONSISTENCY_PAD = 1.05      # aim 5% past the consistency-adjusted target so one more ordinary day finishes the evaluation
 
 
 # ------------------------------------------------------------------------------------------------------------------ account state
@@ -40,6 +41,9 @@ class AccountRulesLite:
     payout_mode: str = "standard"
     winning_days: int = 5
     winning_day_profit: float = 250.0
+    # Evaluation consistency (best day <= this share of the profit, e.g. 0.40 on LucidFlex). None = no such rule. While the best day is too
+    # large a share, the evaluation is not passed at the nominal target: the governor aims at max(target, best day / share) x CONSISTENCY_PAD.
+    eval_consistency: Optional[float] = None
 
     def with_winning_days_payout(self, days: int = 5, day_profit: float = 250.0) -> "AccountRulesLite":
         """The same account under the "5 days of $250, wins bigger than losses" payout rule (Objective B)."""
@@ -48,10 +52,16 @@ class AccountRulesLite:
     @classmethod
     def from_v2(cls, v2) -> "AccountRulesLite":
         pt = getattr(v2, "payout", None)
+        cons = getattr(v2, "consistency_best_day_pct", None)
+        extra = {}
+        qd, qm = int(getattr(pt, "qualifying_days", 0) or 0), float(getattr(pt, "qualifying_day_min", 0.0) or 0.0)
+        if qd > 0 and qm > 0:            # the account's own winning-day payout terms (LucidFlex: 5 days of $150), used by Objective B
+            extra = dict(winning_days=qd, winning_day_profit=qm)
         return cls(account_size=float(v2.account_size), profit_target=float(v2.profit_target), loss_limit=float(v2.loss_limit),
                    soft_daily_limit=float(v2.soft_daily_limit), lock_floor_offset=float(v2.lock_floor_offset), trailing=bool(v2.trailing),
                    funded_buffer=float(getattr(pt, "buffer_above_floor", 2_100.0) or 2_100.0),
-                   payout_goal=float(getattr(pt, "cumulative_min", 500.0) or 500.0) - float(getattr(pt, "buffer_above_floor", 0.0) or 0.0))
+                   payout_goal=float(getattr(pt, "cumulative_min", 500.0) or 500.0) - float(getattr(pt, "buffer_above_floor", 0.0) or 0.0),
+                   eval_consistency=(float(cons) / 100.0) if cons else None, **extra)
 
     @classmethod
     def lucid_50k(cls) -> "AccountRulesLite":
@@ -94,6 +104,7 @@ class AccountState:
     recent_r: list = field(default_factory=list)        # realised result of the last trades in multiples of the risk each one carried (newest last)
     loss_streak: int = 0                    # consecutive losing trades (a win or a flat trade resets it)
     day_high: float = 0.0                   # best realised P&L of the current day (the day-profit giveback guard reads it)
+    eval_days: dict = field(default_factory=dict)       # evaluation with a consistency rule: day -> realised P&L (the best-day check reads it)
 
     @classmethod
     def fresh(cls, rules: Optional[AccountRulesLite] = None, *, phase: str = "evaluation") -> "AccountState":
@@ -168,12 +179,30 @@ class AccountState:
         self.day_high = max(self.day_high, self.balance - self.day_start)
         if self.phase == "funded" and self.rules.payout_mode == "winning_days_net_positive":
             self.cycle_days[day] = self.cycle_days.get(day, 0.0) + float(pnl)
+        if self.phase == "evaluation" and self.rules.eval_consistency:
+            self.eval_days[day] = self.eval_days.get(day, 0.0) + float(pnl)
         self.trades_today += 1
         self.peak_equity = max(self.peak_equity, self.balance)
         if self.balance <= self.floor:
             self.phase = "breached"
-        elif self.phase == "evaluation" and self.profit >= self.rules.profit_target:
+        elif self.phase == "evaluation" and self.profit >= self.rules.profit_target and self.consistency_ok():
             self.phase = "passed"
+
+    def best_eval_day(self) -> float:
+        return max([0.0] + [float(v) for v in self.eval_days.values()])
+
+    def consistency_ok(self) -> bool:
+        """True when the evaluation has no consistency rule, or its best day is at most the allowed share of the profit."""
+        c = self.rules.eval_consistency
+        return (not c) or self.best_eval_day() <= c * max(self.profit, 0.0) + 1e-9
+
+    def effective_target(self) -> float:
+        """The evaluation profit the account still has to reach: the nominal target, raised while the best day is too large a share of it."""
+        c = self.rules.eval_consistency
+        if not c or self.phase != "evaluation":
+            return self.rules.profit_target
+        best = self.best_eval_day()
+        return max(self.rules.profit_target, CONSISTENCY_PAD * best / c) if self.eval_days else self.rules.profit_target
 
     def to_funded(self) -> None:
         """Evaluation passed -> funded account (firms with ``funded_starts_fresh`` hand over a fresh balance and floor)."""
@@ -182,6 +211,7 @@ class AccountState:
         self.floor, self.eod_high, self.day_start = r.account_size - r.loss_limit, r.account_size, r.account_size
         self.peak_equity, self.last_payout_balance, self.trades_today, self.stopped_today = r.account_size, r.account_size, 0, False
         self.cycle_days = {}
+        self.eval_days = {}
         self.start_day, self.loss_streak, self.day_high = self.day, 0, 0.0
 
     def winning_days_count(self) -> int:
@@ -353,6 +383,11 @@ def decide_risk(state: AccountState, cfg: GovernorConfig, open_risk: float = 0.0
         return RiskDecision(True, risk, (risk / base) if base else mult, ", ".join(why))
 
     # ---- prop objectives (A, B)
+    if state.phase == "evaluation" and r.eval_consistency:
+        eff = state.effective_target()
+        if eff > r.profit_target:            # size as if the target were the consistency-adjusted one (progress, need taper, pace, profit lock)
+            state = replace(state, rules=replace(r, profit_target=eff))
+            r = state.rules
     soft = r.soft_daily_limit
     if state.stopped_today or state.day_pnl <= -cfg.day_stop_frac * soft:
         return RiskDecision(False, 0.0, 0.0, f"day stop: down ${-state.day_pnl:,.0f} (limit {cfg.day_stop_frac:.0%} of the soft daily limit)")

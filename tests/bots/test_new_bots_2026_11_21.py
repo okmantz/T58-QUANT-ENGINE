@@ -1,0 +1,83 @@
+"""2026-11-21 (docs/T58_NEW_BOTS_2026-11-21.md): the rev-5 Payout Hunter on LucidFlex, the account's own winning-day payout terms, and the
+evaluation consistency rule in the governor (a LucidFlex evaluation is not passed while the best day is more than 40% of the profit)."""
+from __future__ import annotations
+
+from app.bots.models import AccountLink
+from app.bots.presets import PRESET_REV, preset_configs
+from app.bots.risk_governor import CONSISTENCY_PAD, AccountRulesLite, AccountState, GovernorConfig, decide_risk
+
+
+def _flex() -> AccountRulesLite:
+    from app.prop.lifecycle_v2 import V2Rules
+    from app.prop.presets import get_preset
+    return AccountRulesLite.from_v2(V2Rules.from_prop_rules(get_preset("lucid_flex_50k").to_prop_rules()))
+
+
+def _pro() -> AccountRulesLite:
+    from app.prop.lifecycle_v2 import V2Rules
+    from app.prop.presets import get_preset
+    return AccountRulesLite.from_v2(V2Rules.from_prop_rules(get_preset("lucid_50k").to_prop_rules()))
+
+
+def test_payout_hunter_rev5_exact_recipe():
+    b = next(c for c in preset_configs() if c.id == "bot-payout")
+    assert PRESET_REV == 5 and b.preset_rev == 5
+    assert [(lg.strategy, lg.symbol, lg.weight, lg.priority) for lg in b.legs] == [
+        ("python/OpenDrive_NQ_5m_v1.py", "NQ", 0.25, 0), ("python/IndRule_NQ_15m_v1.py", "NQ", 2.0, 1),
+        ("python/OpenDrive_NQ_5m_v1.py", "ES", 0.25, 2), ("python/CompressionORB_ES_5m_v1.py", "ES", 0.5, 3)]
+    g = b.governor_cfg()
+    assert (g.cushion_risk_frac, g.day_stop_frac, g.base_risk_pct, g.funded_mult, g.win_day_lock_mult) == (0.10, 0.30, 1.0, 1.0, 1.0)
+    assert (g.early_mult, g.mid_mult, g.late_mult, g.low_cushion_mult, g.streak_mult) == (1.0, 1.0, 1.0, 1.0, None)
+    assert b.account.preset_key == "lucid_flex_50k" and b.max_open_positions == 2 and b.max_trades_per_day == 6
+
+
+def test_round_trip_keeps_the_recipe():
+    from app.bots.models import BotConfig
+    b = next(c for c in preset_configs() if c.id == "bot-payout")
+    b2 = BotConfig.from_dict(b.to_dict())
+    assert b2.to_dict() == b.to_dict()
+
+
+def test_flex_rules_carry_consistency_and_the_150_dollar_days():
+    f, p = _flex(), _pro()
+    assert f.eval_consistency == 0.40 and (f.winning_days, f.winning_day_profit) == (5, 150.0)
+    assert p.eval_consistency is None and (p.winning_days, p.winning_day_profit) == (5, 250.0)
+
+
+def test_objective_b_on_flex_uses_the_accounts_own_payout_days():
+    from app.bots.engine import rules_for_account
+    rf, _, _ = rules_for_account(AccountLink(venue="paper", account_id="x", size=50_000.0, broker_symbol="MNQ", preset_key="lucid_flex_50k"), objective="B")
+    rp, _, _ = rules_for_account(AccountLink(venue="paper", account_id="x", size=50_000.0, broker_symbol="MNQ", preset_key="lucid_50k"), objective="B")
+    assert rf.payout_mode == rp.payout_mode == "winning_days_net_positive"
+    assert rf.winning_day_profit == 150.0 and rp.winning_day_profit == 250.0
+
+
+def test_flex_evaluation_is_not_passed_while_one_day_dominates():
+    st = AccountState.fresh(_flex())
+    st.update(2_000.0, "2026-01-05"); st.update(1_100.0, "2026-01-06")
+    assert st.profit >= 3_000 and st.phase == "evaluation"                 # $2,000 is 65% of $3,100: not passed
+    assert abs(st.effective_target() - CONSISTENCY_PAD * 2_000 / 0.40) < 1e-6
+    st.update(900.0, "2026-01-07"); st.update(1_100.0, "2026-01-08")        # profit $5,100, best day $2,000 = 39%
+    assert st.phase == "passed"
+
+
+def test_pro_evaluation_still_passes_at_the_target():
+    st = AccountState.fresh(_pro())
+    st.update(2_000.0, "2026-01-05"); st.update(1_100.0, "2026-01-06")
+    assert st.phase == "passed" and st.effective_target() == 3_000.0
+
+
+def test_governor_keeps_trading_toward_the_adjusted_target():
+    g = GovernorConfig(objective="A", base_risk_pct=0.75, need_risk_mult=1.0, cushion_risk_frac=0.75)
+    st = AccountState.fresh(_flex())
+    st.update(2_000.0, "2026-01-05"); st.update(1_000.0, "2026-01-06"); st.roll_day("2026-01-07")
+    d = decide_risk(st, g)
+    assert d.allow and d.risk_dollars > 300          # at the nominal target the need taper would leave only the minimum risk
+    nominal = AccountState.fresh(AccountRulesLite(eval_consistency=None))
+    nominal.balance = st.balance - 1.0; nominal.roll_day("2026-01-07")
+    assert decide_risk(nominal, g).risk_dollars < d.risk_dollars
+
+
+def test_state_dict_carries_eval_days():
+    st = AccountState.fresh(_flex()); st.update(500.0, "2026-01-05")
+    assert st.to_dict()["eval_days"] == {"2026-01-05": 500.0}

@@ -121,4 +121,4 @@ def test_shipped_presets_use_the_winning_legs():
     by = {c.id: c for c in preset_configs()}
     assert [lg.weight for lg in by["bot-pass"].legs] == [1.0, 3.0, 1.0]
     assert any(lg.kind == "gate27" for lg in by["bot-profit"].legs) and not any(lg.kind == "gate27" for lg in by["bot-pass"].legs + by["bot-payout"].legs)
-    assert by["bot-payout"].governor["funded_mult"] == 0.6
+    assert by["bot-payout"].governor["funded_mult"] == 1.0

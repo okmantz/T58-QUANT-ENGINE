@@ -9,8 +9,8 @@ from app.bots.presets import PRESET_REV, preset_configs
 
 def test_payout_hunter_is_the_four_leg_winning_days_book():
     b = next(c for c in preset_configs() if c.id == "bot-payout")
-    assert [(lg.label, lg.weight) for lg in b.legs] == [("Ind Rule", 1.0), ("Compression ORB", 0.25), ("Open Drive", 0.25), ("Context Drive Long Bracket", 0.5)]
-    assert b.preset_rev == PRESET_REV and "5-winning-days" in b.description
+    assert [(lg.label, lg.weight) for lg in b.legs] == [("Open Drive", 0.25), ("Ind Rule", 2.0), ("Open Drive ES", 0.25), ("Compression ORB", 0.5)]
+    assert b.preset_rev == PRESET_REV and "five days of $150" in b.description
 
 
 def _age(bot_id: str, status: str) -> None:

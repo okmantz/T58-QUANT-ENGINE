@@ -26,7 +26,7 @@ def _by_id():
 def test_evaluation_passer_keeps_its_book():
     # the S&P 500 bracket legs tested for objective A lost to this book on train and validation once the scorer stopped looking ahead, so it stays
     b = _by_id()["bot-pass"]
-    assert b.objective == "A" and b.preset_rev == PRESET_REV == 4
+    assert b.objective == "A" and b.preset_rev == PRESET_REV == 5
     assert [(lg.strategy, lg.symbol, lg.weight) for lg in b.legs] == [
         ("python/OpenDrive_NQ_5m_v1.py", "NQ", 1.0),
         ("python/IndRule_NQ_15m_v1.py", "NQ", 3.0),
@@ -37,21 +37,22 @@ def test_evaluation_passer_keeps_its_book():
 def test_payout_hunter_is_the_objective_b_combo():
     b = _by_id()["bot-payout"]
     assert b.objective == "B" and b.preset_rev == PRESET_REV
+    # rev 5 (2026-11-21, docs/T58_NEW_BOTS_2026-11-21.md): beat the rev-4 book on the sealed 2025-01..2026-02 holdout on LucidFlex
     assert [(lg.strategy, lg.symbol, lg.weight) for lg in b.legs] == [
-        ("python/IndRule_NQ_15m_v1.py", "NQ", 1.0),
-        ("python/CompressionORB_ES_5m_v1.py", "ES", 0.25),
         ("python/OpenDrive_NQ_5m_v1.py", "NQ", 0.25),
-        ("python/ContextDriveLongBracket_NQ_1m_v1.py", "NQ", 0.5),
+        ("python/IndRule_NQ_15m_v1.py", "NQ", 2.0),
+        ("python/OpenDrive_NQ_5m_v1.py", "ES", 0.25),
+        ("python/CompressionORB_ES_5m_v1.py", "ES", 0.5),
     ]
-    assert "5-winning-days" in b.description
+    assert "five days of $150" in b.description and b.account.preset_key == "lucid_flex_50k"
     assert [lg.priority for lg in b.legs] == list(range(len(b.legs)))
 
 
-def test_governors_are_unchanged_by_the_new_books():
+def test_governors_of_the_shipped_books():
     by = _by_id()
     ga, gb = by["bot-pass"].governor_cfg(), by["bot-payout"].governor_cfg()
     assert (ga.objective, ga.base_risk_pct, ga.day_stop_frac, ga.cushion_risk_frac, ga.pace_max_mult) == ("A", 0.75, 0.40, 0.75, 1.5)
-    assert (gb.objective, gb.base_risk_pct, gb.day_stop_frac, gb.cushion_risk_frac, gb.funded_mult, gb.win_day_lock_mult) == ("B", 1.0, 0.30, 0.25, 0.6, 0.5)
+    assert (gb.objective, gb.base_risk_pct, gb.day_stop_frac, gb.cushion_risk_frac, gb.funded_mult, gb.win_day_lock_mult) == ("B", 1.0, 0.30, 0.10, 1.0, 1.0)
 
 
 @pytest.mark.parametrize("bid", ["bot-pass", "bot-payout"])
@@ -68,7 +69,7 @@ def test_store_seeds_the_new_books():
     from app.bots import store
     rows = {r["config"]["id"]: r["config"] for r in store.list_bots()}
     assert rows["bot-pass"]["preset_rev"] == rows["bot-payout"]["preset_rev"] == PRESET_REV
-    assert rows["bot-payout"]["legs"][-1]["strategy"] == "python/ContextDriveLongBracket_NQ_1m_v1.py"
+    assert rows["bot-payout"]["legs"][-1]["strategy"] == "python/CompressionORB_ES_5m_v1.py"
 
 
 def _module(fn: str):

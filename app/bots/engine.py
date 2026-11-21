@@ -69,10 +69,10 @@ def _hhmm(s: str) -> int:
 
 def rules_for_account(account, preset_override: Optional[AccountRulesLite] = None, objective: Optional[str] = None) -> tuple[AccountRulesLite, int, int]:
     """(rules, max minis, max micros) for a bot's AccountLink. Objective B bots are paid under the "5 days of $250, wins bigger than losses"
-    rule (``AccountRulesLite.with_winning_days_payout``); every other objective keeps the account's own payout model."""
+    rule (``AccountRulesLite.with_winning_days_payout``; an account with its own winning-day terms, like LucidFlex's five $150 days, keeps them); every other objective keeps the account's own payout model."""
     rules, minis, micros = _rules_for_account(account, preset_override, objective)
     if objective is not None and governor_objective(objective) == "B" and rules.payout_mode == "standard":
-        rules = rules.with_winning_days_payout()
+        rules = rules.with_winning_days_payout(rules.winning_days, rules.winning_day_profit)   # the account's own terms when it has them, else 5 x $250
     return rules, minis, micros
 
 
@@ -198,7 +198,7 @@ class BotEngine:
     def _restore(self, d: dict) -> None:
         a = self.acct
         for k in ("phase", "balance", "start_balance", "floor", "eod_high", "day_start", "day", "peak_equity", "trades_today", "stopped_today",
-                  "last_payout_balance", "cycle_days", "start_day", "recent_r", "loss_streak", "day_high"):
+                  "last_payout_balance", "cycle_days", "start_day", "recent_r", "loss_streak", "day_high", "eval_days"):
             if k in d:
                 setattr(a, k, d[k])
 
