@@ -1,0 +1,9 @@
+pro: shipped A -> shipped B      n=1219 pass30 49.5 paid30 0.2 (np.float64(0.0), np.float64(0.5)) paid60 28.1 mean $335 EV coupon $209 (99, 332) EV list $155
+pro: shipped A -> shipped A      n=1219 pass30 49.5 paid30 3.0 (np.float64(1.5), np.float64(4.8)) paid60 21.0 mean $613 EV coupon $487 (248, 731) EV list $433
+pro: new A -> new A              n=1219 pass30 52.7 paid30 1.2 (np.float64(0.3), np.float64(2.6)) paid60 21.7 mean $468 EV coupon $342 (183, 508) EV list $288
+pro: new A -> new B              n=1219 pass30 52.7 paid30 0.9 (np.float64(0.2), np.float64(2.1)) paid60 25.2 mean $334 EV coupon $208 (117, 321) EV list $154
+flex: shipped A -> shipped B     n=1219 pass30 26.3 paid30 0.1 (np.float64(0.0), np.float64(0.2)) paid60 31.4 mean $223 EV coupon $135 (80, 195) EV list $97
+flex: new A -> new B             n=1219 pass30 30.2 paid30 2.2 (np.float64(1.0), np.float64(3.7)) paid60 29.8 mean $255 EV coupon $167 (104, 243) EV list $129
+flex: new B -> new B             n=1219 pass30 9.8 paid30 0.1 (np.float64(0.0), np.float64(0.2)) paid60 29.5 mean $267 EV coupon $179 (92, 287) EV list $141
+flex: new B2 -> new B2           n=1219 pass30 11.3 paid30 0.5 (np.float64(0.0), np.float64(1.1)) paid60 27.2 mean $293 EV coupon $205 (92, 341) EV list $167
+flex: new A -> new B2            n=1219 pass30 30.2 paid30 3.0 (np.float64(1.3), np.float64(4.9)) paid60 30.6 mean $284 EV coupon $196 (119, 293) EV list $158
