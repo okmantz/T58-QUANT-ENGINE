@@ -108,9 +108,13 @@ def test_enable_from_app_guards(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("key", ["apex_50k_eod", "apex_50k_intraday", "apex_100k_eod", "apex_100k_intraday", "lucid_100k", "lucid_50k"])
 def test_apex_lucid_presets_verified(key):
+    from datetime import date
     from app.prop.presets import get_preset, is_ready_eligible
     p = get_preset(key)
-    assert p.verified_on and p.source_url and is_ready_eligible(p)
+    assert p.verified_on and p.source_url
+    # Judge the stamp as of the day it was written: a stamp ages out 30 days later BY DESIGN (the app then asks
+    # for a re-check), so reading the real clock here made this test fail on the same calendar day every month.
+    assert is_ready_eligible(p, today=date.fromisoformat(p.verified_on))
 
 
 def test_simple_report_guidance_for_zero_trade_error():

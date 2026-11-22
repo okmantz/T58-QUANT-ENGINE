@@ -38,8 +38,25 @@ def test_next_version_never_overwrites(tmp_path):
     assert N.next_version_filename(tmp_path, "IndRule", "NQ", "15m", ".py") == "IndRule_NQ_15m_v3.py"
 
 
+def _committed_strategy_files() -> list[Path]:
+    """Files git tracks under strategies/{python,pinescript,mql5}. Asking git (not the folder) keeps the guard about COMMITTED
+    files: other tests write scratch strategies into the same folders (and run in parallel under xdist), and a glob would
+    flake whenever one of them happened to be mid-write. Falls back to a folder scan only when git is unavailable."""
+    import subprocess
+    subs = ("python", "pinescript", "mql5")
+    try:
+        out = subprocess.run(["git", "ls-files", "-z", "--", *[f"strategies/{s}" for s in subs]], cwd=ROOT,
+                             capture_output=True, text=True, check=True, timeout=30).stdout
+        files = [ROOT / rel for rel in out.split("\0") if rel]
+        if files:
+            return sorted(files)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return sorted(p for sub in subs for p in (ROOT / "strategies" / sub).glob("*") if not p.name.startswith(("stub.", "searchlab_")))
+
+
 def test_every_committed_strategy_file_follows_the_convention():
-    bad = [str(p.relative_to(ROOT)) for sub in ("python", "pinescript", "mql5") for p in sorted((ROOT / "strategies" / sub).glob("*"))
+    bad = [str(p.relative_to(ROOT)) for p in _committed_strategy_files()
            if p.suffix.lower() in EXT and not p.name.startswith("stub.")  # gitignored scratch other tests write
            and not N.is_conforming(p.name)]
     assert not bad, f"strategy files that break [STRATEGY_NAME]_[MARKET]_[TIMEFRAME]_[VERSION]: {bad}"

@@ -140,3 +140,26 @@ details.pz-fold > summary::-webkit-details-marker { display: none; }
 details.pz-fold > .pz-fold-body { padding: 2px 14px 14px; border-top: 1px solid var(--border); }
 .fold-sub { margin: 12px 0 4px; padding-bottom: 12px; border-bottom: 1px dashed var(--border); }
 .fold-sub h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: 0 0 8px; }
+
+/* ------------------------------------------------------------------ 2026-11-22 polish pass (additive; every rule is zero-specificity via :where(), so any existing rule wins)
+ * Phone/tablet feel (the app is used from a phone over Wi-Fi/Tailscale) and small rendering niceties. */
+:where(html) { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }                 /* iOS: no surprise font inflation on rotate */
+:where(body) { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+/* no 300 ms double-tap-zoom delay on controls: taps feel instant on touch screens (pinch-zoom still works) */
+:where(a, button, summary, label, select, input, [role="button"], [role="tab"], .t58-btn, .t58-tab, .t58-nav-item) {
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+/* headings break into even lines instead of leaving a one-word last line; paragraphs avoid orphans (ignored where unsupported) */
+:where(h1, h2, h3, .t58-hero h1, .lc-title) { text-wrap: balance; }
+:where(p, .lc-sub, li) { text-wrap: pretty; }
+/* in-page anchors and focused fields never land underneath the fixed header / avatar button */
+:where([id]) { scroll-margin-top: 84px; }
+/* readable placeholders in both themes (browsers default to a low-contrast grey) */
+:where(input, textarea)::placeholder { color: var(--text-muted); opacity: .75; }
+/* a scrolling panel (log, table wrapper, modal) must not drag the whole page when its end is reached */
+:where(.t58-log, .lc-log, .job-log, pre.log, .t58-modal-body, .t58-table-wrap) { overscroll-behavior: contain; }
+/* Windows High Contrast / forced-colors: keep control borders and the keyboard focus ring visible */
+@media (forced-colors: active) {
+  :where(.t58-btn, .lc-btn, .t58-tab, .t58-chip, .lc-tab-btn) { border: 1px solid ButtonText; }
+  :where(a, button, input, select, textarea, summary):focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+}

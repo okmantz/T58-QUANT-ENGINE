@@ -22,6 +22,10 @@ from pathlib import Path
 # CI runners (macOS especially) have no unlocked OS keychain; a keyring call there can block waiting for a UI prompt
 # that never comes. The smoke test never needs a real keyring, so default to the no-op backend unless the caller chose one.
 os.environ.setdefault("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
+# Activating the smoke-test master key would otherwise trigger the owner "fresh start" (app/licensing/fresh_start.py), which MOVES
+# reports/ and data/ state into a backup folder. Harmless on a CI runner, but run from a developer checkout it silently relocated
+# tracked files (reports/prop30/*). The smoke test never needs a clean slate, so opt out with the app's own documented switch.
+os.environ.setdefault("T58_NO_FRESH_START", "1")
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))

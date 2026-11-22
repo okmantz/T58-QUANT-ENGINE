@@ -215,9 +215,15 @@ def test_fee_table_rows_carry_source_and_unverified_is_not_ready_eligible():
     assert not any(is_ready_eligible(p) for p in unverified)
 
 
-def test_to_prop_rules_carries_preset_key_and_verified_flag():
-    from app.prop.presets import get_preset
-    r = get_preset("ftmo_100k").to_prop_rules()
+def test_to_prop_rules_carries_preset_key_and_verified_flag(monkeypatch):
+    from datetime import date
+    import app.prop.presets as presets
+    # Freeze the clock at the stamp date: a stamp expires 30 days after it was written BY DESIGN, so reading the real clock made
+    # this test fail the day the FTMO stamp aged out (it would have failed again every month).
+    real_age = presets.rules_stamp_age_days
+    monkeypatch.setattr(presets, "rules_stamp_age_days",
+                        lambda preset, today=None: real_age(preset, today or date.fromisoformat(preset.verified_on)))
+    r = presets.get_preset("ftmo_100k").to_prop_rules()
     assert r.preset_key == "ftmo_100k" and r.rules_verified is True
 
 
