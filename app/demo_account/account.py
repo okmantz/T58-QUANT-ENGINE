@@ -386,7 +386,8 @@ def roll_day(today: str) -> DemoAccount:
 
 
 def record_trade(pnl: float, *, root: str = "", side: str = "", qty: float = 1.0, entry=None, exit=None, why: str = "",
-                 source: str = "alert", closed_at: str | None = None, day: str | None = None) -> dict | None:
+                 source: str = "alert", closed_at: str | None = None, day: str | None = None, opened_at: str | None = None,
+                 extra: dict | None = None) -> dict | None:
     """Book one closed trade. Returns the trade row (with running balance) or None when the account is no longer active
     (a passed or breached evaluation stops booking until it is reset, exactly like a real one).
 
@@ -404,7 +405,10 @@ def record_trade(pnl: float, *, root: str = "", side: str = "", qty: float = 1.0
         day_pnl = acct.balance - acct.day_start
         row = {"n": len(acct.trades) + 1, "closed_at": when, "day": today, "root": root, "side": side, "qty": qty, "entry": entry, "exit": exit,
                "pnl": round(float(pnl), 2), "result": "win" if pnl > 0 else "loss" if pnl < 0 else "flat", "why": why, "source": source,
-               "balance": acct.balance, "day_pnl": round(day_pnl, 2)}
+               "balance": acct.balance, "day_pnl": round(day_pnl, 2), "attempt": acct.attempt, "opened_at": opened_at or "",
+               "strategy": acct.strategy}
+        if extra:                                    # a bot adds its name, strategy leg, risk and R so the trade log can show them
+            row.update({k: v for k, v in extra.items() if v is not None})
         acct.trades.append(row)
         if day_pnl <= -r.soft_daily_limit and not acct.day_stopped:
             acct.day_stopped = True

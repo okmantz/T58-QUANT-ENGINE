@@ -83,9 +83,12 @@ def test_hypothesis_bad_json_is_a_clear_400(client):
 
 def test_sidebar_and_quant_lab_link_the_labs_and_gamma_center(client):
     side = client.get("/dashboard").get_data(as_text=True)
-    assert 'href="/research-labs"' in side and 'id="t58-install-slot"' not in side
+    assert 'href="/research-labs"' not in side and 'id="t58-install-slot"' not in side      # Research Lab is a tab on the Quant Lab page now
     ql = client.get("/quant-lab/").get_data(as_text=True)
     assert 'href="/gamma"' in ql and "Gamma Center" in ql and 'href="/research-labs"' in ql
+    assert 'aria-label="Quant Lab pages"' in ql and 'href="/hedge-fund"' in ql and "Portfolio Builder" in ql
+    rl = client.get("/research-labs/").get_data(as_text=True)
+    assert 'aria-label="Quant Lab pages"' in rl and 'aria-current="page"' in rl
 
 
 def test_pine_indicator_page_and_api(client):

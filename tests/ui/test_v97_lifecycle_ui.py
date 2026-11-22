@@ -74,11 +74,11 @@ def test_sidebar_lifecycle_headers_link_to_step_pages(client):
     body = client.get("/dashboard").get_data(as_text=True)
     for href in ("/start-here/create", "/full-pipeline", "/optimize-simple",
                  "/validate-simple", "/champion-simple", "/forward-test",
-                 "/graveyard"):
+                 "/library"):
         assert f'href="{href}"' in body, href
     # v9.8 turned the numbered group summaries into single icon + label links.
     assert '<span class="label">Create</span>' in body
-    assert '<span class="label">Strategy Graveyard</span>' in body
+    assert '<span class="label">Strategy Library</span>' in body and '<span class="label">Strategy Graveyard</span>' not in body
 
 
 # ------------------------------------------------------------ step pages

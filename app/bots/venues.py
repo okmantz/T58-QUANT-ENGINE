@@ -92,7 +92,10 @@ class DemoVenue(Venue):
         from app.demo_account import account as demo
         demo.record_trade(float(trade["pnl"]), root=trade.get("symbol", ""), side=trade.get("side", ""), qty=float(trade.get("qty", 1)),
                           entry=trade.get("entry"), exit=trade.get("exit"), why=f"{trade.get('bot', 'bot')}: {trade.get('leg', '')} ({trade.get('reason', '')})",
-                          source="bot", closed_at=str(trade.get("exit_time") or ""), day=trade.get("day") or None)
+                          source="bot", closed_at=str(trade.get("exit_time") or ""), day=trade.get("day") or None,
+                          opened_at=str(trade.get("entry_time") or ""),
+                          extra={"bot": trade.get("bot", ""), "leg": trade.get("leg", ""), "strategy": trade.get("leg", ""), "risk": trade.get("risk"),
+                                 "r_multiple": trade.get("r_multiple"), "kind": trade.get("kind", ""), "reason": trade.get("reason", "")})
 
     owns_payouts = True
 

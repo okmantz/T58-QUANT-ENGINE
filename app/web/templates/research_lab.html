@@ -33,6 +33,7 @@
 <div class="t58-shell">
 {% include '_sidebar.html' %}
 <div class="t58-main">
+  {% set ql_tab = 'research' %}{% include '_quant_lab_tabs.html' %}
   <a class="back" href="/research-labs">&larr; Research Labs</a>
   <h1>{{ lab.title }}</h1>
   <p class="lede">{{ lab.summary }}</p>

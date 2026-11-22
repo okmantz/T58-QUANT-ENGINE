@@ -198,37 +198,69 @@ def _progress() -> dict:
 
 
 # ------------------------------------------------------------------------------------------------------------------ the dashboard
+def _safe(label: str, fn, fallback, warnings: list):
+    """One block of the dashboard must never take the whole page down: a report written by an older version, a half-written file or a
+    missing key becomes a plain 'could not read this' note and the other blocks still show."""
+    try:
+        return fn()
+    except Exception as exc:  # noqa: BLE001 -- by design: degrade one block, keep the page
+        warnings.append(f"{label}: {type(exc).__name__}: {exc}")
+        return fallback
+
+
 def dashboard() -> dict:
-    """Everything on the Research Integrity page. Each block says whether it was measured, when, and by which code."""
+    """Everything on the Research Integrity page. Each block says whether it was measured, when, and by which code.
+    A block that cannot be read comes back as 'not measured' with a note in ``warnings``; the page never goes blank over one bad file."""
     from app.discovery_engine import surrogate_schedule as sch
-    gate = sg.gate_status()
-    rep = gate.get("report")
-    fp = sg.combined_false_positive()
-    prog = _progress()
-    bench = load_benchmark()
-    cur_ver = engine_version()
-    last = last_successful_validation()
-    planted = []
-    if rep:
-        for p in rep.get("planted", []):
-            planted.append({"target_r": p["target_r"], "measured_r": p.get("measured_r"), "found": p["found"], "runs": p["runs"],
-                            "detection_rate": p["found"] / max(1, p["runs"])})
-    strong = [v for k, v in ((rep or {}).get("power") or {}).items() if float(k) >= 0.2 - 1e-9]
+    warnings: list = []
+    gate = _safe("gate", sg.gate_status, {"open": False, "reasons": ["The gate state could not be read."], "report": None}, warnings)
+    rep = gate.get("report") if isinstance(gate, dict) else None
+    fp = _safe("false-positive rate", sg.combined_false_positive,
+               {"available": False, "rate": None, "upper95": None, "n_null": 0, "fresh": False, "text": "The saved study could not be read."}, warnings)
+    prog = _safe("progress", _progress, {"done": 0, "total": 0, "running": False}, warnings)
+    bench = _safe("benchmark", load_benchmark, None, warnings)
+    cur_ver = _safe("engine version", engine_version, "unknown", warnings)
+    last = _safe("last validation", last_successful_validation, None, warnings)
+    state = _safe("study status", sch.study_status, {"state": "unknown", "text": "The background study status could not be read."}, warnings)
+    code_now = _safe("code hash", sg.code_hash, "", warnings)
+    fingerprint = _safe("dataset fingerprint", dataset_fingerprint, "unavailable", warnings)
+
+    def _planted():
+        out = []
+        for p in (rep or {}).get("planted", []) or []:
+            out.append({"target_r": float(p.get("target_r", 0.0)), "measured_r": p.get("measured_r"), "found": int(p.get("found", 0)),
+                        "runs": int(p.get("runs", 0)), "detection_rate": int(p.get("found", 0)) / max(1, int(p.get("runs", 0)))})
+        return out
+
+    def _strong():
+        return [float(v) for k, v in ((rep or {}).get("power") or {}).items() if float(k) >= 0.2 - 1e-9]
+
+    planted = _safe("planted edges", _planted, [], warnings)
+    strong = _safe("power", _strong, [], warnings)
+    power_map = (rep or {}).get("power") or {}
+
+    def _bench():
+        if bench is None:
+            return None
+        return {**bench, "planted": bench.get("planted") or [], "reasons": bench.get("reasons") or [],
+                "current": bench.get("version") == cur_ver and bench.get("dataset_fingerprint") == dataset_fingerprint(bench.get("days", DEFAULT_DAYS))}
+
     return {
-        "gate": {"open": gate["open"], "reasons": gate["reasons"], "state": sch.study_status()},
+        "gate": {"open": bool(gate.get("open")), "reasons": list(gate.get("reasons") or []), "state": state},
         "null_test_progress": {"done": int(prog.get("done", 0)), "total": int(prog.get("total", 0)), "running": bool(prog.get("running")),
-                               "completed_runs": int((rep or {}).get("n_null", 0)), "required_runs": GATE_NULL_RUNS},
-        "false_positive": {"measured": fp["available"], "rate": fp["rate"], "upper95": fp["upper95"], "n_null": fp["n_null"], "fresh": fp["fresh"], "text": fp["text"],
-                           "target": MAX_FDR},
+                               "completed_runs": int((rep or {}).get("n_null", 0) or 0), "required_runs": GATE_NULL_RUNS},
+        "false_positive": {"measured": bool(fp.get("available")), "rate": fp.get("rate"), "upper95": fp.get("upper95"), "n_null": fp.get("n_null", 0),
+                           "fresh": bool(fp.get("fresh")), "text": fp.get("text", ""), "target": MAX_FDR},
         "detection": {"measured": bool(rep), "by_size": planted, "mean_power_strong": (float(np.mean(strong)) if strong else None), "target": MIN_POWER},
-        "statistical_power": {"strong_edges": (float(np.mean(strong)) if strong else None), "per_size": (rep or {}).get("power", {}),
+        "statistical_power": {"strong_edges": (float(np.mean(strong)) if strong else None), "per_size": power_map,
                               "note": "Share of planted +0.20R / +0.30R edges the full engine found. Below 50% means the lab cannot find a known edge."},
-        "engine": {"code_hash": (rep or {}).get("code_hash"), "report_code_matches_current": bool(rep) and rep.get("code_hash") == sg.code_hash(),
-                   "current_code_hash": sg.code_hash(), "benchmark_version": cur_ver},
-        "dataset_fingerprint": dataset_fingerprint(),
+        "engine": {"code_hash": (rep or {}).get("code_hash"), "report_code_matches_current": bool(rep) and rep.get("code_hash") == code_now,
+                   "current_code_hash": code_now, "benchmark_version": cur_ver},
+        "dataset_fingerprint": fingerprint,
         "last_successful_validation": last,
         "real_data_fdr": {"measured": False, "text": "Not measured. Real markets contain an unknown amount of genuine edge, so a false-discovery rate cannot be counted on them. "
                                                       "The figures above are measured on surrogate data with a known answer and say how the chain behaves when the truth is known."},
-        "benchmark": None if bench is None else {**bench, "current": bench.get("version") == cur_ver and bench.get("dataset_fingerprint") == dataset_fingerprint(bench.get("days", DEFAULT_DAYS))},
+        "benchmark": _safe("benchmark summary", _bench, None, warnings),
         "report_created_at": (rep or {}).get("created_at"),
+        "warnings": warnings,
     }

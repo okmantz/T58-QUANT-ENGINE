@@ -64,6 +64,8 @@
   <a href="/forward-test?view=mt5" role="tab" id="dv-tab-mt5" data-view="mt5">MT5 forward test</a>
   <a href="/forward-test?view=live" role="tab" id="dv-tab-live" data-view="live">Deploy Live</a>
 </div>
+<div data-bot-active></div>
+<script src="/static/t58-botlink.js" defer></script>
 <div id="dv-pane-live" {% if view != 'live' %}hidden{% endif %}><iframe id="dv-live-frame" title="Deploy Live" style="width:100%;border:0;min-height:720px;background:transparent;"{% if view == 'live' %} src="/deploy-live?embed=1"{% endif %}></iframe></div>
 <div id="dv-pane-demo" {% if view != 'demo' %}hidden{% endif %}>{% include '_demo_account_panel.html' %}</div>
 <div id="dv-pane-mt5" class="dv" {% if view != 'mt5' %}hidden{% endif %}>

@@ -549,6 +549,7 @@ class BotEngine:
         row["balance"] = round(self.acct.balance, 2)
         self.trades.append(row)
         del self.trades[:-5000]
+        self.rt.trades_total += 1
         self.venue.book(row)
         self._event("exit", f"{'Win' if pnl > 0 else 'Loss' if pnl < 0 else 'Flat'} ${pnl:+,.2f} · {p.leg} · {reason} · balance ${self.acct.balance:,.2f}", t)
         if self.on_trade:

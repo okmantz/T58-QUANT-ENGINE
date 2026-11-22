@@ -57,7 +57,8 @@ def test_deploy_has_three_tabs_and_ordered_tools(client):
     tools = body[body.index("More deploy tools"):]
     order = [tools.index(x) for x in ("Monitor (Live Market)", "Interactive Replay", "TradingView bridge", "Webhook Relay (TradingView)")]
     assert order == sorted(order)
-    assert "Trade log" not in body
+    # every deployed trade is logged: the Demo tab carries its own trade log with a CSV export
+    assert "da-log" in body and "/api/demo-account/trades.csv" in body
     assert 'class="tname">Deploy Live' not in tools and 'class="tname">T58 Demo account' not in tools
 
 

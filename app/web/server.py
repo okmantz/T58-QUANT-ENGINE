@@ -1161,6 +1161,9 @@ app.register_blueprint(vault_bp)
 # Trading Bots (Deploy section): three calibrated bots + custom ones -- see app/web/bots_routes.py.
 from app.web.bots_routes import bots_bp  # noqa: E402
 app.register_blueprint(bots_bp)
+# Trade-log CSV exports (Trading Journal, T58 demo account) -- see app/web/trade_log_routes.py.
+from app.web.trade_log_routes import trade_log_bp  # noqa: E402
+app.register_blueprint(trade_log_bp)
 # TradingView webhook relay (Pine strategy alert -> T58 paper forward test,
 # optionally mirrored to a demo broker) -- see app/web/webhook_relay_routes.py.
 app.register_blueprint(webhook_relay_bp)
@@ -11959,6 +11962,11 @@ def demo_account_sim_trade():
         return jsonify({"ok": False, "error": "pnl must be a number."}), 400
     if row is None:
         return jsonify({"ok": False, "error": "The demo evaluation is finished (passed or breached). Start a new attempt."}), 409
+    try:
+        from app.journal.capture import capture_demo_trade
+        capture_demo_trade(row)
+    except Exception:  # noqa: BLE001 - the journal must never block booking a trade
+        pass
     return jsonify({"ok": True, "trade": row})
 
 

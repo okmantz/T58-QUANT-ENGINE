@@ -235,7 +235,7 @@ def sync_forward_test(db_path=None) -> int:
     return sum(1 for i in ids if capture_forward_trade(p, i))
 
 
-def capture_relay_trade(row: dict, *, relay_id: str = "") -> dict | None:
+def capture_relay_trade(row: dict, *, relay_id: str = "", strategy: str = "") -> dict | None:
     """One closed trade from the webhook relay's paper or broker book (Demo, connected platform)."""
     if row.get("pnl") is None:
         return None
@@ -246,7 +246,13 @@ def capture_relay_trade(row: dict, *, relay_id: str = "") -> dict | None:
         except ValueError:
             return None
     ext = f"relay:{relay_id}:{row.get('source')}:{row.get('ticket') or ''}:{row.get('closed_at')}"
-    e = build_entry(external_id=ext, source="Demo" if row.get("source") == "paper" else "Broker", strategy=relay_id or "Webhook relay",
+    if not strategy and relay_id:
+        try:
+            from app.webhook_relay import config as _rc
+            strategy = str(getattr(_rc.get_relay(relay_id), "name", "") or "")
+        except Exception:  # noqa: BLE001
+            strategy = ""
+    e = build_entry(external_id=ext, source="Demo" if row.get("source") == "paper" else "Broker", strategy=strategy or relay_id or "Webhook relay",
                     instrument=row.get("root") or row.get("symbol", ""), direction=row.get("side", "long"), entry=row.get("entry"),
                     exit_price=row.get("exit"), entry_time=_dt(row.get("opened_at")), exit_time=_dt(row.get("closed_at")),
                     pnl=float(row["pnl"]), volume=row.get("qty"), why=row.get("why", ""))
@@ -256,3 +262,97 @@ def capture_relay_trade(row: dict, *, relay_id: str = "") -> dict | None:
 def sync_relay(relay_id: str) -> int:
     from app.webhook_relay.trade_book import all_trades
     return sum(1 for r in all_trades(relay_id) if capture_relay_trade(r, relay_id=relay_id))
+
+
+# ------------------------------------------------------------------------------------------------ Trading Bots + manual demo trades
+def _parse_dt(s):
+    """ISO string (with or without a Z / offset) -> aware UTC datetime, or None."""
+    try:
+        if not s:
+            return None
+        d = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _bot_external_id(bot_id: str, row: dict) -> str:
+    import hashlib
+    key = "|".join(str(row.get(k, "")) for k in ("leg", "symbol", "entry_time", "exit_time", "side", "qty", "entry", "exit"))
+    return f"bot:{bot_id}:{hashlib.sha1(key.encode()).hexdigest()[:14]}"
+
+
+def bot_account_label(cfg: dict) -> str:
+    """Plain-words name of the account a bot trades: the T58 demo account, its own sandbox, or the saved broker / prop-firm nickname."""
+    acct = (cfg or {}).get("account") or {}
+    venue = acct.get("venue", "demo")
+    if venue == "demo":
+        return f"T58 Demo ${float(acct.get('size') or 0) / 1000:,.0f}K"
+    if venue == "paper":
+        return "Bot sandbox (paper)"
+    try:
+        from app.live_deploy.live_settings import load_accounts
+        a = next((x for x in load_accounts() if x.id == acct.get("account_id")), None)
+        if a is not None:
+            return f"{a.nickname or a.id}" + (f" ({a.firm_name})" if getattr(a, "firm_name", "") else "")
+    except Exception:  # noqa: BLE001 -- a label must never block the journal
+        pass
+    return f"Broker account {acct.get('account_id', '')}".strip()
+
+
+def bot_trade_entry(cfg: dict, row: dict, *, mode: str = "simulation") -> dict:
+    """One closed bot trade row (app.bots.engine) -> a journal entry. Keyed by a hash of the trade, so capturing it twice updates it."""
+    bot_id = str((cfg or {}).get("id") or "bot")
+    bot_name = str((cfg or {}).get("name") or "Trading bot")
+    label = bot_account_label(cfg)
+    ent, ext = _parse_dt(row.get("entry_time")), _parse_dt(row.get("exit_time"))
+    risk = float(row.get("risk") or 0.0)
+    pnl = float(row.get("pnl") or 0.0)
+    how = "replay simulation of historical bars" if mode == "simulation" else "live feed"
+    e = build_entry(external_id=_bot_external_id(bot_id, row), source="Trading Bot", strategy=f"{bot_name} / {row.get('leg', '')}".strip(" /"),
+                    instrument=str(row.get("symbol") or ""), direction=row.get("side", "long"), entry=row.get("entry"),
+                    exit_price=row.get("exit"), entry_time=ent, exit_time=ext, pnl=pnl, risk_amount=risk, volume=row.get("qty"),
+                    why=str(row.get("reason") or ""), account=label,
+                    notes=f"Auto-captured from bot '{bot_name}' (strategy {row.get('leg', '')}) on {label}, {how}. Exit: {row.get('reason', '')}.")
+    e["bot"], e["venue"], e["mode"] = bot_name, (cfg or {}).get("account", {}).get("venue", ""), mode
+    e["exitReason"] = str(row.get("reason") or "")
+    if ent and ext:
+        e["durationMin"] = round((ext - ent).total_seconds() / 60.0, 1)
+    return e
+
+
+def capture_bot_trades(cfg: dict, rows: list[dict], *, mode: str = "simulation") -> int:
+    """Journal a batch of closed bot trades with a single file write. Hand-typed notes / tags / checklists on an earlier capture are kept."""
+    if not rows:
+        return 0
+    have = _existing_by_external()
+    # the id is a hash of the trade itself, so a trade already in the journal is identical: skip it (and keep whatever notes / tags were typed on it)
+    fresh = []
+    for r in rows:
+        e = bot_trade_entry(cfg, r, mode=mode)
+        if e["externalId"] not in have:
+            fresh.append(e)
+    return js.upsert_trades_bulk(fresh)
+
+
+def sync_bots() -> int:
+    """Backfill every stored bot trade (idempotent): trades a bot booked before auto-capture existed, and any the hook missed."""
+    from app.bots import store
+    n = 0
+    for rec in store.list_bots():
+        rt = rec.get("runtime") or {}
+        n += capture_bot_trades(rec["config"], rec.get("trades") or [], mode=str(rt.get("mode") or "simulation"))
+    return n
+
+
+def capture_demo_trade(row: dict) -> dict | None:
+    """A trade booked on the T58 demo account by hand (``source`` manual) or from an alert, as a journal entry."""
+    if row is None or row.get("pnl") is None:
+        return None
+    ext = _parse_dt(row.get("closed_at"))
+    ent = _parse_dt(row.get("opened_at"))
+    e = build_entry(external_id=f"demo:{row.get('attempt', 1)}:{row.get('n')}:{row.get('closed_at')}", source="Demo", strategy=str(row.get("strategy") or "T58 Demo"),
+                    instrument=row.get("root") or "", direction=row.get("side") or "long", entry=row.get("entry"), exit_price=row.get("exit"),
+                    entry_time=ent, exit_time=ext, pnl=float(row["pnl"]), volume=row.get("qty"), why=row.get("why", ""), account="T58 Demo")
+    e["exitReason"] = str(row.get("why") or "")
+    return save_entry(e, screenshot=False)

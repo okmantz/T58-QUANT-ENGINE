@@ -1,0 +1,6 @@
+{# Quant Lab page tabs. Set ql_tab ('tools' or 'research') before including. The Research Lab used to be its own sidebar entry; it is a tab here now. #}
+<link rel="stylesheet" href="/static/page-tabs.css">
+<nav class="t58-ptabs" aria-label="Quant Lab pages">
+  <a href="/quant-lab"{% if ql_tab == 'tools' %} class="on" aria-current="page"{% endif %}><svg class="lu"><use href="#lu-sigma"/></svg>Tools</a>
+  <a href="/research-labs"{% if ql_tab == 'research' %} class="on" aria-current="page"{% endif %}><svg class="lu"><use href="#lu-microscope"/></svg>Research Lab</a>
+</nav>

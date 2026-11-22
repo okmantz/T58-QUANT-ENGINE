@@ -35,6 +35,7 @@ def _now() -> str:
 
 class BrokerTradeBook:
     def __init__(self, relay_id: str):
+        self.relay_id = relay_id
         self.path = relay_dir() / f"{relay_id}_broker.json"
 
     def _load(self) -> dict:
@@ -89,7 +90,12 @@ class BrokerTradeBook:
                    "price_source": price_source}
             d["closed"].append(row)
             self._save(d)
-            return row
+        try:                       # a closed broker / prop-firm leg also lands in the Trading Journal's trade log
+            from app.journal.capture import capture_relay_trade
+            capture_relay_trade(row, relay_id=self.relay_id)
+        except Exception:  # noqa: BLE001 - journaling must never break trade bookkeeping
+            pass
+        return row
 
     def snapshot(self) -> dict:
         with _LOCK:

@@ -76,7 +76,23 @@ def bot_span(cfg: BotConfig) -> tuple[pd.Timestamp, pd.Timestamp]:
     return max(a for a, _ in spans), min(b for _, b in spans)
 
 
+def _flush_journal(cfg: BotConfig, rt: BotRuntime, trades: list) -> None:
+    """Copy the trades booked since the last flush into the Trading Journal's trade log (every bot, on every account).
+    Runs at every persist point, so a fill or a close reaches the journal as it happens on a live feed and in chunks in a replay."""
+    pending = int(rt.trades_total) - int(rt.journal_cursor)
+    if pending <= 0 or not trades:
+        return
+    try:
+        from app.journal.capture import capture_bot_trades
+        capture_bot_trades(cfg.to_dict(), trades[-pending:], mode=rt.mode or "simulation")
+        rt.journal_cursor = int(rt.trades_total)
+    except Exception:  # noqa: BLE001 -- the journal must never stop a bot; the next persist (or the journal's own sync) retries
+        pass
+
+
 def _persist(bot_id: str, cfg: BotConfig, rt: BotRuntime, trades: list, events: list) -> None:
+    _flush_journal(cfg, rt, trades)
+
     def fn(rec):
         rec["runtime"], rec["trades"], rec["events"] = rt.to_dict(), trades, events
     store.update_bot(bot_id, fn)

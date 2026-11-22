@@ -69,6 +69,7 @@
   <p class="field-note" style="margin-top:6px;">Once a session is running, a small <strong>Live P&amp;L</strong> pill (bottom-right, on every page) tracks balance, equity and open/closed P&amp;L &mdash; click it for the breakdown.</p>
 </div>
 
+{% if not request.args.get('embed') %}<div data-bot-active></div><script src="/static/t58-botlink.js" defer></script>{% endif %}
 <div class="dv-card" id="dl-bot-card">
   <h3>Run a trading bot on a live account</h3>
   <p class="dv-sub">Pick one of your bots, point it at a connected prop-firm or broker account and start it. Every live start still asks you to type DEPLOY LIVE.</p>

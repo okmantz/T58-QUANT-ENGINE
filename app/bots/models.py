@@ -140,6 +140,8 @@ class BotRuntime:
     day_trades: int = 0
     day_key: str = ""
     day_realised: float = 0.0
+    trades_total: int = 0               # closed trades this run has ever booked (the stored ledger keeps only the last MAX_TRADES)
+    journal_cursor: int = 0             # how many of those have been copied into the Trading Journal's trade log
 
     @classmethod
     def from_dict(cls, d: dict) -> "BotRuntime":

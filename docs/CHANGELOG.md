@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-22 - every deployed trade is logged, exports, nav consolidation, Research Integrity fix
+- **One trade log for everything deployed** (`app/journal/capture.py`, `app/journal/export.py`): trades from Trading Bots (T58 demo, paper, broker venues), the T58 demo account, and Webhook Relay paper / broker trades now land in the Trading Journal with entry / exit times, price, R, fees, account, strategy, bot and venue. Capture is idempotent (hashed `externalId`), runs at the bot's persist points, and `/api/journal/sync` backfills existing bots. Backtests are never logged.
+- **Trade log on the Deploy page**: the Demo tab has its own Trade log card; a "Your bot is trading" strip (Deploy and Forward Test) links straight to the bot page once a bot is running.
+- **CSV export with stats**: Trading Journal (`/api/journal/export.csv`, `/export-stats.csv`), the bot page Trades tab (`/trading-bots/api/bot/<id>/trades.csv`, `/stats.csv`) and the demo account (`/api/demo-account/trades.csv`). Cells are guarded against spreadsheet formula injection.
+- **Navigation**: Research Lab and Portfolio Builder are now tabs / cards inside Quant Lab; the Strategy Graveyard is a tab inside the Strategy Library; "Book Library" is "Library".
+- **Research Integrity page** no longer goes blank: the API degrades block by block and the page script is null-safe, shows a retry message on failure.
+- **Prop-firm comparison**: the plans table and side-by-side comparison sit above the firm list.
+- **Mission banner** is sticky, clears the header profile cluster (Demo chip, bell, avatar) and compacts its labels when space is short.
+- **Coach** avatars: four portraits cross-fade on the launcher and panel header.
+
 ## 2026-11-19 - scorer lookahead fix, Payout Hunter gains a Context Drive Long bracket
 - **Objective scorecard lookahead** (`app/prop/objective_scorecard.py`): `simulate_starts` booked each trade the moment it was sized, so an overlapping NQ + ES pair was sized (and let through or stopped by the day stop) already knowing the first trade's result. Trades are now sized at entry from closed trades only, booked in exit order, and positions still open pass their risk as `open_risk`, as the bot engine does. `score_net` sized at the exit and is fixed the same way. The research bundler's daily loss cap (`scripts/run_objective_scores.bundle`) now counts realised P&L only, and `as_weight=True` hands the leg weight to the governor before the caps instead of multiplying it into the P&L. The fix lowers the shipped bots' numbers a little and removes most of the gain an NQ + ES book seemed to have.
 - **Payout Hunter** (`PRESET_REV` 4): + Context Drive Long Bracket (NQ) x0.5, `strategies/python/ContextDriveLongBracket_NQ_1m_v1.py` (Context Drive Long entries, stop 0.2 x ATR14, target 3x, no trail). P(first payout) train / val / test 80.5 / 61.5 / 7.1 % -> 83.1 / 73.4 / 42.9 %, no busts either way (test has only 14 starts).

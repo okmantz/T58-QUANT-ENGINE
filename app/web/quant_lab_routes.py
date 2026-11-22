@@ -172,6 +172,8 @@ _TOOLS = [
      "description": "Volume/Market Profile, Order-Flow, Order-Book, Cross-Asset Lead-Lag, Stat-Arb Spreads, Economic Event Study, Market Seasonality and the Hypothesis Lab: reproducible, out-of-sample-tested research that feeds every strategy engine."},
     {"url": "/research-labs/seasonality", "badge": "Research", "title": "Market Seasonality Lab",
      "description": "Time-of-day, weekday, month, holiday, expiry and event-day patterns vs honest baselines, with a shuffled-label null and a later-data persistence check."},
+    {"url": "/hedge-fund", "badge": "Portfolio", "title": "Portfolio Builder",
+     "description": "Combine two or more markets into one paper portfolio: a research view per market, Black-Litterman weights, realistic rebalancing costs and a plain-English oversight journal."},
     {"url": "/quant-lab/translator", "badge": "Deploy", "title": "Universal Strategy Translator",
      "description": "Manual Strategy Builder config -> clean PineScript v5 / MQL5, ready for TradingView or a live MT5 account."},
     {"url": "/quant-lab/regime-selector", "badge": "Auto", "title": "Auto Regime Selector",

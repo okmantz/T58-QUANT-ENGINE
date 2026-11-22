@@ -30,6 +30,10 @@ def journal_sync():
         n += capture.sync_forward_test()
     except Exception as exc:  # noqa: BLE001
         return _err(f"Forward Test sync failed: {exc}", 500)
+    try:                       # Trading Bots on any account: backfill every stored bot trade (idempotent)
+        n += capture.sync_bots()
+    except Exception as exc:  # noqa: BLE001
+        return _err(f"Trading Bot sync failed: {exc}", 500)
     return jsonify({"ok": True, "synced": n})
 
 
@@ -278,7 +282,10 @@ def research_integrity_page():
 @suite_bp.route("/api/research-integrity")
 def research_integrity_api():
     from app.validation import research_integrity as ri
-    return jsonify({"ok": True, **ri.dashboard(), "benchmark_job": dict(_BENCH_JOB)})
+    try:
+        return jsonify({"ok": True, **ri.dashboard(), "benchmark_job": dict(_BENCH_JOB)})
+    except Exception as exc:  # noqa: BLE001 -- the page shows this message instead of going blank
+        return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
 
 
 @suite_bp.route("/api/research-integrity/benchmark", methods=["POST"])

@@ -42,7 +42,7 @@
 <div class="t58-shell">
 {% include '_sidebar.html' %}
 <div class="t58-main"><div class="rl">
-  <a class="back" href="/quant-lab">&larr; Quant Lab</a>
+  {% set ql_tab = 'research' %}{% include '_quant_lab_tabs.html' %}
   <div class="rl-hero">
     <h1>Research Labs</h1>
     <p>Pick a lab, give it market data, and get an answer you can check. Each lab asks one focused question about how markets behave, then feeds what it learns back into the backtester and the strategy-creation tools.</p>

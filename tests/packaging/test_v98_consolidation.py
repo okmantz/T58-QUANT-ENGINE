@@ -62,8 +62,10 @@ def test_sidebar_lifecycle_steps_are_single_links(client):
     for href in ('href="/start-here/create"', 'href="/full-pipeline"',
                  'href="/optimize-simple"', 'href="/validate-simple"',
                  'href="/champion-simple"', 'href="/forward-test"',
-                 'href="/graveyard"'):
+                 'href="/library"'):
         assert href in sidebar, href
+    # the Strategy Graveyard is a tab on the Strategy Library page, not a sidebar entry
+    assert 'href="/graveyard"' not in sidebar
     # Children moved out of the sidebar onto the section pages
     for href in ('href="/cpcv"', 'href="/quick-optimize"',
                  'href="/walk-forward-opt"', 'href="/evolution"'):
@@ -72,8 +74,9 @@ def test_sidebar_lifecycle_steps_are_single_links(client):
     assert 'href="/quant-lab"' in sidebar
     # Notification settings live inside Account settings now (see tests/web/test_v96_web_nav.py): no separate sidebar entry.
     assert 'href="/settings/notifications"' not in sidebar
-    # Quant Lab dropdown holds only Quant Lab + Research Lab; API keys / achievements / support are Account settings tabs
-    assert 'href="/research-labs"' in sidebar
+    # Quant Lab dropdown holds Quant Lab + Investing: Research Lab is a tab on the Quant Lab page and Portfolio Builder is a card on it
+    assert 'href="/research-labs"' not in sidebar and 'href="/hedge-fund"' not in sidebar
+    assert '<span class="label">Library</span>' in sidebar and 'Book Library' not in sidebar
     for gone in ('href="/profile"', 'href="/demo-account"', 'href="/rulebook"', 'href="/settings/api-keys"', 'href="/support"', 'href="/achievements"'):
         assert gone not in sidebar, gone
     assert sidebar.index('href="/settings/account"') < sidebar.index('href="/data-center"')

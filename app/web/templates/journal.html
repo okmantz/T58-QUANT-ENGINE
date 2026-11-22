@@ -201,15 +201,32 @@
     g.appendChild(c1); g.appendChild(c2); view.appendChild(g);
     var c3 = el('div', 'j-card'); c3.appendChild(el('h2', null, 'P&L by tag')); c3.appendChild(tagBars(S.stats.pnl_by_tag)); view.appendChild(c3);
   }
+  var srcFilter = '';
   function viewLog() {
     var top = el('div'); top.style.marginBottom = '12px';
-    var b = el('button', 'j-btn primary', '+ New trade'); b.type = 'button'; b.addEventListener('click', function () { openTrade(null); }); top.appendChild(b); view.appendChild(top);
+    var b = el('button', 'j-btn primary', '+ New trade'); b.type = 'button'; b.addEventListener('click', function () { openTrade(null); }); top.appendChild(b);
+    // Export: every trade with all its numbers (entry/exit times, duration, prices, risk, P&L, R, running P&L, session, regime, tags ...) and the summary stats.
+    function exportLink(label, href, title) { var a = el('a', 'j-btn', label); a.href = href; a.setAttribute('download', ''); a.title = title; a.style.textDecoration = 'none'; a.style.marginLeft = '8px'; a.style.display = 'inline-block'; return a; }
+    var qs = srcFilter ? '?source=' + encodeURIComponent(srcFilter) : '';
+    top.appendChild(exportLink('Export trade log (CSV)', '/api/journal/export.csv' + qs, 'Every trade with all of its numbers'));
+    top.appendChild(exportLink('Export stats (CSV)', '/api/journal/export-stats.csv' + qs, 'Win rate, profit factor, expectancy, drawdown, streaks, best and worst day'));
+    var sources = []; S.trades.forEach(function (t) { var s = t.source || 'Manual'; if (sources.indexOf(s) < 0) sources.push(s); });
+    if (sources.length > 1) {
+      var sel = el('select', 'j-sel'); sel.style.marginLeft = '12px'; sel.style.width = 'auto'; sel.setAttribute('aria-label', 'Filter by source');
+      [['', 'All sources']].concat(sources.sort().map(function (x) { return [x, x]; })).forEach(function (o) { var op = el('option', null, o[1]); op.value = o[0]; sel.appendChild(op); });
+      sel.value = srcFilter; sel.addEventListener('change', function () { srcFilter = sel.value; render(); }); top.appendChild(sel);
+    }
+    view.appendChild(top);
     var card = el('div', 'j-card');
     if (!S.trades.length) { card.appendChild(el('div', 'empty', 'No trades yet. Click "New trade" to log your first one against the playbook.')); view.appendChild(card); return; }
     var tm = tagMap(), t = el('table', 'tl'), hd = el('tr');
-    ['Date', 'Instrument', 'Dir', 'Playbook / tags', 'Risk', 'P&L', 'R', 'Check', 'Chart', ''].forEach(function (h) { hd.appendChild(el('th', null, h)); }); t.appendChild(hd);
-    S.trades.slice().reverse().forEach(function (tr) {
-      var row = el('tr'); row.appendChild(el('td', null, tr.date)); row.appendChild(el('td', null, tr.instrument || '--')); row.appendChild(el('td', null, tr.direction));
+    ['Date', 'Entry → exit', 'Instrument', 'Dir', 'Source / account', 'Playbook / tags', 'Risk', 'P&L', 'R', 'Check', 'Chart', ''].forEach(function (h) { hd.appendChild(el('th', null, h)); }); t.appendChild(hd);
+    function hm(s) { return s ? String(s).slice(11, 16) : ''; }
+    S.trades.filter(function (x) { return !srcFilter || (x.source || 'Manual') === srcFilter; }).slice().reverse().forEach(function (tr) {
+      var row = el('tr'); row.appendChild(el('td', null, tr.date));
+      row.appendChild(el('td', null, (tr.entryTime || tr.exitTime) ? (hm(tr.entryTime) || '--') + ' → ' + (hm(tr.exitTime) || '--') + (tr.durationMin ? ' (' + Math.round(tr.durationMin) + 'm)' : '') : '--'));
+      row.appendChild(el('td', null, tr.instrument || '--')); row.appendChild(el('td', null, tr.direction));
+      var srcTd = el('td'); srcTd.appendChild(el('div', null, tr.source || 'Manual')); if (tr.strategy || tr.account) { var sub = el('div', null, [tr.strategy, tr.account].filter(Boolean).join(' · ')); sub.style.cssText = 'font-size:11px;color:var(--text-muted)'; srcTd.appendChild(sub); } row.appendChild(srcTd);
       var td = el('td'); var pb = playbookById(tr.playbookId); if (pb) td.appendChild(el('div', null, pb.title));
       (tr.tags || []).forEach(function (id) { var m = tm[id]; if (!m) return; var c = el('span', 'chip'); var i = el('i'); i.style.background = m.color; c.appendChild(i); c.appendChild(document.createTextNode(m.name)); td.appendChild(c); });
       row.appendChild(td); row.appendChild(el('td', null, tr.riskAmount ? money(tr.riskAmount) : '--'));

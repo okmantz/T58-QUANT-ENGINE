@@ -132,7 +132,7 @@
     </div>
   </details>
 
-  <!-- (2) Strategy Lab: the whole 7-step journey (Create ... Strategy Graveyard) plus the Strategy Library, folded into one header.
+  <!-- (2) Strategy Lab: the 6-step journey (Create ... Deploy) plus the Strategy Library (the Strategy Graveyard is a tab on it), folded into one header.
        Each step is a single link to one consolidated page; that page's tools live on its own tools grid. -->
   <details class="t58-nav-group" data-nav="strategy-lab" {{ 'open' if open_ok and active_page in lab_pages else '' }}>
     <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-flask-conical"/></svg></span> Strategy Lab <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
@@ -155,27 +155,18 @@
       <a href="/forward-test" class="t58-nav-item {{ 'active' if active_page in deploy_pages else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-rocket"/></svg></span><span class="label">Deploy</span>
       </a>
-      <a href="/graveyard" class="t58-nav-item {{ 'active' if active_page in ['graveyard', 'start_here_graveyard'] else '' }}">
-        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-skull"/></svg></span><span class="label">Strategy Graveyard</span>
-      </a>
-      <a href="/library" class="t58-nav-item {{ 'active' if active_page == 'strategy_library' else '' }}">
+      <a href="/library" class="t58-nav-item {{ 'active' if active_page in ['strategy_library', 'graveyard', 'start_here_graveyard'] else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-library"/></svg></span><span class="label">Strategy Library</span>
       </a>
     </div>
   </details>
 
-  <!-- (3) Quant Lab: the tools page (Options Outlook is a card on it now), Research Lab and the Hedge Fund Manager pages. -->
+  <!-- (3) Quant Lab: the tools page. Research Lab is a tab on it and Portfolio Builder / Options Outlook are cards on it, so neither has a sidebar entry. -->
   <details class="t58-nav-group" data-nav="quant-lab" {{ 'open' if open_ok and active_page in quant_pages else '' }}>
     <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-sigma"/></svg></span> Quant Lab <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
     <div class="t58-nav-group-items">
-      <a href="/quant-lab" class="t58-nav-item {{ 'active' if active_page in ['quant_lab', 'options_outlook'] else '' }}">
+      <a href="/quant-lab" class="t58-nav-item {{ 'active' if active_page in ['quant_lab', 'options_outlook', 'research_labs', 'hedge_fund'] else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-sigma"/></svg></span><span class="label">Quant Lab</span>
-      </a>
-      <a href="/research-labs" class="t58-nav-item {{ 'active' if active_page == 'research_labs' else '' }}">
-        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-microscope"/></svg></span><span class="label">Research Lab</span>
-      </a>
-      <a href="/hedge-fund" class="t58-nav-item {{ 'active' if active_page == 'hedge_fund' else '' }}">
-        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-briefcase-business"/></svg></span><span class="label">Portfolio Builder</span>
       </a>
       <a href="/investing" class="t58-nav-item {{ 'active' if active_page == 'investing' else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-trending-up"/></svg></span><span class="label">Investing</span>
@@ -222,7 +213,7 @@
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-gamepad-2"/></svg></span><span class="label">Playground</span>
       </a>
       <a href="/playground/library" class="t58-nav-item {{ 'active' if active_page == 'books_library' else '' }}">
-        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-book-marked"/></svg></span><span class="label">Book Library</span>
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-book-marked"/></svg></span><span class="label">Library</span>
       </a>
     </div>
   </details>

@@ -134,6 +134,18 @@ def _isolate_research_lab_store(monkeypatch, tmp_path_factory):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _isolate_trading_journal(monkeypatch, tmp_path_factory):
+    """Bots, the webhook relay, the demo account and Forward Test all copy their closed trades into the Trading Journal
+    (data/journal/journal.json under the app base dir). Keep every test out of the developer's real journal.
+    Tests that patch ``journal_path`` themselves still win (their monkeypatch is applied after this one)."""
+    from app.web import journal_store as _js
+
+    home = tmp_path_factory.mktemp("t58-journal")
+    monkeypatch.setattr(_js, "journal_path", lambda _h=home: _h / "journal.json")
+    yield
+
+
 _SETTINGS_MODULES = (
     "app.ai.ollama_settings",
     "app.web.notifications",

@@ -122,6 +122,58 @@ def api_history():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+def _csv_download(text: str, stem: str):
+    from datetime import datetime, timezone
+    from flask import Response
+    resp = Response("\ufeff" + text, mimetype="text/csv")
+    resp.headers["Content-Disposition"] = f'attachment; filename="{stem}-{datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")}.csv"'
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+def _safe_stem(name: str) -> str:
+    import re
+    return re.sub(r"[^A-Za-z0-9_-]+", "-", name or "bot").strip("-").lower() or "bot"
+
+
+@bots_bp.route("/trading-bots/api/bot/<bot_id>/trades.csv")
+def api_trades_csv(bot_id):
+    """Every closed trade this bot has taken (entry and exit times, prices, size, risk, P&L, R, running P&L, balance, exit reason) as a CSV."""
+    from app.journal import export as ex
+    rec = store.get_bot(bot_id)
+    if rec is None:
+        return jsonify({"ok": False, "error": "Unknown bot."}), 404
+    return _csv_download(ex.bot_csv(rec.get("trades", [])), f"t58-bot-{_safe_stem(rec['config'].get('name'))}-trades")
+
+
+@bots_bp.route("/trading-bots/api/bot/<bot_id>/stats.csv")
+def api_stats_csv(bot_id):
+    """The bot's summary statistics (and one block per strategy) as a CSV."""
+    from app.journal import export as ex
+    rec = store.get_bot(bot_id)
+    if rec is None:
+        return jsonify({"ok": False, "error": "Unknown bot."}), 404
+    cfg, rt = rec["config"], rec["runtime"]
+    start = float((rt.get("state") or {}).get("start_balance") or cfg.get("account", {}).get("size") or 50_000.0)
+    return _csv_download(ex.bot_stats_csv(rec.get("trades", []), start), f"t58-bot-{_safe_stem(cfg.get('name'))}-stats")
+
+
+@bots_bp.route("/trading-bots/api/active")
+def api_active():
+    """Bots that are running right now (for the 'open the bot page' links on the Deploy pages): id, name, account, trades and P&L so far."""
+    out = []
+    for r in store.list_bots():
+        cfg = r["config"]
+        if not runner.is_running(cfg["id"]):
+            continue
+        trades = r.get("trades", [])
+        out.append({"id": cfg["id"], "name": cfg.get("name"), "venue": (cfg.get("account") or {}).get("venue"),
+                    "message": (r["runtime"] or {}).get("next_decision") or (r["runtime"] or {}).get("message", ""),
+                    "n_trades": len(trades), "net_pnl": round(sum(float(t.get("pnl") or 0) for t in trades), 2),
+                    "url": f"/trading-bots?bot={cfg['id']}&tab=trades"})
+    return jsonify({"ok": True, "bots": out})
+
+
 @bots_bp.route("/trading-bots/api/bot/<bot_id>/start", methods=["POST"])
 def api_start(bot_id):
     rec = store.get_bot(bot_id)
@@ -155,7 +207,8 @@ def api_start(bot_id):
             months = 3.0
         speed = body.get("speed") if body.get("speed") in runner.SIM_SPEEDS else "fast"
         res = runner.start_simulation(bot_id, months=months, speed=speed, from_date=(body.get("from_date") or None))
-    return jsonify({"ok": bool(res.get("ok")), "message": res.get("message", ""), "error": None if res.get("ok") else res.get("message")}), (200 if res.get("ok") else 409)
+    return jsonify({"ok": bool(res.get("ok")), "message": res.get("message", ""), "error": None if res.get("ok") else res.get("message"),
+                    "url": f"/trading-bots?bot={bot_id}&tab=trades"}), (200 if res.get("ok") else 409)
 
 
 @bots_bp.route("/trading-bots/api/bot/<bot_id>/stop", methods=["POST"])

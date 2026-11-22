@@ -233,6 +233,60 @@ def _num(v: Any, default: float = 0.0) -> float:
         return default
 
 
+_EXTRA_STR_KEYS = ("strategy", "source", "externalId", "session", "regime", "setup", "entryTime", "exitTime", "account",
+                   "exitReason", "bot", "venue", "mode", "symbol")
+_EXTRA_NUM_KEYS = ("exitPrice", "rMultiple", "backtestAvgR", "volume", "fees", "durationMin")
+
+
+def _clean_trade(trade: dict, trade_id: str, shot: str = "") -> dict:
+    """The stored shape of one journal trade (shared by hand-entered trades and the auto-capture paths)."""
+    t = {
+        "id": trade_id,
+        "date": str(trade.get("date") or date.today().isoformat())[:10],
+        "instrument": str(trade.get("instrument") or "").strip(),
+        "direction": "short" if str(trade.get("direction", "long")).lower().startswith("s") else "long",
+        "playbookId": trade.get("playbookId") or None,
+        "checklist": trade.get("checklist") if isinstance(trade.get("checklist"), dict) else {},
+        "tags": [str(x) for x in (trade.get("tags") or [])],
+        "entry": _num(trade.get("entry")), "stop": _num(trade.get("stop")), "tp": _num(trade.get("tp")),
+        "riskAmount": _num(trade.get("riskAmount")), "pnl": _num(trade.get("pnl")),
+        "notes": str(trade.get("notes") or "")[:5000],
+        "screenshot": shot,
+    }
+    # Auto-captured fields (app.journal.capture). Optional: a hand-entered trade simply does not carry them.
+    for k in _EXTRA_STR_KEYS:
+        if trade.get(k) not in (None, ""):
+            t[k] = str(trade[k])[:120]
+    for k in _EXTRA_NUM_KEYS:
+        if trade.get(k) not in (None, ""):
+            t[k] = _num(trade[k])
+    if isinstance(trade.get("violations"), list):
+        t["violations"] = [str(v)[:200] for v in trade["violations"]][:20]
+    cl = t["checklist"]
+    t["compliancePct"] = round(100.0 * sum(1 for v in cl.values() if v) / len(cl), 1) if cl else None
+    return t
+
+
+def upsert_trades_bulk(trades: list[dict]) -> int:
+    """Creates or updates many auto-captured trades with ONE read and ONE write of the journal file (a bot replay can book
+    thousands). No screenshots here. Returns how many entries were written."""
+    rows = [t for t in trades if isinstance(t, dict)]
+    if not rows:
+        return 0
+    with _LOCK:
+        data = load()
+        by_id = {x.get("id"): x for x in data["trades"]}
+        for raw in rows:
+            tid = str(raw.get("id") or _uid())
+            prev = by_id.get(tid)
+            shot = str((prev or {}).get("screenshot") or "")
+            by_id[tid] = _clean_trade(raw, tid, shot if shot and screenshot_path(shot) is not None else "")
+        merged = sorted(by_id.values(), key=lambda x: (x.get("date", ""), x.get("entryTime", "") or x.get("exitTime", ""), x.get("id", "")))
+        data["trades"] = merged
+        _write(data)
+    return len(rows)
+
+
 def upsert_trade(trade: dict) -> dict:
     """Creates or updates one trade. Screenshot handling: `screenshotData` (a data URL) stores a NEW image and replaces
     any old one; otherwise `screenshot` (the stored file name the page got back earlier) is kept as-is, and an empty
@@ -249,30 +303,7 @@ def upsert_trade(trade: dict) -> dict:
         asked = str(trade.get("screenshot") or "")
         # a trade can only keep the screenshot it already has -- never a name made up by (or borrowed from) the request
         shot = asked if (asked and asked == old_shot and screenshot_path(asked) is not None) else ""
-    t = {
-        "id": trade_id,
-        "date": str(trade.get("date") or date.today().isoformat())[:10],
-        "instrument": str(trade.get("instrument") or "").strip(),
-        "direction": "short" if str(trade.get("direction", "long")).lower().startswith("s") else "long",
-        "playbookId": trade.get("playbookId") or None,
-        "checklist": trade.get("checklist") if isinstance(trade.get("checklist"), dict) else {},
-        "tags": [str(x) for x in (trade.get("tags") or [])],
-        "entry": _num(trade.get("entry")), "stop": _num(trade.get("stop")), "tp": _num(trade.get("tp")),
-        "riskAmount": _num(trade.get("riskAmount")), "pnl": _num(trade.get("pnl")),
-        "notes": str(trade.get("notes") or "")[:5000],
-        "screenshot": shot,
-    }
-    # Auto-captured fields (app.journal.capture). Optional: a hand-entered trade simply does not carry them.
-    for k in ("strategy", "source", "externalId", "session", "regime", "setup", "entryTime", "exitTime", "account"):
-        if trade.get(k) not in (None, ""):
-            t[k] = str(trade[k])[:120]
-    for k in ("exitPrice", "rMultiple", "backtestAvgR", "volume"):
-        if trade.get(k) not in (None, ""):
-            t[k] = _num(trade[k])
-    if isinstance(trade.get("violations"), list):
-        t["violations"] = [str(v)[:200] for v in trade["violations"]][:20]
-    cl = t["checklist"]
-    t["compliancePct"] = round(100.0 * sum(1 for v in cl.values() if v) / len(cl), 1) if cl else None
+    t = _clean_trade(trade, trade_id, shot)
     with _LOCK:
         data = load()
         trades = [x for x in data["trades"] if x.get("id") != t["id"]]

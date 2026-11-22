@@ -42,6 +42,7 @@
 <div class="t58-shell">
 {% include '_sidebar.html' %}
 <div class="t58-main"><div class="ql">
+  {% set ql_tab = 'tools' %}{% include '_quant_lab_tabs.html' %}
   <div class="ql-hero">
     {% if what_this_is and what_this_is.tagline %}<div class="tag">{{ what_this_is.tagline }}</div>{% endif %}
     <h1>Quant Lab</h1>

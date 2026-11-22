@@ -93,6 +93,14 @@ def handle(relay: RelayConfig, signal: Signal, *, wait_for_broker: bool = False,
     except Exception:  # noqa: BLE001 - the demo book must never break alert handling
         pass
 
+    try:                       # every closed leg (paper / demo) also goes to the Trading Journal's trade log
+        from app.journal.capture import capture_relay_trade
+        for a in actions:
+            if a.get("action") in ("close", "reduce") and a.get("pnl") is not None:
+                capture_relay_trade({**a, "source": "paper"}, relay_id=relay.id, strategy=str(getattr(relay, "name", "") or ""))
+    except Exception:  # noqa: BLE001 - journaling must never break alert handling
+        pass
+
     if not actions:
         message = f"Already {signal.target}; nothing to do." if signal.target != "flat" else "Already flat; nothing to do."
         status = "no_change"

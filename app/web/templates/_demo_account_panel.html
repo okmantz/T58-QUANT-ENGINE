@@ -106,6 +106,20 @@
   </div>
 </div>
 
+<div class="lc-card" id="da-log-card" style="margin-top:14px;">
+  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 4px;">
+    <h3 style="margin:0;">Trade log <small class="lc-hint" id="da-log-n">every trade on this account, newest first</small></h3>
+    <span style="flex:1"></span>
+    <a class="lc-btn" id="da-log-csv" href="/api/demo-account/trades.csv" download>Export CSV</a>
+    <a class="lc-btn" href="/journal">Trading Journal</a>
+  </div>
+  <p class="lc-hint" style="margin:0 0 8px;">Trades from your bots and from TradingView alerts land here as they close, with entry and exit times. Each one is also saved to the Trading Journal, and the CSV carries every column.</p>
+  <div style="max-height:380px; overflow:auto; border:1px solid var(--lc-border); border-radius:10px;">
+    <table class="da-t" style="min-width:860px;"><thead><tr><th>#</th><th>Entry time (UTC)</th><th>Exit time (UTC)</th><th>Instrument</th><th>Side</th><th class="r">Qty</th><th class="r">Entry</th><th class="r">Exit</th><th class="r">P&amp;L</th><th class="r">Balance</th><th>Source</th><th>Why it closed</th></tr></thead>
+    <tbody id="da-log"><tr><td colspan="12" class="lc-hint">Loading the trade log&hellip;</td></tr></tbody></table>
+  </div>
+</div>
+
 <div class="lc-card" style="margin-top:14px;">
   <h3 style="margin:0 0 8px;">The rules of this account <small class="lc-hint">{{ acct.stage }} · attempt #{{ acct.attempt }}</small></h3>
   <table class="da-t"><thead><tr><th>Rule</th><th>Limit</th><th>What it means</th><th>Where you stand</th></tr></thead><tbody>
@@ -134,6 +148,23 @@
     }).catch(function(){ $('da-url-note').textContent = 'Could not reach the app. Try again.'; $('da-out').hidden = false; })
     .then(function(){ btn.disabled = false; });
   });
+  // trade log: the account's whole trade list (not just the last 25), refreshed with the numbers
+  function esc2(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function hhmm(s){ return esc2(String(s || '').slice(0, 16).replace('T', ' ')); }
+  function loadLog(){
+    var body = $('da-log'); if (!body) return;
+    fetch('/api/demo-account/trades').then(function(r){ return r.json(); }).then(function(d){
+      var rows = d.trades || [];
+      $('da-log-n').textContent = rows.length + ' trade' + (rows.length === 1 ? '' : 's') + ' this attempt, newest first';
+      body.innerHTML = rows.slice(0, 500).map(function(t){
+        var who = t.bot ? (t.bot + (t.leg ? ' / ' + t.leg : '')) : (t.source === 'tradingview' ? 'TradingView' : (t.source || ''));
+        return '<tr><td>' + esc2(t.n) + '</td><td>' + hhmm(t.opened_at) + '</td><td>' + hhmm(t.closed_at) + '</td><td>' + esc2(t.root) + '</td><td>' + esc2(t.side) + '</td><td class="r">' + esc2(t.qty) +
+          '</td><td class="r">' + esc2(t.entry == null ? '' : t.entry) + '</td><td class="r">' + esc2(t.exit == null ? '' : t.exit) + '</td><td class="r ' + (t.pnl > 0 ? 'up' : (t.pnl < 0 ? 'down' : '')) + '">' + money(t.pnl, true) +
+          '</td><td class="r">' + money(t.balance) + '</td><td>' + esc2(who) + '</td><td>' + esc2(t.reason || t.why || '') + '</td></tr>'; }).join('') ||
+        '<tr><td colspan="12" class="lc-hint">No trades yet. Start a bot above or send a TradingView alert; every closed trade appears here.</td></tr>';
+    }).catch(function(){ body.innerHTML = '<tr><td colspan="12" class="lc-hint">Could not load the trade log.</td></tr>'; });
+  }
+  loadLog(); setInterval(function(){ if (document.visibilityState === 'visible' && $('da-root') && $('da-root').offsetParent) loadLog(); }, 20000);
   // keep the numbers fresh without reloading the page (and without disturbing a half-filled form)
   function refresh(){
     if (document.visibilityState !== 'visible' || !$('da-root') || $('da-root').offsetParent === null) return;
@@ -184,7 +215,10 @@
     go.addEventListener('click', function(){ if (!sel) return; go.disabled = true; msg.textContent = 'Starting\u2026';
       // This tab always runs on the T58 demo account: point the bot at it first, so a bot saved on a real account is never started from here.
       fetch('/trading-bots/api/bot/' + encodeURIComponent(sel) + '/settings', {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':tok}, body: JSON.stringify({account:{venue:'demo'}})})
-      .then(function(){ return post('/start'); }).then(function(d){ msg.textContent = d.error || d.message || 'Bot started on the demo account.'; load(); }).catch(function(){ msg.textContent = 'Could not start the bot.'; load(); }); });
+      .then(function(){ return post('/start'); }).then(function(d){
+        msg.textContent = d.error || d.message || 'Bot started on the demo account.';
+        if (!d.error && d.url) { msg.appendChild(document.createTextNode(' ')); var a = document.createElement('a'); a.href = d.url; a.textContent = 'Open the bot page \u2192'; a.style.fontWeight = '700'; msg.appendChild(a); }
+        load(); if (window.T58BotLink) window.T58BotLink.refresh(); loadLog(); }).catch(function(){ msg.textContent = 'Could not start the bot.'; load(); }); });
     stop.addEventListener('click', function(){ post('/stop').then(function(d){ msg.textContent = d.error || 'Stopped.'; load(); }); });
     load(); setInterval(function(){ if (document.visibilityState === 'visible' && $('da-root') && $('da-root').offsetParent) load(); }, 15000);
   })();

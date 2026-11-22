@@ -40,7 +40,7 @@
     <div class="bc-lead"><b>Pick the plan that fits your strategy, then buy at the firm.</b><span>Prices and rules side by side. Codes below are listed by PropFirmGorilla with the date they were read. Confirm any code at the firm&rsquo;s checkout. T58 never takes payment.</span></div>
     <div class="bc-stats" id="bcStats"></div>
   </div>
-  <div class="bc-steps"><span><b>1</b>Browse firms</span><span><b>2</b>Tick up to 4 plans</span><span><b>3</b>Compare side by side</span><span><b>4</b>Buy at the firm, then press &ldquo;I bought this&rdquo;</span></div>
+  <div class="bc-steps"><span><b>1</b>Scan the plan table</span><span><b>2</b>Tick up to 4 plans</span><span><b>3</b>Compare side by side</span><span><b>4</b>Buy at the firm, then press &ldquo;I bought this&rdquo;</span></div>
   <div class="s-strip" id="disclaimer"></div>
   <div class="s-bar">
     <input class="s-input" id="q" type="search" placeholder="Search firms" aria-label="Search firms">
@@ -50,12 +50,6 @@
       <option value="price">Lowest price</option><option value="split">Highest profit split</option><option value="algo">Algo friendly first</option><option value="name">Name</option>
     </select>
   </div>
-  <div class="s-h2">Firms</div>
-  <div class="s-grid" id="firms"></div>
-
-  <div class="s-h2" id="moreTitle">More firms with a code <span class="s-note" style="text-transform:none;letter-spacing:0">— no rule data in T58 yet</span></div>
-  <div class="bc-more" id="moreCodes"></div>
-
   <div class="s-h2">Plans <span class="s-note" style="text-transform:none;letter-spacing:0">— tick up to 4 to compare</span></div>
   <div class="s-bar" id="sizeChips"></div>
   <div class="s-table-wrap"><table class="s-table" id="plans"></table></div>
@@ -67,6 +61,13 @@
     <button class="s-btn sm" id="shareBtn" type="button">Copy share link</button>
   </div>
   <div class="s-table-wrap" id="cmpWrap" hidden><table class="s-table" id="cmp"></table></div>
+
+  <div class="s-h2">Firms</div>
+  <div class="s-grid" id="firms"></div>
+
+  <div class="s-h2" id="moreTitle">More firms with a code <span class="s-note" style="text-transform:none;letter-spacing:0">— no rule data in T58 yet</span></div>
+  <div class="bc-more" id="moreCodes"></div>
+
   <div style="margin-top:24px"><span class="t58-brand">T58</span></div>
 </div>
 </div></div>
