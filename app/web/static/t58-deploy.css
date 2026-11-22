@@ -1,0 +1,122 @@
+/* T58 Deploy: one clean look for the Demo, MT5 and Live tabs.
+   Everything is scoped under .dv so it never leaks into other pages. The flow on every tab is the same:
+   1) choose what to run (Trading bot or Strategy)  2) pick it  3) configure  4) start  5) watch it. */
+.dv { --dv-r: 16px; --dv-gap: 16px; max-width: 1100px; }
+.dv * { box-sizing: border-box; }
+
+/* ---- cards and steps ---- */
+.dv-card { position: relative; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--dv-r); padding: 20px 22px; margin: 0 0 var(--dv-gap); }
+html:not([data-theme="light"]) .dv-card { background: linear-gradient(160deg, rgba(255,255,255,.045), rgba(255,255,255,.01) 40%), var(--panel-2); box-shadow: 0 14px 34px -22px rgba(0,0,0,.7); }
+.dv-card > h3, .dv-step { margin: 0 0 14px; font-size: 15px; font-weight: 650; color: var(--text); display: flex; align-items: center; gap: 10px; letter-spacing: .005em; }
+.dv-num { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; font-weight: 800; color: var(--on-teal);
+          background: linear-gradient(135deg, var(--teal), var(--neon-cyan, var(--teal))); }
+.dv-sub { margin: -8px 0 14px; font-size: 13px; color: var(--text-muted); line-height: 1.55; }
+.dv-hint { font-size: 12.5px; color: var(--text-muted); line-height: 1.55; margin: 8px 0 0; }
+.dv-hint a, .dv-sub a { color: var(--teal); text-decoration: none; } .dv-hint a:hover, .dv-sub a:hover { text-decoration: underline; }
+.dv-notice { border: 1px solid rgba(var(--amber-rgb, 245,185,66), .4); background: rgba(var(--amber-rgb, 245,185,66), .08); color: var(--text); border-radius: 12px; padding: 11px 14px; font-size: 13px; line-height: 1.5; margin: 0 0 var(--dv-gap); }
+.dv-notice.bad { border-color: rgba(var(--coral-rgb, 255,107,107), .45); background: rgba(var(--coral-rgb, 255,107,107), .08); }
+.dv-notice.good { border-color: rgba(var(--teal-rgb), .45); background: rgba(var(--teal-rgb), .08); }
+
+/* ---- page tabs (Demo / MT5 / Live) ---- */
+.dv-seg { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 14px; margin: 4px 0 20px; background: var(--panel-3); max-width: 100%; overflow-x: auto; }
+.dv-seg a { padding: 9px 18px; border-radius: 10px; font-weight: 650; font-size: 13.5px; color: var(--text-muted); text-decoration: none; white-space: nowrap; transition: background .15s, color .15s; }
+.dv-seg a:hover { color: var(--text); }
+.dv-seg a small { font-weight: 650; font-size: 10px; margin-left: 6px; text-transform: uppercase; letter-spacing: .06em; color: var(--teal); }
+.dv-seg a[aria-selected="true"] { background: linear-gradient(135deg, var(--teal), var(--neon-cyan, var(--teal))); color: var(--on-teal); box-shadow: 0 6px 18px -8px rgba(var(--teal-rgb), .7); }
+.dv-seg a[aria-selected="true"] small { color: var(--on-teal); opacity: .75; }
+
+/* ---- "Trading bot or Strategy" chooser ---- */
+.dv-kind { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dv-kind button { display: flex; align-items: center; gap: 14px; text-align: left; padding: 16px 18px; border-radius: 14px; border: 1px solid var(--border-light); background: var(--panel-3); color: var(--text); font: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.dv-kind button:hover { border-color: var(--teal); transform: translateY(-1px); }
+.dv-kind button[aria-pressed="true"] { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal), 0 10px 28px -14px rgba(var(--teal-rgb), .6); background: linear-gradient(135deg, rgba(var(--teal-rgb), .12), var(--panel-3) 70%); }
+.dv-kind .ico { flex: none; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; color: var(--teal); background: rgba(var(--teal-rgb), .14); border: 1px solid rgba(var(--teal-rgb), .3); }
+.dv-kind .ico svg { width: 21px; height: 21px; }
+.dv-kind b { display: block; font-size: 15px; } .dv-kind span.d { display: block; font-size: 12.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.4; }
+[data-dv-show][hidden] { display: none !important; }
+
+/* ---- bot picker ---- */
+.dv-bots { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.dv-bot { position: relative; text-align: left; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--border-light); background: var(--panel-3); color: var(--text); font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 5px; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.dv-bot:hover { border-color: var(--teal); transform: translateY(-1px); }
+.dv-bot[aria-pressed="true"] { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal), 0 10px 28px -14px rgba(var(--teal-rgb), .6); }
+.dv-bot .g { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--text-dim); font-weight: 650; }
+.dv-bot b { font-size: 14.5px; } .dv-bot .t { font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+.dv-bot .m { display: flex; gap: 12px; margin-top: 4px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.dv-bot .m b { font-size: 12.5px; color: var(--text); }
+.dv-bot .st { position: absolute; top: 12px; right: 14px; display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 650; color: var(--text-dim); }
+.dv-bot .st i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); } .dv-bot .st.running { color: var(--teal); } .dv-bot .st.running i { background: var(--teal); box-shadow: 0 0 8px rgba(var(--teal-rgb), .9); }
+.dv-bot-links { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 0; font-size: 12.5px; }
+.dv-bot-links a { color: var(--teal); text-decoration: none; font-weight: 650; } .dv-bot-links a:hover { text-decoration: underline; }
+
+/* ---- fields: one smooth, consistent look for every input on the Deploy pages ---- */
+.dv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 16px; }
+.dv-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dv-field > label, .dv label.dv-l { margin: 0; font-size: 11.5px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); }
+.dv input[type=text], .dv input[type=number], .dv input[type=search], .dv input[type=password], .dv select, .dv textarea, .dv .inp {
+  width: 100%; min-height: 44px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border-light); background: var(--panel-3); color: var(--text);
+  font: inherit; font-size: 14px; line-height: 1.3; transition: border-color .15s, box-shadow .15s, background .15s; -webkit-appearance: none; appearance: none; margin: 0; }
+.dv select { padding-right: 38px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%2395a3ad' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; }
+.dv input:hover, .dv select:hover, .dv textarea:hover { border-color: rgba(var(--teal-rgb), .45); }
+.dv input:focus, .dv select:focus, .dv textarea:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(var(--teal-rgb), .2); background: var(--panel-2); }
+.dv input::placeholder, .dv textarea::placeholder { color: var(--text-dim); }
+.dv input[type=checkbox], .dv input[type=radio] { width: 17px; min-height: 0; height: 17px; padding: 0; accent-color: var(--teal); }
+.dv textarea { min-height: 96px; }
+.dv .flabel { display: block; margin: 0 0 6px; font-size: 11.5px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); }
+.dv .lc-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 16px; margin-bottom: 14px; } .dv .lc-col { min-width: 0; }
+
+/* ---- buttons ---- */
+.dv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 22px; border-radius: 12px; border: 1px solid var(--border-light); background: var(--panel-3); color: var(--text);
+          font: inherit; font-size: 14px; font-weight: 650; cursor: pointer; text-decoration: none; transition: filter .15s, transform .15s, border-color .15s; }
+.dv-btn:hover { border-color: var(--teal); }
+.dv-btn.primary { border: 0; background: linear-gradient(135deg, var(--teal), var(--neon-cyan, var(--teal))); color: var(--on-teal); box-shadow: 0 10px 26px -12px rgba(var(--teal-rgb), .75); }
+.dv-btn.primary:hover { filter: brightness(1.07); transform: translateY(-1px); }
+.dv-btn.danger { border-color: rgba(var(--coral-rgb, 255,107,107), .55); color: var(--coral); background: transparent; }
+.dv-btn.live { border: 0; background: linear-gradient(135deg, #ff5a5f, #ff8a5c); color: #200; }
+.dv-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; filter: none; }
+.dv-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
+
+/* ---- account hero + stats ---- */
+.dv-hero { display: flex; gap: 18px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px; }
+.dv-hero h3 { margin: 0; font-size: 17px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dv-badge { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 10.5px; font-weight: 800; letter-spacing: .07em; }
+.dv-badge.active, .dv-badge.running { background: rgba(var(--teal-rgb), .16); color: var(--teal); }
+.dv-badge.passed { background: rgba(120, 150, 255, .18); color: #8fa8ff; } .dv-badge.breached { background: rgba(var(--coral-rgb, 255,107,107), .16); color: var(--coral); }
+.dv-badge.funded { background: rgba(var(--gold-rgb, 245,185,66), .18); color: var(--gold, #f5b942); }
+.dv-sizes { display: inline-flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--panel-3); border: 1px solid var(--border); }
+.dv-sizes button { border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: 12.5px; font-weight: 650; padding: 7px 13px; border-radius: 9px; cursor: pointer; }
+.dv-sizes button.on { background: var(--teal); color: var(--on-teal); }
+.dv-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.dv-stat { padding: 12px 14px; border-radius: 12px; background: var(--panel-3); border: 1px solid var(--border); min-width: 0; }
+.dv-stat small { display: block; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); font-weight: 650; }
+.dv-stat b { display: block; margin-top: 4px; font-size: 19px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.dv .up { color: var(--teal); } .dv .down { color: var(--coral); }
+.dv-bar { height: 10px; border-radius: 6px; background: var(--border); overflow: hidden; margin-top: 6px; } .dv-bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--teal), var(--neon-cyan, var(--teal))); transition: width .4s ease; }
+.dv-prog { margin-top: 14px; font-size: 12.5px; color: var(--text-muted); }
+
+/* ---- the "what next" decision after a passed evaluation ---- */
+.dv-choose { border-color: rgba(var(--teal-rgb), .5); background: linear-gradient(160deg, rgba(var(--teal-rgb), .12), var(--panel-2) 65%); }
+.dv-choose h3 { font-size: 17px; }
+.dv-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.dv-choice { display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; border-radius: 14px; border: 1px solid var(--border-light); background: var(--panel-3); color: var(--text); text-align: left; font: inherit; cursor: pointer; width: 100%; transition: border-color .15s, transform .15s; }
+.dv-choice:hover { border-color: var(--teal); transform: translateY(-1px); }
+.dv-choice.primary { border-color: var(--teal); background: linear-gradient(135deg, rgba(var(--teal-rgb), .16), var(--panel-3) 75%); }
+.dv-choice b { font-size: 15px; } .dv-choice span { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+.dv-choice em { font-style: normal; font-weight: 700; font-size: 12.5px; color: var(--teal); margin-top: 4px; }
+
+/* ---- monitor ---- */
+.dv-mon { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+.dv-mon-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.dv-mon-head b { font-size: 14px; }
+.dv-why { font-size: 13px; background: var(--panel-3); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; margin: 0 0 12px; color: var(--text); line-height: 1.5; }
+.dv-table { width: 100%; border-collapse: collapse; font-size: 13px; } .dv-table th { text-align: left; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-dim); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.dv-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); } .dv-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+.dv-code { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel-3); border: 1px solid var(--border); padding: 10px 12px; border-radius: 10px; font-size: 12px; margin: 6px 0 12px; }
+.dv-details > summary { cursor: pointer; font-size: 13px; font-weight: 650; color: var(--text-muted); list-style: none; padding: 4px 0; }
+.dv-details > summary::-webkit-details-marker { display: none; }
+.dv-details > summary::before { content: "\25B8"; display: inline-block; margin-right: 8px; color: var(--teal); transition: transform .15s; }
+.dv-details[open] > summary::before { transform: rotate(90deg); }
+.dv-details[open] > summary { margin-bottom: 12px; }
+
+@media (max-width: 720px) { .dv-kind { grid-template-columns: 1fr; } .dv-card { padding: 16px; } .dv-seg a { padding: 9px 13px; } }
+@media (prefers-reduced-motion: reduce) { .dv-kind button, .dv-bot, .dv-choice, .dv-btn { transition: none; } .dv-kind button:hover, .dv-bot:hover, .dv-choice:hover { transform: none; } }

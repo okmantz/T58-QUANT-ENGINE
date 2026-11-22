@@ -1,5 +1,5 @@
 /*
- * Floating Project Chat widget -- client-side logic.
+ * Floating "Coach" chat widget (formerly "Project Chat") -- client-side logic.
  * Server API: app/web/project_routes.py (all under /api/projects).
  *
  * State kept here is intentionally minimal: the server (via the Flask
@@ -28,6 +28,17 @@
   };
 
   var els = {};
+
+  var ICON_CHAT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01"/></svg>';
+  var ICON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+  // What Coach offers on a fresh chat. Each chip either asks Coach a question or jumps to the right place in the app.
+  var CHIPS = [
+    { label: "What should I do next?", ask: "Based on where my work stands, what should I do next? Keep it to three steps." },
+    { label: "How do I pass an evaluation?", ask: "Explain in simple terms how to give a strategy the best chance of passing a prop-firm evaluation." },
+    { label: "Review my risk settings", ask: "What risk settings should I check before deploying a strategy or bot to an account?" },
+    { label: "Explain a result", ask: "Explain what profit factor, max drawdown and win rate tell me, and which one matters most for a prop-firm evaluation." },
+    { label: "Today's updates", go: "brief" }
+  ];
 
   function $(id) { return document.getElementById(id); }
 
@@ -84,10 +95,12 @@
   function setLauncherState(isOpen) {
     els.launcher.classList.toggle("open", isOpen);
     els.launcher.setAttribute("aria-expanded", isOpen ? "true" : "false");
-    var label = isOpen ? "Collapse Project Chat" : "Open Project Chat";
+    var label = isOpen ? "Collapse Coach" : "Open Coach";
     els.launcher.title = label;
     els.launcher.setAttribute("aria-label", label);
-    if (els.launcherIcon) els.launcherIcon.innerHTML = isOpen ? "&#9662;" : "&#128172;";
+    if (els.launcherIcon) els.launcherIcon.innerHTML = isOpen ? ICON_DOWN : ICON_CHAT;
+    var lab = els.launcher.querySelector(".t58-pc-launcher-label");
+    if (lab) lab.textContent = isOpen ? "Hide" : "Coach";
   }
 
   function openPanel() {
@@ -144,7 +157,7 @@
     var open = {};
     box.querySelectorAll(".t58-pc-bs").forEach(function (s) { open[s.getAttribute("data-id")] = !s.querySelector(".t58-pc-bb").hidden; });
     Object.keys(sess.sections || {}).forEach(function (k) { if (!(k in open)) open[k] = !!sess.sections[k]; });
-    var html = '<div class="t58-pc-bh"><b>T58 Morning Briefing</b><span>' + new Date(d.generated_at * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}) + '</span></div>';
+    var html = '<div class="t58-pc-bh"><b>Coach&rsquo;s update</b><span>' + new Date(d.generated_at * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}) + '</span></div>';
     if (d.empty) html += '<div class="t58-pc-bempty">' + esc(d.empty_line) + '</div>';
     (d.sections || []).forEach(function (s, i) {
       var isOpen = (s.id in open) ? open[s.id] : i < 2;
@@ -197,7 +210,24 @@
       }
       state.project = null;
       renderEmptyState();
+      if (!state.projectList.length) return ensureDefaultProject();
     });
+  }
+
+  // Coach should be ready the first time it is opened: with no project yet, quietly create one.
+  var creatingDefault = false;
+  function ensureDefaultProject() {
+    if (creatingDefault) return Promise.resolve();
+    creatingDefault = true;
+    return apiFetch("", { method: "POST", body: JSON.stringify({ name: "My trading" }) }).then(function (data) {
+      creatingDefault = false;
+      if (!data.project) return;
+      return apiFetch("").then(function (list) {
+        state.projectList = list.projects || [];
+        renderProjectSelect();
+        return loadProject(data.project.id, true);
+      });
+    }).catch(function () { creatingDefault = false; });
   }
 
   function renderProjectSelect() {
@@ -285,13 +315,44 @@
     var container = els.messages;
     container.innerHTML = "";
     var history = (state.project && state.project.chat_history) || [];
+    if (!history.length) renderWelcome(container);
     history.forEach(function (turn) {
       appendMessageEl(turn.role, turn.content);
     });
     container.scrollTop = container.scrollHeight;
   }
 
+  // Coach's opening message with one-tap starters (shown only while the conversation is empty).
+  function renderWelcome(container) {
+    var box = document.createElement("div");
+    box.className = "t58-pc-welcome";
+    box.id = "t58-pc-welcome";
+    var hello = document.createElement("div");
+    hello.className = "hello";
+    hello.innerHTML = "Hi, I&rsquo;m <b>Coach</b>. I keep an eye on your strategies, runs and accounts, suggest what to do next, " +
+      "and answer questions about testing, risk and prop-firm rules. Ask me anything, or tap a starter below.";
+    box.appendChild(hello);
+    var chips = document.createElement("div");
+    chips.className = "t58-pc-chips";
+    CHIPS.forEach(function (c) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "t58-pc-chip" + (c.go ? " go" : "");
+      b.textContent = c.label;
+      b.addEventListener("click", function () {
+        if (c.go) { showTab(c.go); return; }
+        els.input.value = c.ask;
+        sendMessage(new Event("submit"));
+      });
+      chips.appendChild(b);
+    });
+    box.appendChild(chips);
+    container.appendChild(box);
+  }
+
   function appendMessageEl(role, content) {
+    var w = document.getElementById("t58-pc-welcome");
+    if (w && w.parentNode) w.parentNode.removeChild(w);
     var div = document.createElement("div");
     div.className = "t58-pc-msg " + escapeHtml(role);
     div.innerHTML = escapeHtml(content);
@@ -301,7 +362,7 @@
   }
 
   function sendMessage(event) {
-    event.preventDefault();
+    if (event && event.preventDefault) event.preventDefault();
     if (!state.project) return;
     var text = els.input.value.trim();
     if (!text) return;
@@ -316,7 +377,7 @@
         els.typing.hidden = true;
         els.sendBtn.disabled = false;
         if (data.error) {
-          var div = appendMessageEl("error", data.error);
+          var div = appendMessageEl("error", data.error + " (Coach's chat runs on your local AI model; the Updates tab still works without it.)");
           div.className = "t58-pc-msg error";
           return;
         }
@@ -433,6 +494,15 @@
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePanel(); }
     });
     els.closeBtn.addEventListener("click", closePanel);
+    els.menuBtn = $("t58-pc-menu");
+    els.projbar = $("t58-pc-projbar");
+    if (els.menuBtn && els.projbar) {
+      els.menuBtn.addEventListener("click", function () {
+        var show = els.projbar.hidden;
+        els.projbar.hidden = !show;
+        els.menuBtn.setAttribute("aria-expanded", show ? "true" : "false");
+      });
+    }
     els.newBtn.addEventListener("click", createProject);
     els.renameBtn.addEventListener("click", renameProject);
     els.deleteBtn.addEventListener("click", deleteProject);

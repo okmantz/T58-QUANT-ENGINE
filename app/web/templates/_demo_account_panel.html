@@ -15,10 +15,31 @@
   .da-steps{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; margin-top:14px;}
   .da-num{display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:var(--lc-acc); color:#04120d; font-size:12px; font-weight:800; margin-right:8px;}
 </style>
-<div class="da" id="da-root">
+<link rel="stylesheet" href="/static/t58-deploy.css">
+<div class="da dv" id="da-root">
 {% if mode != 'demo' %}<div class="lc-notice bad">You are in <b>Live</b> mode. The demo account only books trades while the toggle is on <b>Demo</b> (<a href="/settings/account#account-mode">Account settings</a>).</div>{% endif %}
-{% if acct.status != 'active' %}<div class="lc-notice{{ '' if acct.status == 'passed' else ' bad' }}">{{ acct.status_reason }}
-  <form method="POST" action="/demo-account/reset" style="display:inline;margin-left:10px"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button class="lc-btn" type="submit">Start attempt {{ acct.attempt + 1 }}</button></form></div>{% endif %}
+{% set ns = acct.next_step %}
+{% if ns %}
+<div class="dv-card dv-choose" id="da-next">
+  <h3>{{ ns.title }}</h3>
+  <p class="dv-sub">{{ acct.status_reason }}</p>
+  <div class="dv-choices">
+  {% for o in ns.options %}
+    <form method="POST" action="/demo-account/{{ o.key }}"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="dv-choice{{ ' primary' if loop.first and ns.kind == 'choose' else '' }}"><b>{{ o.label }}</b><span>{{ o.detail }}</span><em>{{ 'Recommended' if loop.first and ns.kind == 'choose' else 'Choose' }} &rarr;</em></button>
+    </form>
+  {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% if acct.phase == 'funded' and acct.payout %}
+<div class="dv-card" id="da-payout">
+  <h3>Payouts <span class="dv-badge funded">FUNDED</span></h3>
+  <p class="dv-sub">{% if acct.payout.eligible %}Your payout rule is met. Take a simulated payout of <b>${{ '{:,.2f}'.format(acct.payout.amount or 0) }}</b> (your share ${{ '{:,.2f}'.format(acct.payout.trader_share or 0) }}).{% else %}{{ (acct.payout.reasons or ['Keep trading: the payout rule is not met yet.'])|join(' ') }}{% endif %}</p>
+  <form method="POST" action="/demo-account/payout"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button class="dv-btn primary" type="submit" {% if not acct.payout.eligible %}disabled{% endif %}>Take payout</button>
+  <span class="dv-hint" style="margin-left:10px">{{ acct.payout.count or 0 }} of {{ acct.payout.max_payouts }} taken &middot; total ${{ '{:,.2f}'.format(acct.payout_total or 0) }}</span></form>
+</div>
+{% endif %}
 
 <div class="lc-card">
   <h3 style="margin:0 0 4px;">T58 Prop Firm demo <span class="da-badge da-{{ acct.status }}" id="da-status">{{ acct.status|upper }}</span></h3>
@@ -37,16 +58,31 @@
     <div class="da-bar"><i id="da-target-bar" style="width:{{ [acct.target_pct, 100]|min }}%"></i></div></div>
 </div>
 
+<div class="dv-card" id="da-kind-card">
+  <h3><span class="dv-num">1</span>What do you want to run?</h3>
+  <div class="dv-kind" id="da-kind">
+    <button type="button" data-kind="bot" aria-pressed="true"><span class="ico"><svg class="lu"><use href="#lu-bot"/></svg></span><span><b>A trading bot</b><span class="d">Ready-made, self-managing. Pass, get paid, or grow profit.</span></span></button>
+    <button type="button" data-kind="strategy" aria-pressed="false"><span class="ico"><svg class="lu"><use href="#lu-flask-conical"/></svg></span><span><b>One of my strategies</b><span class="d">Trade a strategy you built through a TradingView alert.</span></span></button>
+  </div>
+</div>
+<div class="dv-card" id="da-bots-card" data-dv-show="bot">
+  <h3><span class="dv-num">2</span>Choose your bot on this account</h3>
+  <p class="dv-sub">Pick one of your bots and start it on the T58 demo account. Prefer your own strategy? Use step 2 below instead (one or the other).</p>
+  <div class="dv-bots" id="da-bots"><span class="dv-hint">Loading bots&hellip;</span></div>
+  <div class="dv-actions"><button class="dv-btn primary" type="button" id="da-bot-start" disabled>Start bot</button><button class="dv-btn" type="button" id="da-bot-stop" hidden>Stop bot</button><span class="dv-hint" id="da-bot-msg"></span></div>
+  <p class="dv-bot-links"><a href="/trading-bots" id="da-bot-edit">Edit &amp; configure bots</a><a href="/trading-bots?new=1">Create a bot</a></p>
+</div>
+
 <div class="da-steps">
   <div class="lc-card" style="margin:0;">
-    <h3 style="margin:0 0 8px;"><span class="da-num">1</span>Pick the account size</h3>
+    <h3 style="margin:0 0 8px;"><span class="da-num">3</span>Pick the account size</h3>
     <form method="POST" action="/demo-account/tier" class="da-sizes">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       {% for t in tiers %}<button class="lc-btn da-size{{ ' on' if t == acct.size else '' }}" type="submit" name="size" value="{{ t }}" aria-pressed="{{ 'true' if t == acct.size else 'false' }}">${{ '{:,.0f}'.format(t) }}</button>{% endfor %}
     </form>
     <p class="lc-hint">Changing the size starts a fresh account; the loss limit, target and soft limit scale with it.</p>
   </div>
-  <div class="lc-card" style="margin:0;">
+  <div class="lc-card" style="margin:0;" data-dv-show="strategy" hidden>
     <h3 style="margin:0 0 8px;"><span class="da-num">2</span>Choose a strategy to trade it</h3>
     <label class="flabel" for="da-strategy">Saved strategy</label>
     <select class="inp" id="da-strategy">
@@ -113,5 +149,44 @@
     }).catch(function(){});
   }
   setInterval(refresh, 20000);
+
+  // ---- bot or strategy: one or the other ----
+  (function(){
+    var seg = $('da-kind'); if (!seg) return;
+    function pick(k){ Array.prototype.forEach.call(seg.querySelectorAll('button'), function(b){ b.setAttribute('aria-pressed', b.dataset.kind === k ? 'true' : 'false'); });
+      Array.prototype.forEach.call(document.querySelectorAll('#da-root [data-dv-show]'), function(el){ el.hidden = el.getAttribute('data-dv-show') !== k; }); }
+    Array.prototype.forEach.call(seg.querySelectorAll('button'), function(b){ b.addEventListener('click', function(){ pick(b.dataset.kind); }); });
+    pick({{ ('strategy' if (prefill_strategy or request.args.get('kind') == 'strategy') else 'bot')|tojson }});
+  })();
+  // ---- bot picker (demo venue) ----
+  (function(){
+    var box = $('da-bots'), go = $('da-bot-start'), stop = $('da-bot-stop'), msg = $('da-bot-msg'), sel = null;
+    function esc(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+    function paint(){
+      Array.prototype.forEach.call(box.querySelectorAll('.dv-bot'), function(b){ b.setAttribute('aria-pressed', b.dataset.id === sel ? 'true' : 'false'); });
+      var cur = (window.__daBots || []).filter(function(b){ return b.id === sel; })[0];
+      go.disabled = !cur || cur.running; stop.hidden = !(cur && cur.running);
+      var ed = $('da-bot-edit'); if (ed && sel) ed.href = '/trading-bots?bot=' + encodeURIComponent(sel) + '&tab=settings';
+    }
+    function load(){
+      fetch('/trading-bots/api/bots').then(function(r){ return r.json(); }).then(function(d){
+        var bots = d.bots || []; window.__daBots = bots.map(function(b){ var c = b.config || {};
+          return {id: c.id, name: c.name, tag: c.tagline || c.description || '', goal: b.objective_name || '', running: !!b.running}; });
+        if (!sel && window.__daBots.length) sel = window.__daBots[0].id;
+        box.innerHTML = window.__daBots.map(function(b){
+          return '<button type="button" class="dv-bot" data-id="' + esc(b.id) + '"><span class="st' + (b.running ? ' running' : '') + '"><i></i>' + (b.running ? 'Running' : 'Ready') + '</span>' +
+                 '<span class="g">' + esc(b.goal) + '</span><b>' + esc(b.name) + '</b><span class="t">' + esc(b.tag) + '</span></button>'; }).join('') || '<span class="dv-hint">No bots yet. <a href="/trading-bots?new=1">Create one</a>.</span>';
+        Array.prototype.forEach.call(box.querySelectorAll('.dv-bot'), function(b){ b.addEventListener('click', function(){ sel = b.dataset.id; paint(); }); });
+        paint();
+      }).catch(function(){ box.innerHTML = '<span class="dv-hint">Could not load bots.</span>'; });
+    }
+    function post(path){ return fetch('/trading-bots/api/bot/' + encodeURIComponent(sel) + path, {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':tok}, body: JSON.stringify({venue:'demo'})}).then(function(r){ return r.json(); }); }
+    go.addEventListener('click', function(){ if (!sel) return; go.disabled = true; msg.textContent = 'Starting\u2026';
+      // This tab always runs on the T58 demo account: point the bot at it first, so a bot saved on a real account is never started from here.
+      fetch('/trading-bots/api/bot/' + encodeURIComponent(sel) + '/settings', {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':tok}, body: JSON.stringify({account:{venue:'demo'}})})
+      .then(function(){ return post('/start'); }).then(function(d){ msg.textContent = d.error || d.message || 'Bot started on the demo account.'; load(); }).catch(function(){ msg.textContent = 'Could not start the bot.'; load(); }); });
+    stop.addEventListener('click', function(){ post('/stop').then(function(d){ msg.textContent = d.error || 'Stopped.'; load(); }); });
+    load(); setInterval(function(){ if (document.visibilityState === 'visible' && $('da-root') && $('da-root').offsetParent) load(); }, 15000);
+  })();
 })();
 </script>

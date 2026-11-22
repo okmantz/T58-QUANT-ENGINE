@@ -6,6 +6,10 @@ start + offset, a daily soft limit, a profit target and a best-day consistency c
 TradingView / Pine alerts as a real account (through the webhook relay); every closed trade is booked here as a visible win or
 loss, and the account passes or breaches exactly as a real evaluation would.  Live mode never touches this file.
 
+Funded stage: when the evaluation is PASSED the person picks one of two ways forward (``advance_to_funded`` or ``reset``): move on to the
+simulated funded account, where the Payout Hunter and any strategy trade for payouts, or start the evaluation again. A funded demo account has no
+profit target; it pays out (``request_payout``) once enough winning days have been banked in the cycle and the cycle is net positive.
+
 State: one small JSON file under data/config/. Pure stdlib; all money values are dollars.
 """
 from __future__ import annotations
@@ -59,6 +63,11 @@ class DemoAccount:
     relay_ids: list = field(default_factory=list)   # webhook relays that feed this account
     strategy: str = ""                      # name of the deployed strategy (display only)
     trades: list = field(default_factory=list)
+    phase: str = "evaluation"               # evaluation | funded (the funded stage is entered by choice after a passed evaluation)
+    payouts: list = field(default_factory=list)      # simulated payouts taken on the funded stage: {n, at, amount, trader_share}
+    cycle_from: int = 0                     # index into ``trades`` where the current payout cycle starts
+    last_payout_balance: float = 0.0        # balance right after the last payout (the funded start balance before the first one)
+    funded_since: str = ""
 
     # ---- derived
     @property
@@ -78,7 +87,8 @@ class DemoAccount:
             **{k: v for k, v in asdict(self).items() if k != "trades"},
             "net_pnl": self.net_pnl, "cushion": round(self.balance - self.floor, 2),
             "profit_target": r.profit_target, "loss_limit": r.loss_limit, "soft_daily_limit": r.soft_daily_limit,
-            "target_pct": round(100.0 * max(self.net_pnl, 0.0) / r.profit_target, 1) if r.profit_target else 0.0,
+            "target_pct": (round(100.0 * min(payout_status(self)["winning_days"] / max(payout_status(self)["days_needed"], 1), 1.0), 1)
+                           if self.phase == "funded" else (round(100.0 * max(self.net_pnl, 0.0) / r.profit_target, 1) if r.profit_target else 0.0)),
             "day_pnl": round(self.balance - self.day_start, 2),
             "n_trades": n, "n_wins": len(wins), "n_losses": len(losses),
             "win_rate": round(100.0 * len(wins) / n, 1) if n else None,
@@ -87,8 +97,66 @@ class DemoAccount:
             "recent_trades": list(reversed(self.trades[-25:])),
             "rules_sheet": rules_sheet(self), "trading_days": trading_days(self), "equity": equity_points(self),
             "daily_room": round(r.soft_daily_limit + (self.balance - self.day_start), 2), "projection": projection(self),
-            "stage": "Evaluation" if self.status == "active" else ("Evaluation passed" if self.status == "passed" else "Evaluation failed"),
+            "stage": stage_label(self),
+            "payout": payout_status(self), "payout_total": round(sum(p.get("amount", 0.0) for p in self.payouts), 2),
+            "next_step": next_step(self),
         }
+
+
+def stage_label(acct: DemoAccount) -> str:
+    if acct.phase == "funded":
+        return "Funded" if acct.status == "active" else "Funded account breached"
+    return "Evaluation" if acct.status == "active" else ("Evaluation passed" if acct.status == "passed" else "Evaluation failed")
+
+
+def next_step(acct: DemoAccount) -> dict | None:
+    """What the person should do now, when the account is waiting on a decision (passed or breached). None while it is simply trading."""
+    if acct.phase == "evaluation" and acct.status == "passed":
+        return {"kind": "choose", "title": "Evaluation passed. What next?",
+                "options": [{"key": "funded", "label": "Move to the funded demo account",
+                             "detail": "Fresh balance and loss floor, no profit target: trade for payouts with the Payout Hunter bot or your strategy."},
+                            {"key": "reset", "label": "Start the evaluation again",
+                             "detail": "A clean evaluation attempt (same size), e.g. to test another bot or strategy."}]}
+    if acct.status == "breached":
+        return {"kind": "restart", "title": "Account breached" if acct.phase == "evaluation" else "Funded account breached",
+                "options": [{"key": "reset", "label": "Start a new evaluation attempt", "detail": "Back to a fresh evaluation at the same size."}]}
+    return None
+
+
+def _cycle_days(acct: DemoAccount) -> dict:
+    days: dict = {}
+    for t in acct.trades[acct.cycle_from:]:
+        d = t.get("day") or str(t.get("closed_at", ""))[:10]
+        days[d] = days.get(d, 0.0) + float(t.get("pnl") or 0.0)
+    return days
+
+
+def payout_status(acct: DemoAccount) -> dict | None:
+    """Funded stage only: where the account stands against its payout rule (enough winning days AND a net-positive cycle)."""
+    if acct.phase != "funded":
+        return None
+    r = acct.rules
+    p = r.payout
+    days = _cycle_days(acct)
+    winning = sum(1 for v in days.values() if v >= p.qualifying_day_min)
+    gain = round(acct.balance - (acct.last_payout_balance or acct.start_balance), 2)
+    buffer_room = round(acct.balance - acct.floor - p.buffer_above_floor, 2)
+    amount = max(min(gain, buffer_room, p.cap if p.cap else float("inf")), 0.0)
+    reasons = []
+    if acct.status != "active":
+        reasons.append("The account is no longer active.")
+    if len(acct.payouts) >= p.max_payouts:
+        reasons.append(f"The simulated account allows {p.max_payouts} payouts.")
+    if winning < p.qualifying_days:
+        reasons.append(f"{winning} of {p.qualifying_days} winning days (${p.qualifying_day_min:,.0f} or more) banked this cycle.")
+    if gain <= 0:
+        reasons.append("The cycle is not net positive yet.")
+    elif amount <= 0:
+        reasons.append(f"Keep ${p.buffer_above_floor:,.0f} above the loss floor before taking a payout.")
+    eligible = not reasons
+    return {"eligible": eligible, "amount": round(amount, 2) if eligible else 0.0, "trader_share": round(amount * p.split, 2) if eligible else 0.0,
+            "winning_days": winning, "days_needed": p.qualifying_days, "day_min": p.qualifying_day_min, "cycle_gain": gain, "split_pct": round(p.split * 100),
+            "reasons": reasons, "count": len(acct.payouts), "max_payouts": p.max_payouts}
 
 
 def trading_days(acct: DemoAccount) -> int:
@@ -105,6 +173,22 @@ def rules_sheet(acct: DemoAccount) -> list[dict]:
     share = (best / profit) if profit > 0 else 0.0
     trail = ("The floor trails your best end-of-day balance and locks once it reaches the starting balance + "
              f"${r.lock_floor_offset:,.0f}." if r.trailing else "The floor is fixed at the starting balance minus the limit.")
+    if acct.phase == "funded":
+        ps = payout_status(acct) or {}
+        p = r.payout
+        return [
+            {"key": "payout", "name": "Payout rule", "value": f"{p.qualifying_days} winning days of ${p.qualifying_day_min:,.0f}+",
+             "plain": "A payout is available once enough winning days are banked since the last payout (they need not be in a row) and the cycle is net positive.",
+             "now": f"{ps.get('winning_days', 0)} of {p.qualifying_days} winning days; cycle {ps.get('cycle_gain', 0):+,.0f}"},
+            {"key": "max_drawdown", "name": "Maximum loss (drawdown)", "value": f"${r.loss_limit:,.0f}",
+             "plain": "If your balance touches the loss floor the funded account is breached. Taking a payout never lowers the floor.",
+             "now": f"Floor ${acct.floor:,.0f}; cushion ${acct.balance - acct.floor:,.0f}"},
+            {"key": "daily_limit", "name": "Daily loss limit (soft)", "value": f"${r.soft_daily_limit:,.0f}",
+             "plain": "Lose this much in one day and trading locks until tomorrow. It does NOT fail the account.",
+             "now": f"${max(r.soft_daily_limit + (acct.balance - acct.day_start), 0):,.0f} of room left today" + (" - locked for today" if acct.day_stopped else "")},
+            {"key": "split", "name": "Profit split (simulated)", "value": f"{p.split * 100:.0f}% yours",
+             "plain": "Simulated: shows what a payout would be worth to you. No money moves.", "now": f"{len(acct.payouts)} payout(s) taken"},
+        ]
     return [
         {"key": "profit_target", "name": "Profit target", "value": f"${r.profit_target:,.0f}",
          "plain": "Make this much net profit to pass the evaluation.",
@@ -196,6 +280,43 @@ def reset(size: float | None = None, *, keep_deployment: bool = True) -> DemoAcc
                       strategy=old.strategy if keep_deployment else "")
         _save(acct)
         return acct
+
+
+def advance_to_funded() -> DemoAccount:
+    """The evaluation was passed: move on to the simulated FUNDED account (fresh balance and loss floor, no profit target, payouts instead).
+    Allowed only from a passed evaluation. The trade history stays; the payout cycle starts after it."""
+    with _LOCK:
+        acct = load()
+        if acct.phase != "evaluation" or acct.status != "passed":
+            raise ValueError("The funded account is available once the evaluation is passed.")
+        r = acct.rules
+        size = float(acct.size)
+        acct.phase, acct.status, acct.status_reason = "funded", "active", "Funded stage: trade for payouts."
+        acct.balance = acct.start_balance = acct.eod_high = acct.day_start = acct.last_payout_balance = size
+        acct.floor = size - r.loss_limit
+        acct.best_day, acct.soft_limit_hits, acct.day_stopped = 0.0, 0, False
+        acct.cycle_from, acct.funded_since, acct.payouts = len(acct.trades), _now(), []
+        _save(acct)
+        return acct
+
+
+def request_payout() -> dict:
+    """Take a simulated payout on the funded stage when the rule is met. Returns {ok, payout?, error?}; the floor does not move."""
+    with _LOCK:
+        acct = load()
+        ps = payout_status(acct)
+        if ps is None:
+            return {"ok": False, "error": "Payouts start on the funded account."}
+        if not ps["eligible"]:
+            return {"ok": False, "error": " ".join(ps["reasons"]) or "Not eligible yet."}
+        row = {"n": len(acct.payouts) + 1, "at": _now(), "amount": ps["amount"], "trader_share": ps["trader_share"], "balance_before": acct.balance}
+        acct.payouts.append(row)
+        acct.balance = round(acct.balance - ps["amount"], 2)
+        acct.last_payout_balance = acct.balance
+        acct.day_start = acct.balance          # the withdrawal is not a trading loss: today's P&L starts again from here
+        acct.cycle_from = len(acct.trades)
+        _save(acct)
+        return {"ok": True, "payout": row}
 
 
 def set_tier(size: float) -> DemoAccount:
@@ -292,7 +413,7 @@ def record_trade(pnl: float, *, root: str = "", side: str = "", qty: float = 1.0
         best = max(acct.best_day, day_pnl)
         if acct.balance <= acct.floor:
             acct.status, acct.status_reason = "breached", f"Balance ${acct.balance:,.2f} hit the loss floor ${acct.floor:,.2f}."
-        elif profit >= r.profit_target:
+        elif acct.phase == "evaluation" and profit >= r.profit_target:
             share = best / profit if profit > 0 else 1.0
             cap = r.consistency_best_day_pct
             cap = None if cap is None else (cap / 100.0 if cap > 1 else cap)

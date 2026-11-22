@@ -118,18 +118,20 @@
     }
   }
 
+  /* Sidebar groups. Every header starts folded; a header whose page you are on is opened by the server (never on the Dashboard, so a fresh start
+     shows just the headers). A header you open or fold yourself is remembered for the rest of this browser session only (sessionStorage), so the
+     sidebar does not jump between pages but is back to "just the headers" the next time the app is started. */
   function restoreNavGroups() {
     document.querySelectorAll(".t58-nav-group").forEach(function (group, idx) {
       var summary = group.querySelector("summary");
-      var key = GROUP_KEY_PREFIX + (summary ? summary.textContent.trim() : idx);
+      var key = GROUP_KEY_PREFIX + (group.getAttribute("data-nav") || (summary ? summary.textContent.trim() : idx));
       var saved = null;
-      try { saved = localStorage.getItem(key); } catch (e) {}
-      // Only override the server-rendered default (open on the active
-      // section) if the person has explicitly toggled this group before.
+      try { saved = sessionStorage.getItem(key); } catch (e) {}
+      var activeInside = !!group.querySelector(".t58-nav-item.active");
       if (saved === "open") group.setAttribute("open", "");
-      else if (saved === "closed") group.removeAttribute("open");
+      else if (saved === "closed" && !activeInside) group.removeAttribute("open");
       group.addEventListener("toggle", function () {
-        try { localStorage.setItem(key, group.open ? "open" : "closed"); } catch (e) {}
+        try { sessionStorage.setItem(key, group.open ? "open" : "closed"); } catch (e) {}
       });
     });
   }
@@ -166,7 +168,10 @@
     var main = document.querySelector(".t58-main");
     if (!main || document.querySelector(".t58-stepper")) return;
 
+    // The Create > Test > ... > Monitor strip belongs to the lifecycle pages only. On the Dashboard, Global Events, the Journal and every other
+    // page it is not drawn at all (the sidebar already lists the steps).
     var current = currentStageIndex();
+    if (current < 0) return;
     var bar = document.createElement("div");
     bar.className = "t58-stepper";
     STAGES.forEach(function (stage, i) {

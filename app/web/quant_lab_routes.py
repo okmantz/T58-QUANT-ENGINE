@@ -164,6 +164,8 @@ def _pre(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 _TOOLS = [
+    {"url": "/options-outlook", "badge": "Options", "title": "Options Outlook",
+     "description": "Plain-English options read on a ticker: what the options market is pricing in, where the walls and flip level sit, and the bias that implies."},
     {"url": "/gamma", "badge": "Options", "title": "Gamma Center",
      "description": "Dealer gamma exposure: flip level, call/put walls and regime, with the proxy-vs-real data labelling every gamma-aware strategy uses."},
     {"url": "/research-labs", "badge": "Research", "title": "Research Lab",

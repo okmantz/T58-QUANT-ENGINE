@@ -30,6 +30,8 @@
   .tb-scroll{max-height:380px; overflow:auto; border:1px solid var(--lc-border); border-radius:10px}
   .tb-tabs{display:flex; gap:4px; margin:18px 0 8px; border-bottom:1px solid var(--lc-border)} .tb-tab{padding:8px 14px; cursor:pointer; font-weight:600; font-size:13px; color:var(--lc-muted); border-bottom:2px solid transparent} .tb-tab.on{color:inherit; border-color:var(--lc-acc)}
   .tb-field{display:grid; grid-template-columns:200px 1fr; gap:8px; align-items:center; margin:8px 0; font-size:13px} @media(max-width:640px){.tb-field{grid-template-columns:1fr}}
+  .tb-legs{display:grid; gap:8px} .tb-leg{display:grid; grid-template-columns:22px minmax(0,1fr) 84px; gap:10px; align-items:center; border:1px solid var(--lc-border); border-radius:12px; padding:9px 12px; font-size:13px} .tb-leg.off{opacity:.5} .tb-leg small{display:block; color:var(--lc-muted); font-size:11.5px}
+  .tb-card .tb-card-acts{display:flex; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--lc-border)} .tb-card .tb-card-acts .tb-btn{padding:7px 12px; font-size:12.5px}
   .tb-note{font-size:12px; color:var(--lc-muted); margin-top:4px} .tb-warn{border:1px solid #d9a441; background:rgba(217,164,65,.1); border-radius:10px; padding:10px 12px; font-size:12.5px; margin:10px 0}
   .wz-back{position:fixed; inset:0; background:rgba(5,8,14,.72); z-index:60; display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:24px 12px}
   .wz{background:var(--lc-bg,#0f1218); border:1px solid var(--lc-border); border-radius:18px; width:min(960px,100%); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:22px} @media(max-width:860px){.wz{grid-template-columns:1fr}}
@@ -94,6 +96,7 @@
     <div class="tb-field"><label>Daily stop (share of the daily limit)</label><input class="tb-in" id="s-day" type="number" step="0.05" min="0.05" max="1"></div>
     <div class="tb-field" id="s-cush-row"><label>Max risk as share of cushion</label><input class="tb-in" id="s-cush" type="number" step="0.05" min="0.05" max="1"></div>
     <div class="tb-field"><label>Max trades per day</label><input class="tb-in" id="s-mtd" type="number" min="1" max="50"></div>
+    <div class="tb-field" style="align-items:start"><label>Strategy mix<span class="tb-note" style="display:block">Turn a strategy off or change how big it trades (1 = normal size). Shipped bots can be tuned here; &ldquo;Restore shipped defaults&rdquo; undoes every change.</span></label><div id="s-legs" class="tb-legs"></div></div>
     <div class="tb-row"><button class="tb-btn go" id="s-save" type="button">Save settings</button><button class="tb-btn" id="s-edit" type="button">Edit everything (strategies, goal, risk)…</button><button class="tb-btn" id="s-defaults" type="button">Restore shipped defaults</button><button class="tb-btn" id="s-dup" type="button">Duplicate as custom bot</button><button class="tb-btn stop" id="s-del" type="button">Delete</button></div>
     <div id="s-live" class="tb-warn" hidden>This bot is pointed at a real broker account and will place real orders. Starting asks for the live-deploy unlock and the phrase <b>DEPLOY LIVE</b>. The calibration is research-grade: start on the demo account first.</div>
     <details style="margin-top:14px"><summary style="cursor:pointer; font-weight:600">Connect a prop-firm or live account</summary>
@@ -164,11 +167,24 @@
         '<div class="tb-name">'+esc(c.name)+'</div><div class="tb-tag">'+esc(c.tagline||'')+'</div>'+
         '<div class="tb-big '+cls(m.net_pnl)+'">'+money(m.net_pnl,true)+'</div>'+
         '<svg class="tb-spark" viewBox="0 0 300 46" preserveAspectRatio="none">'+spark(m.equity,300,46)+'</svg>'+
-        '<div class="tb-mini"><span><b>'+m.trades+'</b>trades</span><span><b>'+(m.win_rate==null?'–':m.win_rate+'%')+'</b>win rate</span><span><b>'+(m.profit_factor==null?'–':m.profit_factor)+'</b>profit factor</span><span><b>'+money(m.max_drawdown)+'</b>max DD</span></div></div>';
+        '<div class="tb-mini"><span><b>'+m.trades+'</b>trades</span><span><b>'+(m.win_rate==null?'–':m.win_rate+'%')+'</b>win rate</span><span><b>'+(m.profit_factor==null?'–':m.profit_factor)+'</b>profit factor</span><span><b>'+money(m.max_drawdown)+'</b>max DD</span></div>'+
+        '<div class="tb-card-acts"><button type="button" class="tb-btn go" data-act="open">Open</button><button type="button" class="tb-btn" data-act="cfg">Configure</button></div></div>';
     }).join('');
     [].forEach.call(document.querySelectorAll('.tb-card'),function(el){el.onclick=function(){select(el.getAttribute('data-id'))}});
+    [].forEach.call(document.querySelectorAll('.tb-card [data-act]'),function(btn){btn.onclick=function(e){
+      e.stopPropagation(); var id=btn.closest('.tb-card').getAttribute('data-id'), act=btn.getAttribute('data-act');
+      select(id).then(function(){ openTab(act==='cfg'?'settings':'trades'); var d=$('tb-detail'); if(d&&d.scrollIntoView) d.scrollIntoView({behavior:'smooth',block:'start'}); });
+    }});
   }
-  function loadList(){return api('bots').then(function(r){if(r.ok){renderCards(r.bots); if(!cur&&r.bots.length) select(r.bots[0].config.id)}})}
+  function openTab(name){var t=document.querySelector('.tb-tab[data-t="'+name+'"]'); if(t) t.click()}
+  var QS=new URLSearchParams(location.search), firstLoad=true;
+  function loadList(){return api('bots').then(function(r){if(r.ok){renderCards(r.bots);
+    if(firstLoad){ firstLoad=false;
+      var want=QS.get('bot'), ok=want&&r.bots.some(function(b){return b.config.id===want});
+      if(ok){ select(want).then(function(){ if(QS.get('tab')) openTab(QS.get('tab')); }); }
+      else if(!cur&&r.bots.length) select(r.bots[0].config.id);
+      if(QS.get('new')==='1') setTimeout(function(){ var nb=$('tb-new'); if(nb) nb.click(); },200);
+    } else if(!cur&&r.bots.length) select(r.bots[0].config.id)}})}
   function select(id){cur=id; return refresh(true)}
   function refresh(fill){
     if(!cur) return;
@@ -199,7 +215,24 @@
     $('s-live').hidden=c.account.venue!=='broker';
     $('s-cush-row').style.display=c.objective==='NET'&&false?'none':'grid';
   }
+  function legsEditor(c){
+    var box=$('s-legs'); if(!box) return;
+    box.innerHTML=(c.legs||[]).map(function(l,i){
+      return '<div class="tb-leg" data-label="'+esc(l.label)+'"><input type="checkbox" data-leg-on checked aria-label="Use '+esc(l.label)+'"><div><b>'+esc(l.label)+'</b> <span class="lc-muted">'+esc(l.symbol||'')+'</span><small>'+esc(l.note||'')+'</small></div>'+
+        '<input class="tb-in" data-leg-w type="number" min="0.1" max="3" step="0.05" value="'+l.weight+'" aria-label="Size of '+esc(l.label)+'"></div>';
+    }).join('')||'<div class="lc-muted">No strategies.</div>';
+    [].forEach.call(box.querySelectorAll('input'),function(i){i.oninput=i.onchange=function(){$('s-name')._dirty=true; var row=i.closest('.tb-leg'); row.classList.toggle('off',!row.querySelector('[data-leg-on]').checked)}});
+    // the full wizard collapses a bot to one row per file on ONE instrument, so it is only offered when that loses nothing
+    var ids={}, syms={}, dup=false; (c.legs||[]).forEach(function(l){ if(ids[l.strategy]) dup=true; ids[l.strategy]=1; if(l.kind!=='gate27') syms[l.symbol]=1; });
+    var safe=!dup&&Object.keys(syms).length<=1; var eb=$('s-edit'); if(eb){ eb.style.display=safe?'inline-block':'none'; }
+  }
+  function legsPayload(){
+    return [].map.call(document.querySelectorAll('#s-legs .tb-leg'),function(row){
+      return {label:row.getAttribute('data-label'), enabled:row.querySelector('[data-leg-on]').checked, weight:row.querySelector('[data-leg-w]').value};
+    });
+  }
   function fillSettings(c){
+    legsEditor(c);
     var g=c.governor||{}; $('s-name').value=c.name; $('s-risk').value=g.base_risk_pct; $('s-day').value=g.day_stop_frac; $('s-cush').value=g.cushion_risk_frac==null?'':g.cushion_risk_frac; $('s-mtd').value=c.max_trades_per_day; $('s-size').value=c.account.size;
     var sel=$('s-acct'); sel.innerHTML=accounts.map(function(a){return '<option value="'+esc(a.id)+'" data-kind="'+a.kind+'">'+esc(a.name)+(a.kind==='demo'?' (default)':' · '+esc(a.platform||'broker'))+'</option>'}).join('')+'<option value="__paper" data-kind="paper">Paper sandbox (no rules)</option>';
     sel.value=c.account.venue==='paper'?'__paper':c.account.account_id;
@@ -208,7 +241,7 @@
   function acctPayload(){var o=$('s-acct').options[$('s-acct').selectedIndex], k=o?o.getAttribute('data-kind'):'demo';
     return {venue:k==='broker'?'broker':(k==='paper'?'paper':'demo'), account_id:k==='broker'?o.value:undefined, size:parseFloat($('s-size').value)||undefined, preset_key:k==='paper'?'':'lucid_50k'} }
   function save(extra){
-    var body={name:$('s-name').value, base_risk_pct:$('s-risk').value, day_stop_frac:$('s-day').value, cushion_risk_frac:$('s-cush').value, max_trades_per_day:$('s-mtd').value, account:acctPayload()};
+    var body={name:$('s-name').value, base_risk_pct:$('s-risk').value, day_stop_frac:$('s-day').value, cushion_risk_frac:$('s-cush').value, max_trades_per_day:$('s-mtd').value, account:acctPayload(), legs:legsPayload()};
     return api('bot/'+cur+'/settings',body).then(function(r){toast(r.ok?'Saved.':(r.error||'Could not save.')); if(r.ok){draw(r.bot,true); loadList()} return r});
   }
   $('s-save').onclick=function(){save()};

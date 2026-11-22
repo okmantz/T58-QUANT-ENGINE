@@ -1,48 +1,57 @@
 <!--
-  Floating "Project Chat" widget -- ever-present across every page that
+  "Coach" -- the floating trading-coach chat, ever-present across every page that
   includes _sidebar.html (see that file's own include of this partial).
   Self-contained: its own scoped CSS (prefixed t58-pc- to avoid colliding
   with page-specific styles) and its own JS file (/static/project_chat.js).
 
-  Two tabs:
-    - Chat: persistent, memory-carrying conversation with Ollama, scoped
-      to whichever "project" is active (see app.web.project_routes).
+  Three tabs:
+    - Coach: a persistent, memory-carrying conversation (local Ollama model), scoped
+      to whichever "project" is active (see app.web.project_routes). A project is created
+      for you the first time you open it, so the chat is ready straight away.
+    - Updates: Coach's briefing -- what is going on with your strategies, runs and
+      account, and what to do next (built only from your saved results, /api/briefing).
     - Activity: read-only feed of background jobs (Search Lab, WFO,
       CPCV, etc.) started while this project was active -- see
-      app.web.job_manager.JobManager.list_jobs. No delegation/controls
-      here yet, by design (see app.ai.project_chat's module docstring).
+      app.web.job_manager.JobManager.list_jobs.
+  The element ids below (t58-pc-*) are the contract with project_chat.js and the tests.
 -->
-<div id="t58-pc-launcher" class="t58-pc-launcher" data-login="{{ t58_login_id|default('none') }}" title="Open Project Chat" role="button" tabindex="0"
-     aria-label="Open Project Chat" aria-expanded="false" aria-controls="t58-pc-panel">
-  <span id="t58-pc-launcher-icon" class="t58-pc-launcher-icon" aria-hidden="true">&#128172;</span>
+<div id="t58-pc-launcher" class="t58-pc-launcher" data-login="{{ t58_login_id|default('none') }}" title="Open Coach" role="button" tabindex="0"
+     aria-label="Open Coach" aria-expanded="false" aria-controls="t58-pc-panel">
+  <span id="t58-pc-launcher-icon" class="t58-pc-launcher-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01"/></svg></span>
+  <span class="t58-pc-launcher-label">Coach</span>
 </div>
 
-<div id="t58-pc-panel" class="t58-pc-panel" hidden>
+<div id="t58-pc-panel" class="t58-pc-panel" role="dialog" aria-label="Coach" hidden>
   <div class="t58-pc-header">
+    <div class="t58-pc-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg></div>
+    <div class="t58-pc-title"><b>Coach</b><span><i class="t58-pc-live"></i>Your trading coach</span></div>
+    <button id="t58-pc-menu" type="button" class="t58-pc-icon-btn" title="Projects" aria-label="Show projects" aria-expanded="false">&#8942;</button>
+    <button id="t58-pc-close" type="button" class="t58-pc-icon-btn t58-pc-close" title="Close Coach" aria-label="Collapse Coach">&#8211;</button>
+  </div>
+
+  <div class="t58-pc-projbar" id="t58-pc-projbar" hidden>
     <select id="t58-pc-project-select" class="t58-pc-project-select" aria-label="Active project"></select>
     <button id="t58-pc-new-project" type="button" class="t58-pc-icon-btn" title="New project">+</button>
     <button id="t58-pc-rename-project" type="button" class="t58-pc-icon-btn" title="Rename project">&#9998;</button>
     <button id="t58-pc-delete-project" type="button" class="t58-pc-icon-btn" title="Delete project">&#128465;</button>
-    <button id="t58-pc-close" type="button" class="t58-pc-icon-btn t58-pc-close" title="Collapse chat" aria-label="Collapse chat">&#8211;</button>
   </div>
 
-  <div class="t58-pc-tabs">
-    <button type="button" class="t58-pc-tab active" data-tab="chat">Chat</button>
+  <div class="t58-pc-tabs" role="group" aria-label="Coach sections">
+    <button type="button" class="t58-pc-tab active" data-tab="chat">Coach</button>
+    <button type="button" class="t58-pc-tab" data-tab="brief" id="t58-pc-brief-tab">Updates<span class="t58-pc-dot" id="t58-pc-brief-dot" hidden></span></button>
     <button type="button" class="t58-pc-tab" data-tab="activity">Activity</button>
-    <button type="button" class="t58-pc-tab" data-tab="brief" id="t58-pc-brief-tab">Brief<span class="t58-pc-dot" id="t58-pc-brief-dot" hidden></span></button>
   </div>
 
   <div id="t58-pc-empty" class="t58-pc-empty" hidden>
-    No project yet. Click <strong>+</strong> to start one -- your chat history and job activity
-    will be saved to it.
+    Setting up your coach&hellip;
   </div>
 
   <div id="t58-pc-tab-chat" class="t58-pc-tab-panel">
     <div id="t58-pc-messages" class="t58-pc-messages"></div>
-    <div id="t58-pc-typing" class="t58-pc-typing" hidden>Thinking&hellip;</div>
+    <div id="t58-pc-typing" class="t58-pc-typing" hidden><span class="t58-pc-dots"><i></i><i></i><i></i></span>Coach is thinking&hellip;</div>
     <form id="t58-pc-form" class="t58-pc-form">
-      <textarea id="t58-pc-input" class="t58-pc-input" placeholder="Ask about this project&hellip;" rows="1"></textarea>
-      <button type="submit" class="t58-pc-send">Send</button>
+      <textarea id="t58-pc-input" class="t58-pc-input" placeholder="Ask Coach anything&hellip;" rows="1" aria-label="Message Coach"></textarea>
+      <button type="submit" class="t58-pc-send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></button>
     </form>
   </div>
 
@@ -57,84 +66,118 @@
 
 <style>
   .t58-pc-launcher {
-    position: fixed; right: 18px; bottom: 18px; z-index: 9000;
-    width: 52px; height: 52px; border-radius: 50%;
-    background: var(--teal); color: var(--on-teal);
+    position: fixed; right: 20px; bottom: 20px; z-index: 9000;
+    height: 48px; padding: 0 18px 0 14px; border-radius: 999px; gap: 9px;
+    background: linear-gradient(135deg, var(--teal), var(--neon-cyan, var(--teal))); color: var(--on-teal);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.4); cursor: pointer; user-select: none;
-    font-size: 22px;
+    box-shadow: 0 10px 28px -6px rgba(var(--teal-rgb), .55), 0 4px 14px rgba(0,0,0,0.35); cursor: pointer; user-select: none;
+    font-size: 14px; font-weight: 700; letter-spacing: .01em;
+    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
   }
-  .t58-pc-launcher:hover { filter: brightness(1.08); }
-  .t58-pc-launcher.open { background: var(--panel-3); color: var(--text); border: 1px solid var(--border-light); }
+  .t58-pc-launcher:hover { filter: brightness(1.07); transform: translateY(-1px); }
+  .t58-pc-launcher:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+  .t58-pc-launcher-icon { display: inline-grid; place-items: center; }
+  .t58-pc-launcher-icon svg { width: 20px; height: 20px; }
+  .t58-pc-launcher.open { background: var(--panel-3); color: var(--text); border: 1px solid var(--border-light); box-shadow: 0 8px 24px rgba(0,0,0,.35); padding: 0 16px 0 12px; }
 
   /* An explicit `display:` in the rules below beats the browser's built-in [hidden] rule, which is
      why the panel used to stay expanded no matter what. Restore [hidden] for every widget element. */
-  #t58-pc-panel[hidden], .t58-pc-dot[hidden], .t58-pc-tab-panel[hidden], .t58-pc-empty[hidden], .t58-pc-typing[hidden] {
+  #t58-pc-panel[hidden], .t58-pc-dot[hidden], .t58-pc-tab-panel[hidden], .t58-pc-empty[hidden], .t58-pc-typing[hidden], .t58-pc-projbar[hidden] {
     display: none !important;
   }
 
   .t58-pc-panel {
-    position: fixed; right: 18px; bottom: 82px; z-index: 9001;
-    width: min(360px, calc(100vw - 32px)); height: min(520px, calc(100vh - 140px));
-    background: var(--panel-2); border: 1px solid var(--border); border-radius: 14px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    position: fixed; right: 20px; bottom: 80px; z-index: 9001;
+    width: min(392px, calc(100vw - 32px)); height: min(600px, calc(100vh - 120px));
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 20px;
+    box-shadow: 0 24px 64px -12px rgba(0,0,0,0.6), 0 0 0 1px rgba(var(--teal-rgb), .08);
     display: flex; flex-direction: column; overflow: hidden;
     padding-top: env(safe-area-inset-top, 0px);
+    animation: t58-pc-in .18s ease-out;
   }
+  @keyframes t58-pc-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .t58-pc-panel { animation: none; } .t58-pc-launcher { transition: none; } }
 
   .t58-pc-header {
-    display: flex; align-items: center; gap: 6px; padding: 10px; border-bottom: 1px solid var(--border);
-    background: var(--panel-3);
+    display: flex; align-items: center; gap: 10px; padding: 14px 14px 12px;
+    background: linear-gradient(135deg, rgba(var(--teal-rgb), .16), rgba(var(--teal-rgb), .02) 70%), var(--panel-3);
+    border-bottom: 1px solid var(--border);
   }
-  .t58-pc-project-select {
-    flex: 1; min-width: 0; padding: 7px 8px; border-radius: 8px; border: 1px solid var(--border-light);
-    background: var(--panel); color: var(--text); font-size: 13px;
-  }
+  .t58-pc-avatar { flex: none; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: var(--on-teal);
+    background: linear-gradient(135deg, var(--teal), var(--neon-cyan, var(--teal))); box-shadow: 0 6px 18px -6px rgba(var(--teal-rgb), .7); }
+  .t58-pc-avatar svg { width: 21px; height: 21px; }
+  .t58-pc-title { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+  .t58-pc-title b { font-size: 15px; color: var(--text); letter-spacing: .01em; }
+  .t58-pc-title span { font-size: 11.5px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+  .t58-pc-live { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 8px rgba(var(--teal-rgb), .9); display: inline-block; }
   .t58-pc-icon-btn {
-    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-light);
-    background: var(--panel); color: var(--text-muted); font-size: 14px; cursor: pointer;
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 9px; border: 1px solid transparent;
+    background: transparent; color: var(--text-muted); font-size: 16px; cursor: pointer; line-height: 1;
   }
-  .t58-pc-icon-btn:hover { color: var(--text); }
-  .t58-pc-close { font-size: 18px; }
+  .t58-pc-icon-btn:hover { color: var(--text); background: rgba(255,255,255,.06); border-color: var(--border); }
+  .t58-pc-close { font-size: 20px; }
 
-  .t58-pc-tabs { display: flex; gap: 4px; padding: 8px 10px 0; }
+  .t58-pc-projbar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .t58-pc-project-select {
+    flex: 1; min-width: 0; padding: 7px 8px; border-radius: 9px; border: 1px solid var(--border-light);
+    background: var(--panel-3); color: var(--text); font-size: 12.5px;
+  }
+
+  .t58-pc-tabs { display: flex; gap: 4px; padding: 10px 12px 0; }
   .t58-pc-tab {
-    flex: 1; padding: 7px 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
-    border: 1px solid var(--border-light); border-bottom: none; border-radius: 8px 8px 0 0;
-    background: var(--panel-3); color: var(--text-muted); cursor: pointer;
+    flex: 1; padding: 8px 6px; font-size: 12.5px; font-weight: 650;
+    border: 0; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0;
+    background: transparent; color: var(--text-muted); cursor: pointer;
   }
-  .t58-pc-tab.active { background: var(--panel-2); color: var(--teal); border-color: var(--border); }
+  .t58-pc-tab:hover { color: var(--text); }
+  .t58-pc-tab.active { color: var(--teal); border-bottom-color: var(--teal); background: rgba(var(--teal-rgb), .06); }
 
-  .t58-pc-empty { padding: 16px; color: var(--text-muted); font-size: 13px; text-align: center; }
+  .t58-pc-empty { padding: 28px 16px; color: var(--text-muted); font-size: 13px; text-align: center; }
 
-  .t58-pc-tab-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .t58-pc-tab-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); }
 
-  .t58-pc-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-  .t58-pc-msg { max-width: 85%; padding: 8px 10px; border-radius: 10px; font-size: 13px; line-height: 1.4; white-space: pre-wrap; }
-  .t58-pc-msg.user { align-self: flex-end; background: var(--teal-dim); color: var(--text); }
-  .t58-pc-msg.assistant { align-self: flex-start; background: var(--panel-3); color: var(--text); border: 1px solid var(--border); }
-  .t58-pc-msg.error { align-self: center; background: var(--coral-dim); color: var(--text); font-size: 12px; }
+  .t58-pc-messages { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; }
+  .t58-pc-msg { max-width: 86%; padding: 9px 12px; border-radius: 14px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .t58-pc-msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--teal), var(--neon-cyan, var(--teal))); color: var(--on-teal); border-bottom-right-radius: 4px; font-weight: 500; }
+  .t58-pc-msg.assistant { align-self: flex-start; background: var(--panel-3); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .t58-pc-msg.error { align-self: center; background: var(--coral-dim); color: var(--text); font-size: 12px; text-align: center; max-width: 94%; }
 
-  .t58-pc-typing { padding: 0 12px 6px; color: var(--text-muted); font-size: 12px; }
+  .t58-pc-welcome { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px; }
+  .t58-pc-welcome .hello { background: var(--panel-3); border: 1px solid var(--border); border-radius: 14px; border-bottom-left-radius: 4px; padding: 12px 14px; font-size: 13px; line-height: 1.55; color: var(--text); }
+  .t58-pc-welcome .hello b { color: var(--teal); }
+  .t58-pc-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .t58-pc-chip { padding: 7px 12px; border-radius: 999px; border: 1px solid rgba(var(--teal-rgb), .35); background: rgba(var(--teal-rgb), .07); color: var(--text);
+    font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s; }
+  .t58-pc-chip:hover { background: rgba(var(--teal-rgb), .16); border-color: var(--teal); }
+  .t58-pc-chip.go { color: var(--teal); }
 
-  .t58-pc-form { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
+  .t58-pc-typing { padding: 0 14px 8px; color: var(--text-muted); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+  .t58-pc-dots { display: inline-flex; gap: 3px; }
+  .t58-pc-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--teal); opacity: .35; animation: t58-pc-blink 1.1s infinite; }
+  .t58-pc-dots i:nth-child(2) { animation-delay: .18s; } .t58-pc-dots i:nth-child(3) { animation-delay: .36s; }
+  @keyframes t58-pc-blink { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }
+
+  .t58-pc-form { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--border); background: var(--panel); }
   /* Many pages define bare `textarea { min-height:140px }` / `select { width:100% }`
      rules for their own forms; pin every property that could leak into the widget. */
   .t58-pc-input, .t58-pc-project-select { box-sizing: border-box; min-height: 0; margin: 0; }
   .t58-pc-input { height: auto; min-width: 0; width: auto; font-family: inherit; line-height: 1.35; }
   .t58-pc-icon-btn, .t58-pc-send, .t58-pc-tab { margin: 0; }
   .t58-pc-input {
-    flex: 1; resize: none; max-height: 90px; padding: 8px 10px; border-radius: 8px;
+    flex: 1; resize: none; max-height: 96px; padding: 10px 14px; border-radius: 18px;
     border: 1px solid var(--border-light); background: var(--panel-3); color: var(--text); font-size: 13px;
   }
+  .t58-pc-input:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(var(--teal-rgb), .18); }
   .t58-pc-send {
-    padding: 0 14px; border-radius: 8px; border: 1px solid var(--teal); background: var(--teal);
-    color: var(--on-teal); font-weight: 600; font-size: 13px; cursor: pointer;
+    flex: none; width: 38px; height: 38px; display: grid; place-items: center; padding: 0; border-radius: 50%; border: 0;
+    background: linear-gradient(135deg, var(--teal), var(--neon-cyan, var(--teal))); color: var(--on-teal); cursor: pointer;
   }
-  .t58-pc-send:disabled { opacity: 0.5; cursor: default; }
+  .t58-pc-send svg { width: 17px; height: 17px; }
+  .t58-pc-send:hover { filter: brightness(1.08); }
+  .t58-pc-send:disabled { opacity: 0.45; cursor: default; }
 
-  .t58-pc-activity-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-  .t58-pc-job { padding: 8px 10px; border-radius: 8px; background: var(--panel-3); border: 1px solid var(--border); font-size: 12px; }
+  .t58-pc-activity-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .t58-pc-job { padding: 9px 11px; border-radius: 12px; background: var(--panel-3); border: 1px solid var(--border); font-size: 12px; }
   .t58-pc-job-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; color: var(--text); }
   .t58-pc-job-status.running { color: var(--amber); }
   .t58-pc-job-status.done { color: var(--teal); }
@@ -142,18 +185,25 @@
   .t58-pc-job-banner { margin-top: 4px; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--teal); }
   .t58-pc-job-meta { color: var(--text-muted); margin-top: 3px; }
   .t58-pc-job-log { margin-top: 4px; color: var(--text-dim); font-family: ui-monospace, Menlo, monospace; font-size: 11px; white-space: pre-wrap; }
-  .t58-pc-activity-empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px 10px; }
+  .t58-pc-activity-empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 24px 12px; line-height: 1.5; }
   .t58-pc-dot { display:inline-block; width:7px; height:7px; margin-left:5px; border-radius:50%; background:var(--teal); vertical-align:middle; }
-  .t58-pc-brief { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:8px; }
+  .t58-pc-brief { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; }
   .t58-pc-bh { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:12px; color:var(--text-muted); }
   .t58-pc-bh b { color:var(--text); font-size:14px; }
-  .t58-pc-bs { border:1px solid var(--border); background:var(--panel-3); border-radius:10px; overflow:hidden; }
-  .t58-pc-bs > button { all:unset; box-sizing:border-box; width:100%; display:flex; justify-content:space-between; gap:8px; padding:8px 10px; cursor:pointer; font-size:12.5px; color:var(--text); font-weight:600; }
+  .t58-pc-bs { border:1px solid var(--border); background:var(--panel-3); border-radius:12px; overflow:hidden; }
+  .t58-pc-bs > button { all:unset; box-sizing:border-box; width:100%; display:flex; justify-content:space-between; gap:8px; padding:9px 12px; cursor:pointer; font-size:12.5px; color:var(--text); font-weight:600; }
   .t58-pc-bs > button small { display:block; font-weight:500; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px; }
   .t58-pc-bs > button:focus-visible { outline:2px solid var(--teal); outline-offset:-2px; }
-  .t58-pc-bb { padding:0 10px 9px; font-size:12px; color:var(--text-muted); display:grid; gap:4px; }
+  .t58-pc-bb { padding:0 12px 10px; font-size:12px; color:var(--text-muted); display:grid; gap:4px; }
   .t58-pc-bb[hidden] { display:none; }
   .t58-pc-bb .ev { font-size:10.5px; color:var(--text-dim); font-style:italic; }
-  .t58-pc-bb a { color:var(--on-teal); background:var(--teal); text-decoration:none; font-weight:650; font-size:12px; padding:6px 10px; border-radius:8px; justify-self:start; margin-top:2px; }
-  .t58-pc-bempty { text-align:center; color:var(--text-muted); font-size:13px; padding:20px 8px; }
+  .t58-pc-bb a { color:var(--on-teal); background:var(--teal); text-decoration:none; font-weight:650; font-size:12px; padding:6px 11px; border-radius:9px; justify-self:start; margin-top:2px; }
+  .t58-pc-bempty { text-align:center; color:var(--text-muted); font-size:13px; padding:22px 8px; }
+
+  @media (max-width: 560px) {
+    .t58-pc-launcher { right: 14px; bottom: 14px; }
+    .t58-pc-launcher-label { display: none; }
+    .t58-pc-launcher { width: 48px; padding: 0; }
+    .t58-pc-panel { right: 8px; bottom: 72px; width: calc(100vw - 16px); height: min(640px, calc(100vh - 96px)); }
+  }
 </style>

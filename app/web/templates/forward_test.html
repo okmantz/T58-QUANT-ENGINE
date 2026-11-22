@@ -3,12 +3,9 @@
 <head>
 <title>Deploy — Forward test (MT5) — T58 Quant Engine</title>
 {% include '_head_common.html' %}
+<link rel="stylesheet" href="/static/t58-deploy.css">
 {% include '_lifecycle_css.html' %}
 <style>
-  .dv-seg{display:inline-flex; gap:4px; padding:4px; border:1px solid var(--lc-border); border-radius:12px; margin:6px 0 16px; background:var(--lc-border);}
-  .dv-seg a{padding:8px 16px; border-radius:9px; font-weight:700; font-size:13.5px; color:var(--lc-muted); text-decoration:none;}
-  .dv-seg a small{font-weight:600; font-size:10.5px; opacity:.8; margin-left:4px; text-transform:uppercase; letter-spacing:.05em;}
-  .dv-seg a[aria-selected="true"]{background:var(--lc-acc); color:#04120d;}
   .error { background: var(--err-bg); border: 1px solid var(--err-bd); color: var(--err-fg); padding: 12px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; }
   .ft-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; }
   .ft-stat { flex: 1; min-width: 100px; }
@@ -69,7 +66,7 @@
 </div>
 <div id="dv-pane-live" {% if view != 'live' %}hidden{% endif %}><iframe id="dv-live-frame" title="Deploy Live" style="width:100%;border:0;min-height:720px;background:transparent;"{% if view == 'live' %} src="/deploy-live?embed=1"{% endif %}></iframe></div>
 <div id="dv-pane-demo" {% if view != 'demo' %}hidden{% endif %}>{% include '_demo_account_panel.html' %}</div>
-<div id="dv-pane-mt5" {% if view != 'mt5' %}hidden{% endif %}>
+<div id="dv-pane-mt5" class="dv" {% if view != 'mt5' %}hidden{% endif %}>
 <p class="lc-hint" style="margin:0 0 10px;">Deploy is where strategies stop being backtests. Warm up here: run the champion against a real MT5 terminal's live bars (demo account recommended) before any real-money deployment. Needs an MT5 terminal installed and logged in on THIS machine — the server can't reach a terminal on another computer.</p>
 <div class="lc-card" style="margin:10px 0;padding:10px 14px;">
   <div class="lc-hint" style="margin:0;"><b>Your path:</b>

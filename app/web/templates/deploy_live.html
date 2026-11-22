@@ -3,6 +3,7 @@
 <head>
 <title>Deploy Live — T58 Quant Engine</title>
 {% include '_head_common.html' %}
+<link rel="stylesheet" href="/static/t58-deploy.css">
 <style>
   * { box-sizing: border-box; }
   .card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; max-width: 640px; }
@@ -54,7 +55,7 @@
 {% set active_page = 'deploy_live' %}
 <div class="t58-shell">
 {% include '_sidebar.html' %}
-<div class="t58-main">
+<div class="t58-main dv">
 <div class="t58-page-header">
   <h1>Deploy live</h1>
   <div class="card" style="padding:10px 14px;">
@@ -68,11 +69,25 @@
   <p class="field-note" style="margin-top:6px;">Once a session is running, a small <strong>Live P&amp;L</strong> pill (bottom-right, on every page) tracks balance, equity and open/closed P&amp;L &mdash; click it for the breakdown.</p>
 </div>
 
-<div class="card" style="max-width:none;border-color:#2a8f6a;display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
-  <div style="flex:1;min-width:240px;"><h2 style="color:#8fe0b0;margin:0 0 4px;">New here? Use the guided deploy</h2>
-  <p class="help" style="margin:0;">Pick a strategy, choose demo, MT5 or prop firm, and follow four short steps. This page is the advanced form for the same thing.</p></div>
-  <a class="submit-btn" href="/deploy/wizard" style="text-decoration:none;background:#00c389;border-color:#00c389;color:#04231a;margin:0;">Start guided deploy</a>
+<div class="dv-card" id="dl-bot-card">
+  <h3>Run a trading bot on a live account</h3>
+  <p class="dv-sub">Pick one of your bots, point it at a connected prop-firm or broker account and start it. Every live start still asks you to type DEPLOY LIVE.</p>
+  <div class="dv-bots" id="dl-bots"><span class="dv-hint">Loading bots&hellip;</span></div>
+  <div class="dv-actions"><a class="dv-btn primary" id="dl-bot-go" href="/trading-bots">Configure &amp; start a bot</a><a class="dv-btn" href="/deploy/wizard">Or deploy a strategy (guided)</a></div>
 </div>
+<script>
+  (function () {
+    var box = document.getElementById('dl-bots'), go = document.getElementById('dl-bot-go'), sel = null;
+    function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]; }); }
+    function paint() { Array.prototype.forEach.call(box.querySelectorAll('.dv-bot'), function (b) { b.setAttribute('aria-pressed', b.dataset.id === sel ? 'true' : 'false'); });
+      if (sel) go.href = '/trading-bots?bot=' + encodeURIComponent(sel) + '&tab=deploy'; }
+    fetch('/trading-bots/api/bots').then(function (r) { return r.json(); }).then(function (d) {
+      var bots = (d.bots || []).map(function (b) { var c = b.config || {}; return {id: c.id, name: c.name, tag: c.tagline || '', goal: b.objective_name || '', running: !!b.running}; });
+      box.innerHTML = bots.map(function (b) { return '<button type="button" class="dv-bot" data-id="' + esc(b.id) + '"><span class="st' + (b.running ? ' running' : '') + '"><i></i>' + (b.running ? 'Running' : 'Ready') + '</span><span class="g">' + esc(b.goal) + '</span><b>' + esc(b.name) + '</b><span class="t">' + esc(b.tag) + '</span></button>'; }).join('') || '<span class="dv-hint">No bots yet.</span>';
+      Array.prototype.forEach.call(box.querySelectorAll('.dv-bot'), function (b) { b.addEventListener('click', function () { sel = b.dataset.id; paint(); }); });
+    }).catch(function () { box.innerHTML = '<span class="dv-hint">Could not load bots.</span>'; });
+  })();
+</script>
 <div class="warn" id="demo-mode-warning"{% if t58_profile.mode == 'live' %} hidden{% endif %} style="border-left:4px solid #f5b942;">
   <strong>&#9888; You are in Demo mode.</strong> Before you connect a real prop-firm account, switch the toggle to <strong>Live</strong> in
   <a href="/settings/account#account-mode">Account settings</a>. In Demo mode this page will not save broker credentials or start a real session.

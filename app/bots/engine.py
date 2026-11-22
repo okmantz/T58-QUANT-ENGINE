@@ -581,7 +581,15 @@ class BotEngine:
             self._event("halt", "Account breached: bot halted. Reset the bot to start a new attempt.", t)
         elif a.phase == "passed":
             self.rt.passes += 1
-            if self._objective == "A":
+            if self.venue.kind == "demo":
+                # The T58 demo account is waiting on its owner: move on to the funded demo account or start the evaluation again. The bot
+                # stops here so it never trades on while that choice is open; start it again after choosing.
+                self.rt.status = "complete"
+                self.rt.message = "Evaluation passed. Choose your next step on the Deploy page: move to the funded demo account or start the evaluation again."
+                for ln in self.lanes.values():
+                    self._drop_pending(ln)
+                self._event("pass", f"Evaluation PASSED at ${a.balance:,.2f}. Pick what happens next on the Deploy page (funded demo account, or a fresh evaluation).", t)
+            elif self._objective == "A":
                 self.rt.status, self.rt.message = "complete", "Evaluation passed. Objective complete."
                 for ln in self.lanes.values():
                     self._drop_pending(ln)
@@ -591,7 +599,11 @@ class BotEngine:
                 a.to_funded()
                 self.detached = True
         elif a.phase == "funded":
-            amt = a.take_payout()
+            if getattr(self.venue, "owns_payouts", False):
+                res = self.venue.request_payout()                 # the T58 demo account applies its own payout rule and moves its own balance
+                amt = float((res.get("payout") or {}).get("amount", 0.0)) if res.get("ok") else 0.0
+            else:
+                amt = a.take_payout()
             if amt > 0:
                 self.rt.payouts += amt
                 self._event("payout", f"Payout available: ${amt:,.0f} withdrawn (floor does not move down).", t)

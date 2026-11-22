@@ -2162,6 +2162,34 @@ def _dashboard_cards_and_flow(stats: dict, board_rows: list) -> tuple[list, dict
     return cards, flow
 
 
+def _dashboard_bot_cards() -> list:
+    """The three shipped trading bots as small dashboard cards (name, goal, status, P&L, a sparkline). Never raises: the dashboard must load without them."""
+    try:
+        from app.bots import store as _bot_store
+        from app.web.bots_routes import _public as _bot_public
+        out = []
+        for rec in _bot_store.list_bots():
+            if not (rec.get("config") or {}).get("preset_key"):
+                continue
+            b = _bot_public(rec)
+            cfg, m, rt = b["config"], b["metrics"], b["runtime"]
+            eq = [float(v) for v in (m.get("equity") or [])][-60:]
+            pts = ""
+            if len(eq) > 1:
+                lo, hi = min(eq), max(eq)
+                span = (hi - lo) or 1.0
+                pts = " ".join(f"{i * 100.0 / (len(eq) - 1):.1f},{96 - (v - lo) / span * 92:.1f}" for i, v in enumerate(eq))
+            status = "running" if b["running"] else (rt.get("status") or "stopped")
+            out.append({
+                "id": cfg["id"], "name": cfg.get("name"), "objective": b.get("objective_name"), "tagline": cfg.get("tagline") or "",
+                "status": status, "net": m.get("net_pnl"), "trades": m.get("trades") or 0, "win_rate": m.get("win_rate"),
+                "profit_factor": m.get("profit_factor"), "spark": pts, "up": (eq[-1] >= eq[0]) if len(eq) > 1 else True,
+            })
+        return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
 @app.route("/dashboard")
 def dashboard():
     current = strategy_state.get_current_strategy()
@@ -2235,6 +2263,8 @@ def dashboard():
         focus_options=focus_options,
         focus_value=focus_value,
         strategy_cards=strategy_cards,
+        top_strategy_cards=strategy_cards[:3],
+        bot_cards=_dashboard_bot_cards(),
         best_sharpe_card=max((c for c in strategy_cards if c.get('sharpe') is not None), key=lambda c: c['sharpe'], default=None),
         pipeline_flow=pipeline_flow,
         pipeline_controls=_controls,
@@ -11853,11 +11883,57 @@ def demo_account_tier():
     return redirect("/forward-test?view=demo") if not request.is_json else jsonify({"ok": True})
 
 
+def _release_demo_bots() -> None:
+    """After the demo account's owner chose a way forward (funded stage / new evaluation), bots that stopped on the old state may run again."""
+    try:
+        from app.bots import store as _bs
+        for rec in _bs.list_bots():
+            cfg = rec.get("config") or {}
+            if (cfg.get("account") or {}).get("venue") != "demo":
+                continue
+            if (rec.get("runtime") or {}).get("status") in ("complete", "halted"):
+                def _fn(r):
+                    r["runtime"]["status"], r["runtime"]["halted_reason"], r["runtime"]["message"] = "stopped", "", "Ready."
+                _bs.update_bot(cfg["id"], _fn)
+    except Exception:  # noqa: BLE001 - never block the account change on the bots
+        pass
+
+
+def _demo_done(payload: dict, status: int = 200):
+    """Form posts go back to the demo tab; fetch/JSON callers get the new account."""
+    if request.is_json or "application/json" in (request.headers.get("Accept") or ""):
+        from app.demo_account import load as _ld
+        return jsonify({**payload, "account": _ld().to_dict()}), status
+    return redirect("/forward-test?view=demo")
+
+
 @app.route("/demo-account/reset", methods=["POST"])
 def demo_account_reset():
+    """Start the evaluation again (after a pass, a breach, or whenever you want a clean attempt)."""
     from app.demo_account import reset
     reset()
-    return redirect("/forward-test?view=demo")
+    _release_demo_bots()
+    return _demo_done({"ok": True})
+
+
+@app.route("/demo-account/funded", methods=["POST"])
+def demo_account_funded():
+    """After a PASSED evaluation: move on to the simulated funded account (payout hunting) instead of resetting."""
+    from app.demo_account import advance_to_funded
+    try:
+        advance_to_funded()
+    except ValueError as exc:
+        return _demo_done({"ok": False, "error": str(exc)}, 409)
+    _release_demo_bots()
+    return _demo_done({"ok": True})
+
+
+@app.route("/demo-account/payout", methods=["POST"])
+def demo_account_payout():
+    """Take a simulated payout on the funded demo account when its payout rule is met."""
+    from app.demo_account import request_payout
+    res = request_payout()
+    return _demo_done(res, 200 if res.get("ok") else 409)
 
 
 @app.route("/demo-account/deploy", methods=["POST"])

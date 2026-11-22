@@ -128,6 +128,36 @@
   .db-runs-d > summary a { font-size: 12px; color: var(--teal); text-decoration: none; }
   .db-runs-d[open] > summary { margin-bottom: 14px; }
 
+
+  /* ---- Strategy Library button: a full-width, quiet-but-obvious call to action under the top strategies ---- */
+  .db-libbtn { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 14px 18px; border-radius: 14px; text-decoration: none; color: var(--text);
+               border: 1px solid rgba(var(--teal-rgb), .35); background: linear-gradient(135deg, rgba(var(--teal-rgb), .12), rgba(var(--teal-rgb), .02) 70%); transition: border-color .15s, transform .15s, box-shadow .15s; }
+  .db-libbtn:hover { border-color: var(--teal); transform: translateY(-1px); box-shadow: 0 12px 28px -16px rgba(var(--teal-rgb), .7); }
+  .db-libbtn .lb-ico { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: var(--teal); background: rgba(var(--teal-rgb), .14); border: 1px solid rgba(var(--teal-rgb), .3); }
+  .db-libbtn .lb-ico svg { width: 20px; height: 20px; }
+  .db-libbtn .lb-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .db-libbtn .lb-txt b { font-size: 14px; font-weight: 650; }
+  .db-libbtn .lb-txt small { font-size: 12px; color: var(--text-muted); }
+  .db-libbtn .lb-go { flex: none; font-size: 20px; color: var(--teal); transition: transform .15s; }
+  .db-libbtn:hover .lb-go { transform: translateX(3px); }
+
+  /* ---- trading bot cards ---- */
+  .bt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .bt { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; min-width: 0; background: rgba(var(--teal-rgb), .04); border: 1px solid var(--border); --tone: var(--teal-rgb); }
+  .bt-running { --tone: var(--teal-rgb); border-color: rgba(var(--teal-rgb), .45); } .bt-halted { --tone: var(--coral-rgb, 255, 107, 107); }
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) { .bt { transition: transform .18s var(--ease), border-color .18s; } .bt:hover { transform: translateY(-2px); border-color: rgba(var(--tone), .5); } }
+  .bt-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+  .bt-id { min-width: 0; } .bt-goal { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--text-dim); font-weight: 650; }
+  .bt-id h3 { margin: 2px 0 0; font-size: 15px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bt-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 650; padding: 3px 9px; border-radius: 99px; color: var(--text-muted); border: 1px solid var(--border); }
+  .bt-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
+  .bt-running .bt-pill { color: var(--teal); border-color: rgba(var(--teal-rgb), .4); } .bt-running .bt-dot { background: var(--teal); box-shadow: 0 0 8px rgba(var(--teal-rgb), .9); }
+  .bt-halted .bt-pill { color: var(--coral); } .bt-halted .bt-dot { background: var(--coral); }
+  .bt-tag { margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.45; min-height: 34px; }
+  .bt-mid { position: relative; height: 56px; } .bt-spark { width: 100%; height: 100%; } .bt-spark.up polyline { stroke: var(--teal); } .bt-spark.down polyline { stroke: var(--coral); }
+  .bt .sc-stats { grid-template-columns: repeat(3, 1fr); }
+  .bt-acts { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border); }
+
   .db-row { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: var(--gap); align-items: stretch; }
   #equity-chart { min-height: 236px; }
   .db-chart-empty { min-height: 236px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; color: var(--text-muted); font-size: 13px; }
@@ -455,10 +485,10 @@
 
 <!-- ---- Your strategies: friendly cards ---- -->
 <div class="db-card">
-  <h2>Your strategies <span style="font-size:11.5px;font-weight:500;color:var(--text-dim);margin-left:6px;">ranked best first by T58 score &amp; performance</span> <a href="/library">Strategy Library &rarr;</a></h2>
+  <h2>Top strategies <span style="font-size:11.5px;font-weight:500;color:var(--text-dim);margin-left:6px;">your best {{ top_strategy_cards|length }}, ranked by T58 score &amp; performance</span></h2>
   {% if strategy_cards %}
   <div class="sc-grid">
-    {% for c in strategy_cards %}
+    {% for c in top_strategy_cards %}
     <article class="sc {{ c.plan.tone }}">
       <header class="sc-top">
         <div class="sc-id"><h3 title="{{ c.name }}">{{ c.name }}</h3>
@@ -496,8 +526,47 @@
     </article>
     {% endfor %}
   </div>
+  <a class="db-libbtn" href="/library">
+    <span class="lb-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2"/><path d="M8 7h6M8 11h6"/></svg></span>
+    <span class="lb-txt"><b>Open the Strategy Library</b><small>{% if strategy_cards|length > 3 %}{{ strategy_cards|length - 3 }} more strateg{{ 'y' if strategy_cards|length - 3 == 1 else 'ies' }} saved &middot; {% endif %}search, compare, edit and promote every strategy</small></span>
+    <span class="lb-go" aria-hidden="true">&rarr;</span>
+  </a>
   {% else %}
   <div class="db-empty">No strategies yet &mdash; <a href="/start-here/create">create one</a> or run <a href="/discovery-engine">Discovery</a> to find some.</div>
+  {% endif %}
+</div>
+
+<!-- ---- Trading bots: the three shipped bots, under the strategies ---- -->
+<div class="db-card" id="db-bots">
+  <h2>Trading bots <span style="font-size:11.5px;font-weight:500;color:var(--text-dim);margin-left:6px;">three ready-made bots, one per goal</span> <a href="/trading-bots">All bots &rarr;</a></h2>
+  {% if bot_cards %}
+  <div class="bt-grid">
+    {% for b in bot_cards %}
+    <article class="bt bt-{{ b.status }}">
+      <header class="bt-top">
+        <div class="bt-id"><div class="bt-goal">{{ b.objective }}</div><h3 title="{{ b.name }}">{{ b.name }}</h3></div>
+        <span class="bt-pill"><i class="bt-dot"></i>{{ 'Running' if b.status == 'running' else ('Halted' if b.status == 'halted' else ('Complete' if b.status == 'complete' else 'Stopped')) }}</span>
+      </header>
+      <p class="bt-tag">{{ b.tagline }}</p>
+      <div class="bt-mid">
+        {% if b.spark %}<svg class="bt-spark {{ 'up' if b.up else 'down' }}" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="{{ b.spark }}" fill="none" stroke-width="2.2" vector-effect="non-scaling-stroke"/></svg>
+        {% else %}<div class="sc-nospark">not run yet</div>{% endif %}
+        <div class="sc-net {{ 'pos' if (b.net or 0) >= 0 else 'neg' }}">{% if b.trades %}{{ '+' if b.net >= 0 }}${{ "{:,.0f}".format(b.net) }}{% else %}&ndash;{% endif %}</div>
+      </div>
+      <dl class="sc-stats">
+        <div><dt>Trades</dt><dd>{{ b.trades }}</dd></div>
+        <div><dt>Win</dt><dd>{{ "%.0f%%"|format(b.win_rate) if b.win_rate is not none else '–' }}</dd></div>
+        <div><dt>PF</dt><dd>{{ b.profit_factor if b.profit_factor is not none else '–' }}</dd></div>
+      </dl>
+      <div class="bt-acts">
+        <a class="t58-btn primary sm" href="/trading-bots?bot={{ b.id }}">Open bot &rarr;</a>
+        <a class="t58-btn ghost sm" href="/trading-bots?bot={{ b.id }}&amp;tab=settings">Configure</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="db-empty">The bots could not be loaded. Open <a href="/trading-bots">Trading Bots</a> to see them.</div>
   {% endif %}
 </div>
 

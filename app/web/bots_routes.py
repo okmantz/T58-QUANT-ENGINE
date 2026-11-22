@@ -200,6 +200,27 @@ def api_settings(bot_id):
     cfg.governor = gov.with_(**kw).to_dict()
     if "max_trades_per_day" in b:
         cfg.max_trades_per_day = int(_clamp(b["max_trades_per_day"], 1, 50))
+    legs_in = b.get("legs")
+    if isinstance(legs_in, list):
+        # Per-strategy tuning that keeps every leg's own instrument and settings: switch a leg off, or change its size (0.1 to 3).
+        by_label = {lg.label: lg for lg in cfg.legs}
+        off: set = set()
+        for item in legs_in:
+            lg = by_label.get(str((item or {}).get("label") or ""))
+            if lg is None:
+                continue
+            if item.get("enabled") is False:
+                off.add(lg.label)
+                continue
+            if item.get("weight") not in (None, ""):
+                try:
+                    lg.weight = round(_clamp(item["weight"], 0.1, 3.0), 3)
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error": f"The size of {lg.label} must be a number."}), 400
+        kept = [lg for lg in cfg.legs if lg.label not in off]
+        if not kept:
+            return jsonify({"ok": False, "error": "Keep at least one strategy switched on."}), 400
+        cfg.legs = kept
     acc = b.get("account")
     if isinstance(acc, dict):
         a = cfg.account

@@ -77,7 +77,10 @@ class DemoVenue(Venue):
             state.day_start = float(a.balance)
             state.eod_high = max(float(a.eod_high), float(a.balance))
         state.peak_equity = max(state.peak_equity, state.balance)
-        if a.status == "active" and state.phase not in ("funded",):
+        if a.status == "active" and getattr(a, "phase", "evaluation") == "funded":
+            state.phase = "funded"                       # the demo account was moved on to its funded stage by its owner
+            state.last_payout_balance = float(a.last_payout_balance or a.start_balance)
+        elif a.status == "active" and state.phase not in ("funded",):
             state.phase = "evaluation"
         elif a.status == "breached":
             state.phase = "breached"
@@ -90,6 +93,12 @@ class DemoVenue(Venue):
         demo.record_trade(float(trade["pnl"]), root=trade.get("symbol", ""), side=trade.get("side", ""), qty=float(trade.get("qty", 1)),
                           entry=trade.get("entry"), exit=trade.get("exit"), why=f"{trade.get('bot', 'bot')}: {trade.get('leg', '')} ({trade.get('reason', '')})",
                           source="bot", closed_at=str(trade.get("exit_time") or ""), day=trade.get("day") or None)
+
+    owns_payouts = True
+
+    def request_payout(self) -> dict:
+        from app.demo_account import account as demo
+        return demo.request_payout()
 
     def describe(self) -> dict:
         a = self._acct()

@@ -92,121 +92,88 @@
          border-radius:8px;max-height:360px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.35);"></div>
   </div>
 
-  <a href="/dashboard" class="t58-nav-item top-level {{ 'active' if active_page == 'dashboard' else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-layout-dashboard"/></svg></span><span class="label">Dashboard</span>
-  </a>
-
-  <a href="/assistant" class="t58-nav-item top-level {{ 'active' if active_page == 'ai_assistant' else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-bot"/></svg></span><span class="label">AI Assistant</span>
-  </a>
-
-  <a href="/events/" class="t58-nav-item top-level {{ 'active' if active_page == 'global_events' else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-globe"/></svg></span><span class="label">Global Events</span>
-  </a>
-
-  <a href="/journal" class="t58-nav-item top-level {{ 'active' if active_page == 'journal' else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-notebook-pen"/></svg></span><span class="label">Trading Journal</span>
-  </a>
-
-  <a href="/runs" class="t58-nav-item top-level {{ 'active' if active_page == 'runs' else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-play"/></svg></span><span class="label">Runs</span>
-  </a>
-
-  <a href="/mobile-access" class="t58-nav-item top-level {{ 'active' if active_page == 'mobile_access' else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-smartphone"/></svg></span><span class="label">Mobile Access</span>
-  </a>
-
-  <div class="t58-nav-divider"></div>
-  <div class="t58-nav-section-label">Strategy Lab</div>
-
+  {#- Sidebar v10 ("one glance"): five collapsible headers, all folded on first load. A header opens by itself only when the page you are on lives inside it
+      (and never on the Dashboard, so a fresh start shows just the five headers). Every page that used to be in the sidebar is still here, one click deeper. -#}
+  {% set ws_pages       = ['dashboard', 'ai_assistant', 'global_events', 'journal', 'runs', 'mobile_access'] %}
   {% set create_pages   = ['generate_strategies', 'research', 'research_loop', 'discover', 'overnight_autopilot', 'discovery_engine', 'start_here_create'] %}
   {% set test_pages     = ['run', 'payout_probability', 'full_pipeline', 'payout_planner'] %}
   {% set optimize_pages = ['optimize_hub', 'optimize_simple', 'rescue', 'multi_market', 'refine', 'full_pipeline', 'quick_optimize', 'multi_objective', 'risk_sweep', 'cross_instrument'] %}
   {% set validate_pages = ['validate_hub', 'validate_simple', 'wfo', 'wfga', 'cpcv', 'pbo', 'sensitivity', 'parameter_robustness', 'regime_matrix'] %}
   {% set champion_pages = ['champion_simple', 'family_diversity', 'ensemble', 'portfolio', 'universe', 'compare'] %}
+  {% set deploy_pages   = ['forward_test', 'deploy_live', 'live_market', 'replay', 'webhook_relay', 'demo_account', 'trading_bots', 'start_here_deployment'] %}
+  {% set lab_pages      = create_pages + test_pages + optimize_pages + validate_pages + champion_pages + deploy_pages + ['graveyard', 'start_here_graveyard', 'strategy_library'] %}
+  {% set quant_pages    = ['quant_lab', 'research_labs', 'options_outlook', 'hedge_fund', 'investing'] %}
+  {% set prop_pages     = ['mission', 'guardian', 'accounts', 'buy_challenge', 'research_integrity'] %}
+  {% set acct_pages     = ['account_settings', 'data_center', 'education', 'books_library'] %}
+  {% set open_ok = active_page != 'dashboard' %}
 
-  <!-- "Strategy Lab" above groups the whole 7-step journey -- Create
-       through Strategy Graveyard -- under one umbrella label; "Quant Lab"
-       and "Account" below do the same for their own clusters.
-       v9.8: the seven lifecycle steps are SINGLE LINKS to one
-       consolidated page per section (everything for that step runs from
-       that page; individual tools live on its tools grid). The Quant
-       Lab / Options / Hedge Fund Manager / Account / Education groups
-       below still collapse/expand, condensed by default -- t58-chrome.js
-       only re-opens one the person has explicitly opened before. -->
+  <!-- (1) Workspace -->
+  <details class="t58-nav-group" data-nav="workspace" {{ 'open' if open_ok and active_page in ws_pages else '' }}>
+    <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-layout-dashboard"/></svg></span> Workspace <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
+    <div class="t58-nav-group-items">
+      <a href="/dashboard" class="t58-nav-item {{ 'active' if active_page == 'dashboard' else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-layout-dashboard"/></svg></span><span class="label">Dashboard</span>
+      </a>
+      <a href="/assistant" class="t58-nav-item {{ 'active' if active_page == 'ai_assistant' else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-bot"/></svg></span><span class="label">AI Assistant</span>
+      </a>
+      <a href="/events/" class="t58-nav-item {{ 'active' if active_page == 'global_events' else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-globe"/></svg></span><span class="label">Global Events</span>
+      </a>
+      <a href="/journal" class="t58-nav-item {{ 'active' if active_page == 'journal' else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-notebook-pen"/></svg></span><span class="label">Trading Journal</span>
+      </a>
+      <a href="/runs" class="t58-nav-item {{ 'active' if active_page == 'runs' else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-play"/></svg></span><span class="label">Runs</span>
+      </a>
+      <a href="/mobile-access" class="t58-nav-item {{ 'active' if active_page == 'mobile_access' else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-smartphone"/></svg></span><span class="label">Mobile Access</span>
+      </a>
+    </div>
+  </details>
 
-  <!-- (1) Create -- v9.8: single link to the consolidated section page;
-       its individual tools live on that page (tools grid), not in the sidebar. -->
-  <a href="/start-here/create" data-accent="teal" class="t58-nav-item top-level {{ 'active' if active_page in create_pages else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-wand-sparkles"/></svg></span><span class="label">Create</span>
-  </a>
+  <!-- (2) Strategy Lab: the whole 7-step journey (Create ... Strategy Graveyard) plus the Strategy Library, folded into one header.
+       Each step is a single link to one consolidated page; that page's tools live on its own tools grid. -->
+  <details class="t58-nav-group" data-nav="strategy-lab" {{ 'open' if open_ok and active_page in lab_pages else '' }}>
+    <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-flask-conical"/></svg></span> Strategy Lab <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
+    <div class="t58-nav-group-items">
+      <a href="/start-here/create" class="t58-nav-item {{ 'active' if active_page in create_pages else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-wand-sparkles"/></svg></span><span class="label">Create</span>
+      </a>
+      <a href="/full-pipeline" class="t58-nav-item {{ 'active' if active_page in test_pages else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-flask-conical"/></svg></span><span class="label">Test</span>
+      </a>
+      <a href="/optimize-simple" class="t58-nav-item {{ 'active' if active_page in optimize_pages else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-sliders-horizontal"/></svg></span><span class="label">Optimize</span>
+      </a>
+      <a href="/validate-simple" class="t58-nav-item {{ 'active' if active_page in validate_pages else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-shield-check"/></svg></span><span class="label">Validate</span>
+      </a>
+      <a href="/champion-simple" class="t58-nav-item {{ 'active' if active_page in champion_pages else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-trophy"/></svg></span><span class="label">Champion</span>
+      </a>
+      <a href="/forward-test" class="t58-nav-item {{ 'active' if active_page in deploy_pages else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-rocket"/></svg></span><span class="label">Deploy</span>
+      </a>
+      <a href="/graveyard" class="t58-nav-item {{ 'active' if active_page in ['graveyard', 'start_here_graveyard'] else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-skull"/></svg></span><span class="label">Strategy Graveyard</span>
+      </a>
+      <a href="/library" class="t58-nav-item {{ 'active' if active_page == 'strategy_library' else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-library"/></svg></span><span class="label">Strategy Library</span>
+      </a>
+    </div>
+  </details>
 
-  <!-- (2) Test -- v9.8: single link to the consolidated section page;
-       its individual tools live on that page (tools grid), not in the sidebar. -->
-  <a href="/full-pipeline" data-accent="cyan" class="t58-nav-item top-level {{ 'active' if active_page in test_pages else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-flask-conical"/></svg></span><span class="label">Test</span>
-  </a>
-
-  <!-- (3) Optimize -- v9.8: single link to the consolidated section page;
-       its individual tools live on that page (tools grid), not in the sidebar. -->
-  <a href="/optimize-simple" data-accent="blue" class="t58-nav-item top-level {{ 'active' if active_page in optimize_pages else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-sliders-horizontal"/></svg></span><span class="label">Optimize</span>
-  </a>
-
-  <!-- (4) Validate -- v9.8: single link to the consolidated section page;
-       its individual tools live on that page (tools grid), not in the sidebar. -->
-  <a href="/validate-simple" data-accent="violet" class="t58-nav-item top-level {{ 'active' if active_page in validate_pages else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-shield-check"/></svg></span><span class="label">Validate</span>
-  </a>
-
-  <!-- (5) Champion -- v9.8: single link to the consolidated section page;
-       its individual tools live on that page (tools grid), not in the sidebar. -->
-  <a href="/champion-simple" data-accent="gold" class="t58-nav-item top-level {{ 'active' if active_page in champion_pages else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-trophy"/></svg></span><span class="label">Champion</span>
-  </a>
-
-  <!-- (6) Deployment -- v9.8: single link to the consolidated section page;
-       its individual tools live on that page (tools grid), not in the sidebar. -->
-  <a href="/forward-test" data-accent="green" class="t58-nav-item top-level {{ 'active' if active_page in ['forward_test', 'deploy_live', 'live_market', 'replay', 'webhook_relay', 'demo_account', 'trading_bots', 'start_here_deployment'] else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-rocket"/></svg></span><span class="label">Deploy</span>
-  </a>
-
-  <!-- (7) Strategy Graveyard -- v9.8: single link to the consolidated section page;
-       its individual tools live on that page (tools grid), not in the sidebar. -->
-  <a href="/graveyard" data-accent="red" class="t58-nav-item top-level {{ 'active' if active_page in ['graveyard', 'start_here_graveyard'] else '' }}">
-    <span class="t58-nav-icon"><svg class="lu"><use href="#lu-skull"/></svg></span><span class="label">Strategy Graveyard</span>
-  </a>
-
-  <div class="t58-nav-divider"></div>
-  <div class="t58-nav-section-label">Quant Lab</div>
-
-  <!-- (8) Quant Lab -->
-  <details class="t58-nav-group">
+  <!-- (3) Quant Lab: the tools page (Options Outlook is a card on it now), Research Lab and the Hedge Fund Manager pages. -->
+  <details class="t58-nav-group" data-nav="quant-lab" {{ 'open' if open_ok and active_page in quant_pages else '' }}>
     <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-sigma"/></svg></span> Quant Lab <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
     <div class="t58-nav-group-items">
-      <a href="/quant-lab" class="t58-nav-item {{ 'active' if active_page == 'quant_lab' else '' }}">
+      <a href="/quant-lab" class="t58-nav-item {{ 'active' if active_page in ['quant_lab', 'options_outlook'] else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-sigma"/></svg></span><span class="label">Quant Lab</span>
       </a>
       <a href="/research-labs" class="t58-nav-item {{ 'active' if active_page == 'research_labs' else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-microscope"/></svg></span><span class="label">Research Lab</span>
       </a>
-    </div>
-  </details>
-
-  <!-- (9) Options -->
-  <details class="t58-nav-group">
-    <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-chart-candlestick"/></svg></span> Options <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
-    <div class="t58-nav-group-items">
-      <a href="/options-outlook" data-accent="lime" class="t58-nav-item {{ 'active' if active_page == 'options_outlook' else '' }}">
-        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-chart-candlestick"/></svg></span><span class="label">Options Outlook</span>
-      </a>
-    </div>
-  </details>
-
-  <!-- (10) Hedge Fund Manager -->
-  <details class="t58-nav-group">
-    <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-landmark"/></svg></span> Hedge Fund Manager <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
-    <div class="t58-nav-group-items">
       <a href="/hedge-fund" class="t58-nav-item {{ 'active' if active_page == 'hedge_fund' else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-briefcase-business"/></svg></span><span class="label">Portfolio Builder</span>
       </a>
@@ -216,9 +183,8 @@
     </div>
   </details>
 
-  <div class="t58-nav-divider"></div>
-  <div class="t58-nav-section-label">Prop Journey</div>
-  <details class="t58-nav-group" {{ 'open' if active_page in ['mission', 'guardian', 'accounts', 'buy_challenge', 'research_integrity'] else '' }}>
+  <!-- (4) Prop Journey -->
+  <details class="t58-nav-group" data-nav="prop-journey" {{ 'open' if open_ok and active_page in prop_pages else '' }}>
     <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-flag"/></svg></span> Prop Journey <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
     <div class="t58-nav-group-items">
       <a href="/mission" class="t58-nav-item {{ 'active' if active_page == 'mission' else '' }}">
@@ -233,15 +199,14 @@
       <a href="/accounts" class="t58-nav-item {{ 'active' if active_page == 'accounts' else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-layers"/></svg></span><span class="label">Accounts</span>
       </a>
+      <a href="/buy-challenge" class="t58-nav-item {{ 'active' if active_page == 'buy_challenge' else '' }}">
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-shopping-cart"/></svg></span><span class="label">Buy Challenge</span>
+      </a>
     </div>
   </details>
 
-  <div class="t58-nav-divider"></div>
-  <div class="t58-nav-section-label">Account</div>
-
-  <!-- (11) Account -- Account Settings is one tabbed page (account, notifications,
-       API keys, achievements, support); Data Center and Strategy Library sit beside it. -->
-  <details class="t58-nav-group">
+  <!-- (5) Account: settings, data, and the learning pages (University, Playground, Library) so nothing needs a header of its own. -->
+  <details class="t58-nav-group" data-nav="account" {{ 'open' if open_ok and active_page in acct_pages or (active_page or '').startswith('playground') else '' }}>
     <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-user-round"/></svg></span> Account <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
     <div class="t58-nav-group-items">
       <a href="/settings/account" class="t58-nav-item {{ 'active' if active_page == 'account_settings' else '' }}">
@@ -250,20 +215,6 @@
       <a href="/data-center" class="t58-nav-item {{ 'active' if active_page == 'data_center' else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-database"/></svg></span><span class="label">Data Center</span>
       </a>
-      <a href="/library" class="t58-nav-item {{ 'active' if active_page == 'strategy_library' else '' }}">
-        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-library"/></svg></span><span class="label">Strategy Library</span>
-      </a>
-      <a href="/buy-challenge" class="t58-nav-item {{ 'active' if active_page == 'buy_challenge' else '' }}">
-        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-shopping-cart"/></svg></span><span class="label">Buy Challenge</span>
-      </a>
-    </div>
-  </details>
-
-  <!-- (12) Education -- University (courses, resources and the user manual are tabs
-       inside it), Playground, Library. -->
-  <details class="t58-nav-group">
-    <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-graduation-cap"/></svg></span> Education <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
-    <div class="t58-nav-group-items">
       <a href="/education" class="t58-nav-item {{ 'active' if active_page == 'education' else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-school"/></svg></span><span class="label">University</span>
       </a>
@@ -271,7 +222,7 @@
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-gamepad-2"/></svg></span><span class="label">Playground</span>
       </a>
       <a href="/playground/library" class="t58-nav-item {{ 'active' if active_page == 'books_library' else '' }}">
-        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-book-marked"/></svg></span><span class="label">Library</span>
+        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-book-marked"/></svg></span><span class="label">Book Library</span>
       </a>
     </div>
   </details>
