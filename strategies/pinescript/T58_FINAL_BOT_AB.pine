@@ -1,0 +1,297 @@
+//@version=5
+// T58 BOT-A / BOT-B, Pine v5 port of the Python bots in final/BOT-A and final/BOT-B (one instrument per chart).
+// Round 3 (2026-11-24): the round-3 picks (code/picks_r3.py). A adds PDLB on GC at half weight, $1,000 eval risk, $1,200 drawdown throttle.
+// B adds Open Drive on NQ (x0.25), Compression ORB on ES (x0.5), the GC gap-with-trend leg (x0.5) and a $300 day stop.
+// Earlier ports: T58_BOT_r1.pine (round 1), T58_BOT_r2.pine (round 2).
+// Run on a 1-minute chart of MNQ1! (NQ legs), MES1! (ES legs) or MGC1! (GC legs); order quantity = micros. Set the bot input to A or B.
+// Not ported for B: the cross-instrument cap of 4 open positions and two legs holding one instrument at once (each chart holds at most one).
+// The crash filter needs 505 prior RTH sessions on the chart; with less history it stays off (TradingView 1m history is short).
+// Not ported: the Ind Rule NQ leg (IR_NQ), which needs the engine's Discovery Lab indicator library; it is Python only.
+// Not ported: the cross-instrument arbiter (max 2 open across NQ and ES, ES/NQ hedge guard): each chart trades its own instrument only.
+// Account model: Lucid 50K, EOD trailing $2,000 floor that locks at $50,100. This is a simplified mirror of code/firm.py for sizing only.
+strategy("T58 BOT", overlay=true, pyramiding=0, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=1,
+         calc_on_order_fills=true, commission_type=strategy.commission.cash_per_contract, commission_value=0.50, slippage=1)
+bot = input.string("A", "Bot", options=["A", "B"])
+isNQ = str.contains(syminfo.root, "NQ")
+isGC = str.contains(syminfo.root, "GC")
+pvm = isNQ ? 2.0 : isGC ? 10.0 : 5.0                    // $ per point per micro
+cpm = (isGC ? 1.60 : 1.0) + 2 * syminfo.mintick * pvm   // base cost per micro round turn: commission + 1 tick a side
+// ---- frozen parameters (final/BOT-*/params.json)
+rBase   = bot == "A" ? 1000.0 : 250.0      // A sizes for the evaluation (r_eval); B sizes for a funded account (r_fund)
+fCush   = bot == "A" ? 0.4 : 0.3
+dayStop = bot == "A" ? 650.0 : 300.0
+dayCap  = bot == "A" ? 1e9 : 200.0
+ddLvl   = bot == "A" ? 1200.0 : 400.0
+floorX  = bot == "A" ? na : 3.0          // B: one-micro minimum only while one micro risks <= 3x the budget
+crashK  = bot == "A" ? 1.0 : 0.5          // B: weight x 0.5 in a crash state
+ddK     = 0.25
+kNeed   = bot == "A" ? 1.0 : na
+// legs on this chart and their weights (Python dict order = priority)
+useCDL = not isGC
+useORB = not isGC
+useOD  = (bot == "A" and isNQ) or (bot == "B" and not isGC)
+wOD    = bot == "A" ? 0.5 : 0.25
+usePDL = isGC
+wPDL   = bot == "A" ? 0.5 : 1.0
+useGAP = bot == "B" and isGC
+useCOB = bot == "B" and not isNQ and not isGC
+useVW  = bot == "B" and isNQ
+useO30 = bot == "B" and isNQ
+wHalf  = 0.5
+orbR   = isNQ ? 3.0 : 2.0
+// ---- clock and daily context (prior completed regular-session days)
+tz = "America/New_York"
+mod = hour(time, tz) * 60 + minute(time, tz)
+k = mod - 570
+inRTH = k >= 0 and k < 390
+rthT = ticker.modify(syminfo.tickerid, session.regular)
+[atr, pc, e50, e200, sma20, prng] = request.security(rthT, "D", [ta.sma(high - low, 14)[1], close[1], ta.ema(close, 50)[1], ta.ema(close, 200)[1], ta.sma(close, 20)[1], (high - low)[1]], lookahead=barmerge.lookahead_on)
+var float o = na
+var float hh = na
+var float ll = na
+var float or15H = na
+var float or15L = na
+var float or30H = na
+var float or30L = na
+var float cpv = 0.0
+var float cv = 0.0
+var bool orbDone = false
+var bool o30Done = false
+var bool odDone = false
+var bool vwDone = false
+var int vwTrend = 0
+if k == 0
+    o := open
+    hh := high
+    ll := low
+    or15H := high
+    or15L := low
+    or30H := high
+    or30L := low
+    cpv := 0.0
+    cv := 0.0
+    orbDone := false
+    o30Done := false
+    odDone := false
+    vwDone := false
+    vwTrend := 0
+else if inRTH and not na(o)
+    hh := math.max(hh, high)
+    ll := math.min(ll, low)
+    if k < 15
+        or15H := math.max(or15H, high)
+        or15L := math.min(or15L, low)
+    if k < 30
+        or30H := math.max(or30H, high)
+        or30L := math.min(or30L, low)
+if inRTH
+    cpv += hlc3 * volume
+    cv += volume
+vw = cv > 0 ? cpv / cv : close
+if k == 29                                               // VWPB daily trend fixed at the 09:59 close
+    vwTrend := pc > sma20 and close > vw ? 1 : pc < sma20 and close < vw ? -1 : 0
+// ---- manual RTH day stats (09:30-16:00 ET): GC prior-day levels and ATR, and the crash state for B
+var rngs = array.new_float()
+var atrs = array.new_float()
+var rcs = array.new_float()
+var r1s = array.new_float()
+var v126h = array.new_float()
+var float dH = na
+var float dL = na
+var float pdh = na
+var float pdl = na
+var float matr = na
+var float atrPct = na
+var bool crash = false
+var bool pdlDone = false
+var float mPdc = na
+var float mSma20 = na
+var float prevRng = na
+if inRTH and k == 389
+    array.push(rcs, close)
+    if array.size(rcs) > 1
+        array.push(r1s, close / array.get(rcs, array.size(rcs) - 2) - 1)
+if k == 0
+    if not na(dH)
+        pdh := dH
+        pdl := dL
+        prevRng := dH - dL
+        array.push(rngs, dH - dL)
+    mPdc := array.size(rcs) > 0 ? array.get(rcs, array.size(rcs) - 1) : na
+    mSma20 := array.size(rcs) >= 20 ? array.avg(array.slice(rcs, array.size(rcs) - 20, array.size(rcs))) : na
+    n = array.size(rngs)
+    matr := n >= 14 ? array.avg(array.slice(rngs, n - 14, n)) : na
+    atrPct := na
+    if not na(matr) and array.size(atrs) >= 120
+        na0 = array.size(atrs)
+        c = 0
+        for j = na0 - 120 to na0 - 1
+            c += array.get(atrs, j) < matr ? 1 : 0
+        atrPct := c / 120.0
+    if not na(matr)
+        array.push(atrs, matr)
+    nc = array.size(rcs)
+    nr = array.size(r1s)
+    crash := false
+    if nr > 126
+        v = array.stdev(array.slice(r1s, nr - 126, nr), false)
+        hi = array.size(v126h) > 60 ? v > array.median(v126h) : false
+        crash := nc >= 505 and array.get(rcs, nc - 1) / array.get(rcs, nc - 505) - 1 < 0 and hi
+        array.push(v126h, v)
+    dH := high
+    dL := low
+    pdlDone := false
+else if inRTH and not na(dH)
+    dH := math.max(dH, high)
+    dL := math.min(dL, low)
+// ---- account state for sizing (EOD trailing floor)
+var float eodHigh = 50000.0
+var float floorLvl = 48000.0
+var float dayStart = 50000.0
+var float peakEq = 50000.0
+bal = strategy.initial_capital + strategy.netprofit
+newDay = mod == 18 * 60 or (mod < mod[1] and mod >= 18 * 60)
+if newDay
+    eodHigh := math.max(eodHigh, bal)
+    floorLvl := math.min(eodHigh - 2000.0, 50100.0)
+    peakEq := math.max(peakEq, bal)
+    dayStart := bal
+dayPnl = bal + strategy.openprofit - dayStart
+riskBudget(w, stopPts) =>
+    cush = bal - floorLvl
+    r = rBase * w * (crash ? crashK : 1.0)
+    if peakEq - bal >= ddLvl
+        r := r * ddK
+    if bot == "A"
+        need = 53000.0 - bal
+        r := math.min(r, math.max(need * kNeed, 150.0))
+    r := math.min(r, fCush * cush)
+    r := math.min(r, dayStop + dayPnl)
+    per = stopPts * pvm + cpm
+    q = math.floor(r / per)
+    if q < 1 and per <= 0.35 * cush and per <= dayStop + dayPnl and (na(floorX) or per <= floorX * r)
+        q := 1
+    dayPnl <= -dayStop or dayPnl >= dayCap ? 0 : q
+// ---- signals (decided at this bar's close; filled at the next bar's open)
+var float stopD = na
+var float stp = na
+var float tgtR = na
+var bool trail = false
+var float ext = na
+var string leg = ""
+flat = strategy.position_size == 0
+go(id, dir, sd, w) =>
+    q = riskBudget(w, sd)
+    if q > 0
+        strategy.entry(id, dir > 0 ? strategy.long : strategy.short, qty=q)
+    q > 0
+// 1) Context Drive Long: decisions at 09:45, 10:15, 11:00, 11:30, 12:30 closes
+dec = inRTH and (k + 1 == 15 or k + 1 == 45 or k + 1 == 90 or k + 1 == 120 or k + 1 == 180)
+if flat and useCDL and dec and not na(o) and atr > 0
+    mv = close - o
+    rng = hh - ll
+    p = rng > 0 ? (close - ll) / rng : 0.0
+    if mv >= 0.15 * atr and mv <= 0.6 * atr and p >= 0.7 and close > vw and o > pc and e50 > e200 and pc > e200
+        sd = math.max(0.05 * atr, math.min(0.27 * atr, 0.7 * mv))
+        if go("CDL", 1, sd, 1.0)
+            stopD := sd, tgtR := na, trail := true, leg := "CDL", stp := na
+            flat := false
+// 2) ORB15 after a compressed day: first close beyond the 15m range, 09:45-12:00
+if useORB and inRTH and k >= 15 and k < 150 and not orbDone and not na(atr) and prng < 0.7 * atr
+    d = close > or15H ? 1 : close < or15L ? -1 : 0
+    if d != 0
+        orbDone := true
+        if flat
+            lvl = d > 0 ? or15H - 0.25 * atr : or15L + 0.25 * atr
+            sd = math.abs(close - lvl)
+            if sd > 0 and go("ORB", d, sd, 1.0)
+                stopD := sd, tgtR := orbR, trail := false, leg := "ORB", stp := lvl
+                flat := false
+// 3) ORB30 with the daily trend (B, NQ): first close beyond the 30m range, 10:00-12:00, stop at the far side
+if useO30 and inRTH and k >= 30 and k < 150 and not o30Done and not na(sma20)
+    d = close > or30H ? 1 : close < or30L ? -1 : 0
+    if d != 0
+        o30Done := true
+        if flat and math.sign(pc - sma20) == d
+            lvl = d > 0 ? or30L : or30H
+            sd = math.abs(close - lvl)
+            if go("O30", d, sd, wHalf)
+                stopD := sd, tgtR := 3.0, trail := false, leg := "O30", stp := lvl
+                flat := false
+// 4) Open Drive (A on NQ x0.5; B on NQ and ES x0.25): 10:29 close vs 09:30 open >= 0.10 ATR -> enter 10:30, stop 0.35 ATR, hold to 15:55
+if useOD and k == 59 and not odDone and atr > 0
+    odDone := true
+    mv = close - o
+    if flat and math.abs(mv) >= 0.10 * atr
+        d = mv > 0 ? 1 : -1
+        if go("OD", d, 0.35 * atr, wOD)
+            stopD := 0.35 * atr, tgtR := na, trail := false, leg := "OD", stp := na
+            flat := false
+// 5) VWAP pullback with the daily trend (B, NQ): first touch-and-close back over VWAP, 10:00-15:00, stop 0.35 ATR, target 2R
+if useVW and inRTH and k >= 30 and k < 330 and not vwDone and vwTrend != 0
+    t = vwTrend
+    touch = t > 0 ? (low <= vw and close > vw) : (high >= vw and close < vw)
+    if touch
+        vwDone := true
+        if flat
+            lvl = close - t * 0.35 * atr
+            if go("VWPB", t, 0.35 * atr, wHalf)
+                stopD := 0.35 * atr, tgtR := 2.0, trail := false, leg := "VWPB", stp := lvl
+                flat := false
+// 6) Prior-day break, low volatility (GC; A x0.5, B x1): first close beyond the prior RTH high / low, 10:00-14:00, ATR percentile < 0.5,
+//    stop 0.5 ATR from the signal close, target 3R
+if usePDL and inRTH and k >= 30 and k < 270 and not pdlDone and not na(pdh) and not na(matr) and not na(atrPct)
+    d = close > pdh ? 1 : close < pdl ? -1 : 0
+    if d != 0
+        pdlDone := true
+        if flat and atrPct < 0.5
+            lvl = close - d * 0.5 * matr
+            if go("PDLB", d, 0.5 * matr, wPDL)
+                stopD := 0.5 * matr, tgtR := 3.0, trail := false, leg := "PDLB", stp := lvl
+                flat := false
+// 7) Gap with the daily trend (B, GC): RTH open more than 0.4 ATR from the prior RTH close, with the 20-day trend; signal at the
+//    09:34 close, stop 0.5 ATR, target 3R
+if useGAP and k == 4 and not na(matr) and not na(mPdc) and not na(mSma20) and not na(o)
+    g = (o - mPdc) / matr
+    d = g > 0.4 ? 1 : g < -0.4 ? -1 : 0
+    if d != 0 and math.sign(mPdc - mSma20) == d and flat
+        if go("GAP", d, 0.5 * matr, 0.5)
+            stopD := 0.5 * matr, tgtR := 3.0, trail := false, leg := "GAP", stp := close - d * 0.5 * matr
+            flat := false
+// 8) Compression ORB (B, ES; repo strategies/python/CompressionORB_ES_5m_v1.py on 5m closes): 30m range <= 0.30 ATR (>= 0.03 ATR),
+//    prior range <= 1.1 ATR; first 5m close beyond the range +/- 0.02 ATR before 14:00; stop = far side (>= 0.08 ATR, skip > 0.6 ATR); 3R
+var bool cobDone = false
+if k == 0
+    cobDone := false
+if useCOB and inRTH and k >= 30 and k < 270 and (k + 1) % 5 == 0 and not cobDone and not na(matr) and not na(prevRng)
+    w30 = or30H - or30L
+    if w30 <= 0.30 * matr and w30 >= 0.03 * matr and prevRng <= 1.1 * matr
+        d = close > or30H + 0.02 * matr ? 1 : close < or30L - 0.02 * matr ? -1 : 0
+        if d != 0
+            cobDone := true
+            sd = math.max(d > 0 ? close - or30L : or30H - close, 0.08 * matr)
+            if sd <= 0.6 * matr and flat
+                if go("COB", d, sd, 0.5)
+                    stopD := sd, tgtR := 3.0, trail := false, leg := "COB", stp := close - d * sd
+                    flat := false
+    else
+        cobDone := true
+// ---- exits: stop first, target, CDL trail (2x stop once 1R in favour), flat at 15:55
+if strategy.position_size != 0
+    e = strategy.position_avg_price
+    d = strategy.position_size > 0 ? 1 : -1
+    if na(stp)
+        stp := e - d * stopD
+        ext := e
+    if na(ext)
+        ext := e
+    ext := d > 0 ? math.max(ext, high) : math.min(ext, low)
+    if trail and d * (ext - e) >= stopD
+        stp := d > 0 ? math.max(stp, ext - 2 * stopD) : math.min(stp, ext + 2 * stopD)
+    lim = na(tgtR) ? na : e + d * tgtR * math.abs(e - stp)
+    strategy.exit("x", stop=stp, limit=lim)
+else
+    stp := na
+    ext := na
+if k == 384
+    strategy.close_all("time")
