@@ -1,0 +1,26 @@
+{
+  "plan": "flex50",
+  "max_open": 2,
+  "legs": {
+    "CDL_NQ": 1,
+    "CDL_ES": 1,
+    "ORB15C_NQ": 1,
+    "ORB15C_ES": 1,
+    "IR_NQ": 1,
+    "VWPB_NQ": 0.5,
+    "ORB30T_NQ": 0.5
+  },
+  "policy": {
+    "r_eval": 500,
+    "f_cush": 0.4,
+    "k_need": 1.0,
+    "day_stop": 220,
+    "fund_day_stop": 220,
+    "r_fund": 150,
+    "fund_day_cap": 200,
+    "fund_f_cush": 0.3,
+    "eval_day_cap": 1100,
+    "dd_lvl": 300,
+    "dd_k": 0.25
+  }
+}

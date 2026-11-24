@@ -1,0 +1,35 @@
+{
+ "note": "Round-5 alternative BOT-B (search tag B2-26). NOT the shipped pick; see final/T58_FINAL_BOTS_ROUND5_2026-11-24.md.",
+ "plan": "flex50",
+ "max_open": 4,
+ "spec": {
+  "crash": 0.5,
+  "one_per_inst": false
+ },
+ "legs": {
+  "CDL_NQ": 1,
+  "ORB15C_NQ": 1,
+  "IR_NQ": 0.5,
+  "VWPB_NQ": 0.25,
+  "OD_ES": 0.5,
+  "PDLB_GC": 0.5,
+  "OD_NQ": 0.25,
+  "CORB_ES": 0.5,
+  "TOD10_NQ": 0.5
+ },
+ "policy": {
+  "r_eval": 300,
+  "f_cush": 0.4,
+  "k_need": 1.0,
+  "day_stop": 300,
+  "fund_day_stop": 300,
+  "r_fund": 250,
+  "fund_day_cap": null,
+  "fund_f_cush": 0.3,
+  "eval_day_cap": 1100,
+  "dd_lvl": 400,
+  "dd_k": 0.25,
+  "floor_x": 3.0
+ },
+ "rspec": null
+}
