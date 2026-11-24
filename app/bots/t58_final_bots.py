@@ -1,4 +1,4 @@
-"""T58 final bots (research, 2026-11-24): BOT-A for passing a LucidPro 50K evaluation, BOT-B for LucidFlex 50K payouts.
+"""T58 final bots (research, round 4, 2026-11-24): BOT-A for passing a LucidPro 50K evaluation, BOT-B for LucidFlex 50K payouts.
 
 Not seeded as presets: load with ``next(c for c in t58_final_configs() if c.id == 'bot-t58-final-a')``.
 Every number in docs/T58_FINAL_BOTS_PERFORMANCE_2026-11-24.md comes from the research engine in research/t58_final_bots/engine
@@ -25,20 +25,23 @@ T58_PICKS = {
    "PDLB_GC": 0.5
   },
   "policy": {
-   "r_eval": 1000,
+   "r_eval": 800,
    "f_cush": 0.4,
    "k_need": 1.0,
    "day_stop": 650,
-   "fund_day_stop": 550,
+   "fund_day_stop": 400,
    "r_fund": 300,
-   "fund_day_cap": None,
+   "fund_day_cap": 500,
    "fund_f_cush": 0.3,
    "cons_k": 0.55,
    "cons_min": 300,
    "cons_g": 0.2,
    "cons_R": 2.5,
    "dd_lvl": 1200,
-   "dd_k": 0.25
+   "dd_k": 0.25,
+   "cush_a": 0.5,
+   "prog_b": -0.3,
+   "pace_c": 0
   }
  },
  "B": {
@@ -56,7 +59,7 @@ T58_PICKS = {
    "IR_NQ": 1,
    "VWPB_NQ": 0.5,
    "ORB30T_NQ": 0.5,
-   "OD_ES": 0.25,
+   "OD_ES": 0.5,
    "PDLB_GC": 1.0,
    "OD_NQ": 0.25,
    "CORB_ES": 0.5,
@@ -75,11 +78,17 @@ T58_PICKS = {
    "dd_lvl": 400,
    "dd_k": 0.25,
    "floor_x": 3.0
+  },
+  "rspec": {
+   "ORB15C_ES": {
+    "eq": 10
+   }
   }
  }
 }
 T58_POLICY = {k: v['policy'] for k, v in T58_PICKS.items()}   # exact sizing used in research (research/t58_final_bots/engine/policy.py)
 T58_FILTERS = {k: v.get('spec') for k, v in T58_PICKS.items()}   # crash: size x0.5 when the 504-day return < 0 and 126-day vol > its median
+T58_REGIME = {k: v.get('rspec') for k, v in T58_PICKS.items()}   # per-leg causal regime filter (engine/regime.py); eq N: the leg's last N closed signals average > 0R
 LEG_FILES = {
  "CDL_NQ": [
   "python/ContextDriveLong_NQ_1m_v2.py",
