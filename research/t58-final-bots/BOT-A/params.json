@@ -1,30 +1,73 @@
 {
-  "plan": "pro50",
-  "max_open": 2,
-  "spec": null,
-  "legs": {
-    "CDL_NQ": 1,
-    "CDL_ES": 1,
-    "ORB15C_NQ": 1,
-    "ORB15C_ES": 1,
-    "IR_NQ": 1,
-    "OD_NQ": 0.5,
-    "PDLB_GC": 0.5
-  },
-  "policy": {
-    "r_eval": 1000,
-    "f_cush": 0.4,
-    "k_need": 1.0,
-    "day_stop": 650,
-    "fund_day_stop": 550,
-    "r_fund": 300,
-    "fund_day_cap": null,
-    "fund_f_cush": 0.3,
-    "cons_k": 0.55,
-    "cons_min": 300,
-    "cons_g": 0.2,
-    "cons_R": 2.5,
-    "dd_lvl": 1200,
-    "dd_k": 0.25
-  }
+ "plan": "pro50",
+ "max_open": 2,
+ "spec": null,
+ "legs": {
+  "CDL_NQ": 1,
+  "CDL_ES": 1,
+  "ORB15C_NQ": 1,
+  "ORB15C_ES": 1,
+  "IR_NQ": 1,
+  "OD_NQ": 0.5,
+  "PDLB_GC": 0.5
+ },
+ "policy": {
+  "r_eval": 919.9999999999999,
+  "f_cush": 0.4,
+  "k_need": 1.0,
+  "day_stop": 650,
+  "fund_day_stop": 400,
+  "r_fund": 300,
+  "fund_day_cap": 500,
+  "fund_f_cush": 0.3,
+  "cons_k": 0.55,
+  "cons_min": 300,
+  "cons_g": 0.2,
+  "cons_R": 2.5,
+  "dd_lvl": 1200,
+  "dd_k": 0.25,
+  "cush_a": 0.5,
+  "prog_b": -0.3,
+  "pace_c": 0
+ },
+ "fspec": {
+  "CDL_NQ": [
+   [
+    "vix_chg5",
+    "skip_low",
+    0.9581
+   ]
+  ],
+  "CDL_ES": [
+   [
+    "vix_term",
+    "skip_low",
+    0.8354
+   ]
+  ],
+  "ORB15C_NQ": [
+   [
+    "tick_dir",
+    "skip_low",
+    -113.0
+   ]
+  ],
+  "ORB15C_ES": [
+   [
+    "va_dir",
+    "skip_with",
+    1.0
+   ]
+  ],
+  "OD_NQ": [
+   [
+    "gap_abs",
+    "skip_low",
+    0.1944
+   ]
+  ]
+ },
+ "rm": 1.15,
+ "cid": "A59",
+ "k100": 1.75
 }

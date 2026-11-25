@@ -13,7 +13,7 @@
     "IR_NQ": 1,
     "VWPB_NQ": 0.5,
     "ORB30T_NQ": 0.5,
-    "OD_ES": 0.25,
+    "OD_ES": 0.5,
     "PDLB_GC": 1.0,
     "OD_NQ": 0.25,
     "CORB_ES": 0.5,
@@ -32,5 +32,10 @@
     "dd_lvl": 400,
     "dd_k": 0.25,
     "floor_x": 3.0
+  },
+  "rspec": {
+    "ORB15C_ES": {
+      "eq": 10
+    }
   }
 }

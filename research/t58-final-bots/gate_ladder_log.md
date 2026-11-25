@@ -120,3 +120,33 @@ That is weaker evidence than the spec asks for and is stated in each README.
     after the read; R2 is documented as the lower-drawdown alternative.
 - Monte Carlo on pre-holdout pools only (code/mc.py r3 -> research/mc_r3.csv), so the holdout is not reused.
 - Ladder status: exhausted under the rules. With the fresh holdout now read, any further tuning would have no untouched test left.
+
+## Round 4 (2026-11-24 evening): new BOT-A bar, 2016-2019 holdout, regime filter, barrier sizing
+- Owen's message of 18:17 UTC: judge A on P(pass), days to pass (< 30), bust and 90-day EV, other metrics as limits; get untouched
+  data (his 2016-11-24 .. 2021-01-01 pack); a causal regime filter; sizing that reacts to the target and the drawdown limit.
+  B keeps the every-metric bar. Pre-registered in research/PREREG_R4.md before any round-4 score.
+- Data: the pack (ES, NQ, MES, GC, MNQ) was copied and sealed by hash (data_holdout3/SEAL.sha256) before any price was read.
+  Untouched part = sessions 2016-11-24 .. 2019-12-31 (H3, 799 sessions per market). Built with the repo engine on the combined
+  file and shifted onto the repo's back-adjusted basis (code/data_h3.py, data_h3_ports.py; offsets NQ 0, ES 113.0, GC 61.6, spread 0
+  over the first 5 shared sessions). No roll splice was detected before 2020 (the detector is partial; disclosed). MES and MNQ start
+  2019-05 and were not used. The 2020 part overlaps research and was not used.
+- Splits: research 2020-2023; validation 2024-01-01 .. 2026-11-20, which now includes Mar-Nov 2026 (read once as the round-3 holdout).
+- Rescore on the new bar (code/r4_base.py -> research/dev_r4_prior.csv): round-3 A meets every primary test but breaks two limits
+  (research consistency blocks, validation expectancy). Round-3 B fails only trades a month (both splits).
+- Regime filter (code/regime.py, causal: prior-session ATR percentile band, trend efficiency, leg equity N=10/20, bot equity):
+  per-leg rule on research (code/r4_legregime.py) picked only ORB15C_ES with the 10-signal equity filter. In Mar-Nov 2026 the losing
+  legs were ORB15C_NQ, ORB15N_NQ and OD_NQ, and gold sat in its top-20% volatility almost throughout; no causal filter fixed them on
+  research, so none was added. Bot-level filters lowered payouts on average.
+- A search (code/r4_search.py A1 1,152 + A2 324 configs; research/bot_trials_r4.csv): barrier sizing (cush_a, prog_b, pace_c) and the
+  regime options do not raise P(pass); r_eval 800 with the sizing terms fixes the limits. Three configs meet the whole bar on dev;
+  pick = middle funded day cap ($500). Plateau check passed.
+- B search (B1, 144 configs): none clears the bar. Pick = round-3 B + ORB15C_ES equity filter + OD_ES 0.5 (fails trades a month only,
+  higher payouts than round 3 in both splits). Five variants fail one cell fewer but pay about half; rejected with the reason logged.
+- Frozen: research/FROZEN_PICKS_R4.md + FROZEN_PICKS_R4.sha256 (hashes of the record, picks and the scoring code), code/picks_r4.py.
+- H3 read once (code/final_score_r4.py hold -> research/final_hold_r4.csv), stress and base, ports and the Flex lock rows included.
+  - A-R4 at stress: P(pass) 14.9% vs 15.0% (miss by 0.1 point), 14 vs 19 days, bust 0.1% vs 1.3%, EV -$198 vs -$226, max drawdown
+    $2,699 vs $5,943; limit miss: funded first payout 1.7% vs 4.5%.
+  - B-R4 at stress: first payout 25.1% vs 23.7%, $202 vs $196 paid; misses EV, payouts in 90 days and P(2+ payouts). 5 of 54 cells
+    short overall (round-3 B: 8). Every B, baseline included, lost money in 2016-2019 (PF 0.85 to 0.91).
+- Monte Carlo: code/mc.py 10000 r4 -> research/mc_r4.csv (pools FULL 2020-01 .. 2026-11-20, OOS 2024-01 .. 2026-11-20, H3 after its read).
+- Ladder status: both untouched windows are now spent. Any further tuning needs new data.

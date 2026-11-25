@@ -2,6 +2,20 @@
 
 Last checkpoint: 2026-11-23, cycle 5 (picks frozen, holdout read, Monte Carlo, deliverables).
 
+## Round 6 (2026-11-25), Owen: new inputs, Lucid Pro 50K/100K, CL/NG data (T58_R6=1)
+- Inputs: code/r6feat.py (VIX, VIX3M, daily TICK, FOMC to 2026-01, NFP rule, gap, overnight range, prior value area). Not available:
+  GEX, intraday TICK, footprint, CPI. Filters: research/filter_trials_r6.csv (26 of 252 kept).
+- CL/NG: data_r6 (H6 2026 sealed, unread). 1,198 variants, 0 pass (research/strategy_ledger_r6.csv). No energy legs.
+- Search: research/bot_trials_r6.csv (A 400, B 800). Picks (research/FROZEN_PICKS_R6.md): A = A59 (picks_r6_A.json), B = round 4.
+  Confirm research/final_dev_r6.csv, 2026 read research/final_h6_r6.csv, shortfalls_*.csv, MC research/mc_r6.csv.
+- Report final/T58_FINAL_BOTS_ROUND6_2026-11-25.md (+ _tables.md, code/reports_r6.py). Pine updated, not compile-checked.
+
+## Round 5 (2026-11-24 evening), Owen: "Continue the search", no pre-2016 data available
+- Mode T58_R5=1 (code/r5.py): dev = 2016-11-24..2026-11-20 split h3/research/validation, all already read; no holdout.
+- 3,720 configs (research/bot_trials_r5.csv). Picks unchanged: round-4 A and B. BOT_B_ALT (B2-26) kept, not shipped (fails rotation
+  and plateau). Confirm research/final_dev_r5.csv, plateau research/plateau_r5_B.csv, MC research/mc_r5.csv.
+- Report final/T58_FINAL_BOTS_ROUND5_2026-11-24.md (code/reports_r5.py).
+
 ## Done
 - Phase 0: research/00_recon.md; baselines research/baseline_dev.csv (Pro, base+stress, + sustained), research/baseline_dev_flex.csv.
 - Phase 1: code/data.py (splits res 2020-23 / val 2024-Aug25 / holdout Sep25+ SEALED), code/firm.py (Lucid Pro + Flex, 12 tests pass).
@@ -62,3 +76,11 @@ Costs, lookahead protection, sealed holdout, beat-baseline rule. No trades, no b
 - Pine: final/pine/T58_BOT.pine = round 3, saved to TradingView as version 3.0 (compiles; TradingView daily tool quota hit, so only
   one 2-week MGC smoke run, 0 trades because the GC legs need 120+ sessions of history to arm).
 - Outcome: neither bot beats baseline on every metric. B short on 3 of 54 stress cells, A on 11 of 42. Search exhausted under the rules.
+
+## Round 4 (Nov 24 evening): new A bar, 2016-2019 holdout, regime filter, barrier sizing
+- Mode env T58_R4=1. Research 2020-2023, validation 2024-01-01 .. 2026-11-20 (H2 included), holdout H3 = sessions < 2020-01-02.
+- Data: data_holdout3/ (sealed), code/data_h3.py, data_h3_ports.py -> cache mat_<I>_full4.pkl and raw/*__h3.pkl.
+- Bar: research/PREREG_R4.md; A judged by r4.a_bar. Picks: code/picks_r4.py, research/FROZEN_PICKS_R4.md (+ .sha256).
+- H3 read once: research/final_hold_r4.csv (never again). Dev: final_dev_r4.csv. Compare: code/compare_r4.py. MC: research/mc_r4.csv.
+- Outcome: A-R4 meets the new bar on dev; on H3 misses P(pass) by 0.1 point and one limit. B-R4 short on 5 of 54 stress cells.
+- Pine updated (round 4) but not compiled: TradingView daily tool quota exhausted.
