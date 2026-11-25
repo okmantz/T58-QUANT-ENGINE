@@ -1,9 +1,12 @@
 //@version=5
 // T58 BOT-A / BOT-B, Pine v5 port of the Python bots in final/BOT-A and final/BOT-B (one instrument per chart).
+// Round 6 (2026-11-25): BOT-A = round-6 pick A59 (research/picks_r6_A.json): $920 eval risk and five entry filters from prior-day
+// inputs (VIX 5-day change, VIX/VIX3M, NYSE TICK close, |overnight gap| / ATR14, open vs prior RTH value area); BOT-B unchanged (round 4).
+// The filters read CBOE:VIX, CBOE:VIX3M and USI:TICK daily closes; the research engine (code/r6feat.py) is the reference definition.
 // Round 4 (2026-11-24): the round-4 picks (code/picks_r4.py). A: $800 eval risk, eased as the cushion over the floor shrinks
 // (x (cushion / 2000)^0.5) and as profit nears the target (up to -30%). B: Open Drive on ES at x0.5, and the ES ORB15 leg trades only
 // while its own last 10 signals (taken or not, tracked here as virtual trades) average above 0R.
-// Earlier ports: T58_BOT_r1.pine, T58_BOT_r2.pine, T58_BOT_r3.pine.
+// Earlier ports: T58_BOT_r1.pine, T58_BOT_r2.pine, T58_BOT_r3.pine, T58_BOT_r4.pine.
 // Run on a 1-minute chart of MNQ1! (NQ legs), MES1! (ES legs) or MGC1! (GC legs); order quantity = micros. Set the bot input to A or B.
 // Not ported for B: the cross-instrument cap of 4 open positions and two legs holding one instrument at once (each chart holds at most one).
 // The crash filter needs 505 prior RTH sessions on the chart; with less history it stays off (TradingView 1m history is short).
@@ -18,7 +21,7 @@ isGC = str.contains(syminfo.root, "GC")
 pvm = isNQ ? 2.0 : isGC ? 10.0 : 5.0                    // $ per point per micro
 cpm = (isGC ? 1.60 : 1.0) + 2 * syminfo.mintick * pvm   // base cost per micro round turn: commission + 1 tick a side
 // ---- frozen parameters (final/BOT-*/params.json)
-rBase   = bot == "A" ? 800.0 : 250.0       // A sizes for the evaluation (r_eval); B sizes for a funded account (r_fund)
+rBase   = bot == "A" ? 920.0 : 250.0       // A sizes for the evaluation (r_eval); B sizes for a funded account (r_fund)
 fCush   = bot == "A" ? 0.4 : 0.3
 dayStop = bot == "A" ? 650.0 : 300.0
 dayCap  = bot == "A" ? 1e9 : 200.0
@@ -50,6 +53,14 @@ k = mod - 570
 inRTH = k >= 0 and k < 390
 rthT = ticker.modify(syminfo.tickerid, session.regular)
 [atr, pc, e50, e200, sma20, prng] = request.security(rthT, "D", [ta.sma(high - low, 14)[1], close[1], ta.ema(close, 50)[1], ta.ema(close, 200)[1], ta.sma(close, 20)[1], (high - low)[1]], lookahead=barmerge.lookahead_on)
+// ---- round-6 entry filters (BOT-A only): values known before each filtered entry (all filtered entries are 09:45 ET or later)
+useF6  = bot == "A"
+vixC   = request.security("CBOE:VIX", "D", close[1], lookahead=barmerge.lookahead_on)
+vix6   = request.security("CBOE:VIX", "D", close[6], lookahead=barmerge.lookahead_on)
+vix3C  = request.security("CBOE:VIX3M", "D", close[1], lookahead=barmerge.lookahead_on)
+tickC  = request.security("USI:TICK", "D", close[1], lookahead=barmerge.lookahead_on)
+vixChg = vix6 > 0 ? vixC / vix6 : na
+vixTerm = vix3C > 0 ? vixC / vix3C : na
 var float o = na
 var float hh = na
 var float ll = na
@@ -64,6 +75,50 @@ var bool o30Done = false
 var bool odDone = false
 var bool vwDone = false
 var int vwTrend = 0
+var vaBins = array.new_int()
+var vaVols = array.new_float()
+var float vaL = na
+var float vaH = na
+vaBw = 4 * syminfo.mintick
+if k == 0
+    vaL := na
+    vaH := na
+    nb = array.size(vaBins)
+    if nb > 0
+        ix = array.sort_indices(vaBins, order.ascending)
+        bs = array.new_int(nb)
+        vs = array.new_float(nb)
+        tot = 0.0
+        for j = 0 to nb - 1
+            array.set(bs, j, array.get(vaBins, array.get(ix, j)))
+            array.set(vs, j, array.get(vaVols, array.get(ix, j)))
+            tot += array.get(vs, j)
+        if tot > 0
+            pIx = array.indexof(vs, array.max(vs))
+            a = pIx
+            z = pIx
+            acc = array.get(vs, pIx)
+            while acc < 0.7 * tot
+                lft = a > 0 ? array.get(vs, a - 1) : -1.0
+                rgt = z + 1 < nb ? array.get(vs, z + 1) : -1.0
+                if rgt >= lft
+                    z += 1
+                    acc += array.get(vs, z)
+                else
+                    a -= 1
+                    acc += array.get(vs, a)
+            vaL := array.get(bs, a) * vaBw
+            vaH := (array.get(bs, z) + 1) * vaBw
+    array.clear(vaBins)
+    array.clear(vaVols)
+if inRTH
+    bId = int(math.floor(hlc3 / vaBw))
+    jx = array.indexof(vaBins, bId)
+    if jx < 0
+        array.push(vaBins, bId)
+        array.push(vaVols, volume)
+    else
+        array.set(vaVols, jx, array.get(vaVols, jx) + volume)
 if k == 0
     o := open
     hh := high
@@ -92,6 +147,11 @@ if inRTH
     cpv += hlc3 * volume
     cv += volume
 vw = cv > 0 ? cpv / cv : close
+vaSide = na(vaL) or na(o) ? na : o > vaH ? 1 : o < vaL ? -1 : 0          // 09:30 open vs prior RTH value area
+gapAbs = na(o) or na(atr) or atr <= 0 ? na : math.abs(o - pc) / atr
+skipCDL = useF6 and (isNQ ? (not na(vixChg) and vixChg <= 0.9581) : (not na(vixTerm) and vixTerm <= 0.8354))
+skipOD  = useF6 and isNQ and not na(gapAbs) and gapAbs <= 0.1944
+skipORB(d) => useF6 and (isNQ ? (not na(tickC) and tickC * d <= -113) : (not na(vaSide) and vaSide * d == 1))
 if k == 29                                               // VWPB daily trend fixed at the 09:59 close
     vwTrend := pc > sma20 and close > vw ? 1 : pc < sma20 and close < vw ? -1 : 0
 // ---- manual RTH day stats (09:30-16:00 ET): GC prior-day levels and ATR, and the crash state for B
@@ -195,7 +255,7 @@ go(id, dir, sd, w) =>
     q > 0
 // 1) Context Drive Long: decisions at 09:45, 10:15, 11:00, 11:30, 12:30 closes
 dec = inRTH and (k + 1 == 15 or k + 1 == 45 or k + 1 == 90 or k + 1 == 120 or k + 1 == 180)
-if flat and useCDL and dec and not na(o) and atr > 0
+if flat and useCDL and dec and not na(o) and atr > 0 and not skipCDL
     mv = close - o
     rng = hh - ll
     p = rng > 0 ? (close - ll) / rng : 0.0
@@ -229,7 +289,7 @@ if useORB and inRTH and k >= 15 and k < 150 and not orbDone and not na(atr) and 
         lvl0 = d > 0 ? or15H - 0.25 * atr : or15L + 0.25 * atr
         if orbEqN > 0 and na(vE) and math.abs(close - lvl0) > 0
             vD := d, vE := close, vS := lvl0
-        if flat and orbOk
+        if flat and orbOk and not skipORB(d)
             lvl = d > 0 ? or15H - 0.25 * atr : or15L + 0.25 * atr
             sd = math.abs(close - lvl)
             if sd > 0 and go("ORB", d, sd, 1.0)
@@ -250,7 +310,7 @@ if useO30 and inRTH and k >= 30 and k < 150 and not o30Done and not na(sma20)
 if useOD and k == 59 and not odDone and atr > 0
     odDone := true
     mv = close - o
-    if flat and math.abs(mv) >= 0.10 * atr
+    if flat and math.abs(mv) >= 0.10 * atr and not skipOD
         d = mv > 0 ? 1 : -1
         if go("OD", d, 0.35 * atr, wOD)
             stopD := 0.35 * atr, tgtR := na, trail := false, leg := "OD", stp := na

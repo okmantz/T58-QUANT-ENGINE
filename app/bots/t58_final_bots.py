@@ -1,4 +1,7 @@
-"""T58 final bots (research, round 4, 2026-11-24): BOT-A for passing a LucidPro 50K evaluation, BOT-B for LucidFlex 50K payouts.
+"""T58 final bots (research, round 6, 2026-11-25): BOT-A for passing a LucidPro 50K evaluation, BOT-B for LucidFlex 50K payouts.
+
+BOT-A (round 6) skips some entries using prior-day inputs (T58_ENTRY_FILTERS); the reference definitions are in
+research/t58_final_bots/engine/r6feat.py and r6.fapply. k100 scales every dollar knob of the policy on a Pro 100K account.
 
 Not seeded as presets: load with ``next(c for c in t58_final_configs() if c.id == 'bot-t58-final-a')``.
 Every number in docs/T58_FINAL_BOTS_PERFORMANCE_2026-11-24.md comes from the research engine in research/t58_final_bots/engine
@@ -25,7 +28,7 @@ T58_PICKS = {
    "PDLB_GC": 0.5
   },
   "policy": {
-   "r_eval": 800,
+   "r_eval": 919.9999999999999,
    "f_cush": 0.4,
    "k_need": 1.0,
    "day_stop": 650,
@@ -42,7 +45,47 @@ T58_PICKS = {
    "cush_a": 0.5,
    "prog_b": -0.3,
    "pace_c": 0
-  }
+  },
+  "fspec": {
+   "CDL_NQ": [
+    [
+     "vix_chg5",
+     "skip_low",
+     0.9581
+    ]
+   ],
+   "CDL_ES": [
+    [
+     "vix_term",
+     "skip_low",
+     0.8354
+    ]
+   ],
+   "ORB15C_NQ": [
+    [
+     "tick_dir",
+     "skip_low",
+     -113.0
+    ]
+   ],
+   "ORB15C_ES": [
+    [
+     "va_dir",
+     "skip_with",
+     1.0
+    ]
+   ],
+   "OD_NQ": [
+    [
+     "gap_abs",
+     "skip_low",
+     0.1944
+    ]
+   ]
+  },
+  "rm": 1.15,
+  "cid": "A59",
+  "k100": 1.75
  },
  "B": {
   "plan": "flex50",
@@ -89,6 +132,7 @@ T58_PICKS = {
 T58_POLICY = {k: v['policy'] for k, v in T58_PICKS.items()}   # exact sizing used in research (research/t58_final_bots/engine/policy.py)
 T58_FILTERS = {k: v.get('spec') for k, v in T58_PICKS.items()}   # crash: size x0.5 when the 504-day return < 0 and 126-day vol > its median
 T58_REGIME = {k: v.get('rspec') for k, v in T58_PICKS.items()}   # per-leg causal regime filter (engine/regime.py); eq N: the leg's last N closed signals average > 0R
+T58_ENTRY_FILTERS = {k: v.get('fspec') for k, v in T58_PICKS.items()}   # (input, side, threshold) per leg: skip_low = skip when input <= threshold
 LEG_FILES = {
  "CDL_NQ": [
   "python/ContextDriveLong_NQ_1m_v2.py",
@@ -202,8 +246,8 @@ def t58_final_configs() -> list[BotConfig]:
                            early_mult=1.0, mid_mult=1.0, late_mult=1.0, low_cushion_mult=1.0, win_day_lock_mult=(pb.get('fund_day_cap') or 0) / 150.0 or None)
     return [
         BotConfig(id='bot-t58-final-a', name='T58_FINAL_BOT_A', objective='A', preset_key='t58-final-a',
-                  tagline='Research: pass the Lucid 50K Pro evaluation (T58 final bots, 2026-11-24).',
-                  description='See docs/T58_FINAL_BOTS_PERFORMANCE_2026-11-24.md. Sizing: T58_POLICY["A"] (research engine); governor here is an unvalidated approximation.',
+                  tagline='Research: pass the Lucid 50K Pro evaluation (T58 final bots, round 6, 2026-11-25).',
+                  description='See docs/T58_FINAL_BOTS_ROUND6_2026-11-25.md. Sizing: T58_POLICY["A"], entry filters: T58_ENTRY_FILTERS["A"] (research engine); the repo runtime applies neither.',
                   legs=_legs('A'), governor=gov_a.to_dict(), max_open_positions=int(T58_PICKS['A']['max_open']), max_trades_per_day=6,
                   account=AccountLink(venue='demo', account_id='t58-demo', size=50_000.0, broker_symbol='MNQ', preset_key='lucid_50k')),
         BotConfig(id='bot-t58-final-b', name='T58_FINAL_BOT_B', objective='B', preset_key='t58-final-b',
