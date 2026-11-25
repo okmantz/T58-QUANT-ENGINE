@@ -28,9 +28,11 @@ import math
 from dataclasses import dataclass, field
 import numpy as np
 
-PVM = {"NQ": 2.0, "ES": 5.0, "GC": 10.0}            # micro $/point
-TICK = {"NQ": 0.25, "ES": 0.25, "GC": 0.10}
-COMM_MICRO = {"base": {"NQ": 1.00, "ES": 1.00, "GC": 1.60}, "stress": {"NQ": 1.32, "ES": 1.32, "GC": 1.82}, "none": {"NQ": 0.0, "ES": 0.0, "GC": 0.0}}
+PVM = {"NQ": 2.0, "ES": 5.0, "GC": 10.0, "CL": 100.0, "NG": 1000.0}     # CL/NG = MCL / MNG            # micro $/point
+TICK = {"NQ": 0.25, "ES": 0.25, "GC": 0.10, "CL": 0.01, "NG": 0.001}
+COMM_MICRO = {"base": {"NQ": 1.00, "ES": 1.00, "GC": 1.60, "CL": 1.62, "NG": 1.62}, "stress": {"NQ": 1.32, "ES": 1.32, "GC": 1.82, "CL": 2.14, "NG": 2.14},
+              "none": {"NQ": 0.0, "ES": 0.0, "GC": 0.0, "CL": 0.0, "NG": 0.0}}
+# round 6 [ASM]: MCL / MNG base $1.62 (fee report), stress $2.14 = base x 1.32 (the ES/NQ stress ratio; above the $1.72 post-Oct-2026 CME figure)
 SLIP = {"base": 1.0, "stress": 1.5, "none": 0.0}
 
 

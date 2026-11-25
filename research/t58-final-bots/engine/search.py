@@ -9,6 +9,7 @@ from policy import Pol
 RES, VAL = ("2020-01-01", "2024-01-01"), ("2024-01-01", "2025-09-01")
 import data as _D
 if _D.R3: VAL = ("2024-01-01", "2026-03-02")          # round 3: the round-1/2 holdout window joins validation
+if _D.R4: VAL = ("2024-01-01", "2026-11-21")          # round 4: H2 (read once in round 3) joins validation
 LOG = Path("research/t58_final_bots/research/bot_trials.csv")
 _B = {}
 def leg(k, sealed=False):

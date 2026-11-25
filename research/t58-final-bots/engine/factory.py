@@ -70,7 +70,7 @@ def to_book(M, inst, di, m0, d, stop, tgt, mx, name):
     ok = (risk >= 2 * D.TICK[inst]) & np.isfinite(risk) & (d * (ep - stop) > 0)
     di, m0, d, ep, xp, xm, mae, risk, why = (x[ok] for x in (di, m0, d, ep, xp, xm, mae, risk, why))
     day = M["days"][di]
-    base = day.astype("datetime64[m]") - np.timedelta64(360, "m")
+    base = day.astype("datetime64[m]") - np.timedelta64(360 + int(M.get("shift", 0)), "m")     # round 6: CL/NG mats are shifted 30 min
     ent = base + m0.astype("timedelta64[m]"); ex = base + (xm + 1).astype("timedelta64[m]")
     o = np.lexsort((m0, di))
     n = len(di)
@@ -107,8 +107,15 @@ def feats(inst, sealed=False):
     with np.errstate(invalid="ignore", divide="ignore"):
         vwap = np.where(cv > 0, cpv / cv, np.nan)          # RTH VWAP through the CLOSE of minute m
     ok = M["full"].astype(bool) & np.isfinite(atr) & np.isfinite(sh(rc))
+    if M.get("shift"):          # round 6 CL/NG: unadjusted front month. Drop sessions that open on a roll (18:00 open vs prior 16:14 close jump
+        g = np.abs(O[:, 30] / np.r_[np.nan, C[:-1, -1]] - 1)     # > 4x its prior-60-session median and > 1%, on the 15th or later): prior-day
+        med = np.array([np.nan if i < 20 else np.nanmedian(g[max(0, i - 60):i]) for i in range(nd)])   # levels there belong to another contract.
+        dom = (M["days"] - M["days"].astype("datetime64[M]")).astype(int) + 1
+        roll = np.isfinite(g) & np.isfinite(med) & (g > np.maximum(4 * med, 0.01)) & (dom >= 15)
+        ok = ok & ~roll
     f = dict(M=M, nd=nd, pdh=sh(rh), pdl=sh(rl), pdc=sh(rc), prng=sh(rng), atr=atr, sma20=sma20, sma50=sma50, ret20=ret20, atr_pct=atr_pct,
-             onh=onh, onl=onl, lh=lh, ll=ll, vwap=vwap, ok=ok, split=D.split_of(M["days"]))
+             onh=onh, onl=onl, lh=lh, ll=ll, vwap=vwap, ok=ok, split=D.split_of(M["days"]) if not M.get("shift") else
+             np.where(M["days"] >= D.E_H6_FROM, "hold", np.where(M["days"] >= D.E_VAL_FROM, "val", "res")))
     _F[k] = f
     return f
 

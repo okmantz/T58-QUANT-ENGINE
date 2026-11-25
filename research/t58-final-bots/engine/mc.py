@@ -20,12 +20,42 @@ NS, BLK, D0 = 70, 10, np.datetime64("2030-01-07", "D")          # 2030-01-07 is 
 NEWD = np.busday_offset(D0, np.arange(NS), roll="forward")
 D1 = np.timedelta64(1, "D")
 
+R4 = len(sys.argv) > 2 and sys.argv[2] == "r4"   # round 4: run with T58_R4=1; dev pools 2020-01..2026-11-20, plus H3 once read
 R3 = len(sys.argv) > 2 and sys.argv[2] == "r3"
+R5 = len(sys.argv) > 2 and sys.argv[2] == "r5"   # round 5: run with T58_R5=1; no holdout left, pools are already-read data
+R6 = len(sys.argv) > 2 and sys.argv[2] == "r6"   # round 6: run with T58_R6=1; ES/NQ/GC pools are already-read data (no energy legs)
+if R6:
+    POOLS = {"FULL": ("2016-11-24", "2026-11-21"), "OOS": ("2024-01-01", "2026-11-21")}
+elif R5:
+    import os
+    assert os.environ.get("T58_R5") == "1", "set T58_R5=1"
+    POOLS = {"FULL": ("2016-11-24", "2026-11-21"), "OOS": ("2024-01-01", "2026-11-21")}
+elif R4:
+    import os
+    assert os.environ.get("T58_R4") == "1", "set T58_R4=1"
+    POOLS = {"FULL": ("2020-01-01", "2026-11-21"), "OOS": ("2024-01-01", "2026-11-21")}
+    if os.path.exists(f"{OUT}/final_hold_r4.csv"):  # H3 already read once by final_score_r4.py hold; MC on it chooses nothing
+        POOLS["H3"] = ("2016-11-24", "2020-01-02")
 if R3:                       # round 3: pools stop before the sealed Mar-Nov 2026 holdout, so the MC never touches it again
     POOLS = {"FULL": ("2020-01-01", "2026-03-02"), "OOS": ("2024-01-01", "2026-03-02")}
 
 def make(who, planname, cost):
     p = firm.Plan(cost=cost) if planname == "pro50" else firm.Plan.flex50(cost=cost)
+    if R6:
+        import copy, r6, r6_confirm as C
+        p = r6.plan_of(planname, cost)
+        bk, pol0 = r6.book_pol(C.WHO[who], p, sealed=False)
+        return bk, (lambda: copy.deepcopy(pol0)), p
+    if R5:
+        import copy, r5_confirm as C
+        bk, pol0 = C.r5.book_pol(C.WHO[who][0], p, sealed=False)
+        return bk, (lambda: copy.deepcopy(pol0)), p
+    if R4:
+        import copy, r4, final_score_r4 as F, legs as LG
+        port = who.endswith("-port")
+        if port: LG.use_ports(); S._B.clear()
+        bk, pol0 = r4.book_pol(F.WHO[who[:-5] if port else who], p, sealed="H3" in POOLS)
+        return bk, (lambda: copy.deepcopy(pol0)), p
     if R3:
         import copy, final_score_r3 as F
         bk, pol0 = F.book_pol(who, p, False)
@@ -93,11 +123,24 @@ if __name__ == "__main__":
     if R3:
         combos = [("baseline_A", "pro50"), ("BOT-A-R3", "pro50"), ("BOT-A-R3-port", "pro50"),
                   ("baseline_B", "flex50"), ("BOT-B-R3", "flex50"), ("BOT-B-R3-port", "flex50")]
+    if R4:
+        combos = [("baseline_A", "pro50"), ("BOT-A-R3", "pro50"), ("BOT-A-R4", "pro50"), ("BOT-A-R4-port", "pro50"),
+                  ("baseline_B", "flex50"), ("BOT-B-R3", "flex50"), ("BOT-B-R4", "flex50"), ("BOT-B-R4-port", "flex50")]
+    if R5:
+        combos = [("baseline_A", "pro50"), ("BOT-A-R4", "pro50"), ("baseline_B", "flex50"), ("BOT-B-R4", "flex50"), ("BOT-B-R5", "flex50")]
+    if R6:
+        combos = [("baseline_A", "pro50"), ("BOT-A-R4", "pro50"), ("BOT-A-R6", "pro50"),
+                  ("baseline_A", "pro100"), ("BOT-A-R4", "pro100"), ("BOT-A-R6", "pro100")]
     CH = 8
     jobs = [(w, pl, po, me, N // CH, 1000 * c + k) for k, (w, pl) in enumerate(combos) for po in POOLS for me in ("reshuffle", "block")
             for c in range(CH)]
-    with Pool(4) as pool:
-        outs = pool.map(job, jobs)
+    if R4:   # port jobs switch legs.py to the port files for the whole worker, so they get their own pool
+        outs = []
+        for grp in ([j for j in jobs if not j[0].endswith("-port")], [j for j in jobs if j[0].endswith("-port")]):
+            with Pool(4) as pool: outs += pool.map(job, grp, chunksize=1)
+    else:
+        with Pool(4) as pool:
+            outs = pool.map(job, jobs)
     agg = {}
     for who, pl, po, me, r in outs: agg.setdefault((who, pl, po, me), []).extend(r)
     rows = []

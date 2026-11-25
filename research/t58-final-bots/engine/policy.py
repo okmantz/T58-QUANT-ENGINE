@@ -33,6 +33,11 @@ class Pol:
     fund_legs: dict | None = None # round 2: funded phase trades only these legs, weight x the given multiplier (None = all legs as in eval)
     floor_x: float | None = None # round 2: the one-micro floor applies only while one micro risks <= floor_x x the budget (None = always);
                                  # without it a drawdown throttle or a small r_eval is overridden by the one-micro minimum
+    # round 4 (research/PREREG_R4.md): barrier-aware eval sizing. Defaults reproduce round 3 exactly.
+    cush_a: float = 0.0          # eval: risk x (cushion / MLL) ^ cush_a   (ease off as the account nears the drawdown floor)
+    prog_b: float = 0.0          # eval: risk x (1 + prog_b x clip(profit / target, 0, 1))   (press, or ease, into the target)
+    pace_c: float = 0.0          # eval: risk x clip(share of target still needed / share of time left, .7, 1.5) ^ pace_c
+    pace_H: int = 30             # eval horizon for the pace term (calendar days)
 
     def __post_init__(self):
         self.w = None
@@ -53,6 +58,15 @@ class Pol:
                 return 0.0
         risk = (self.r_fund if funded else self.r_eval) * w
         cush = st.bal - st.floor - open_risk
+        if not funded and (self.cush_a or self.prog_b or self.pace_c):
+            if self.cush_a:
+                risk *= max(min((st.bal - st.floor) / p.mll, 1.5), 0.0) ** self.cush_a
+            if self.prog_b:
+                risk *= max(1.0 + self.prog_b * min(max((st.bal - p.S0) / p.target, 0.0), 1.0), 0.1)
+            if self.pace_c and st.day is not None:
+                left = 1.0 - min(float((np.datetime64(st.day, "D") - np.datetime64(st.start_day, "D")) / np.timedelta64(1, "D")) / self.pace_H, 0.95)
+                need = min(max((p.S0 + p.target - st.bal) / p.target, 0.0), 1.0)
+                risk *= min(max(need / left, 0.7), 1.5) ** self.pace_c
         if cush < 0.5 * p.mll:
             risk *= self.dd_mult
         if self.dd_lvl is not None and st.peak_eq > 0 and st.peak_eq - (st.bal + sum(a for _, a in st.payouts)) >= self.dd_lvl:

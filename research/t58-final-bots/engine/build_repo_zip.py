@@ -1,9 +1,10 @@
 """Build final/T58-QUANT-ENGINE_t58_final_bots.zip: files laid out like the T58-QUANT-ENGINE repo, ready to copy over a checkout.
-Run after the round-3 holdout read: T58_R3=1 python3 build_repo_zip.py"""
+Run after the round-4 holdout read: T58_R4=1 python3 build_repo_zip.py"""
 import json, os, re, shutil, sys, zipfile, hashlib
 from pathlib import Path
 sys.path.insert(0, "research/t58_final_bots/engine")
-import picks_r3
+import picks_r4
+A6 = json.load(open("research/t58_final_bots/research/picks_r6_A.json"))   # round-6 BOT-A (research/FROZEN_PICKS_R6.md)
 W = Path("research/t58_final_bots"); Z = W / "repo_zip"; R = W / "research"; FIN = W / "final"
 LEG = {   # key -> (strategy path under strategies/, label, symbol, lookback calendar days, note)
     "CDL_NQ": ("python/ContextDriveLong_NQ_1m_v2.py", "Context Drive Long", "NQ", 500, "Repo strategy, unchanged."),
@@ -21,9 +22,11 @@ LEG = {   # key -> (strategy path under strategies/, label, symbol, lookback cal
     "PDLB_GC": ("python/PriorDayBreak_GC_1m_t58.py", "Prior-day break GC", "GC", 200, "New (T58 final bots): prior-day break in a quiet regime, 3R."),
 }
 ENGINE = ["data.py", "book.py", "factory.py", "legs.py", "filters.py", "policy.py", "firm.py", "score.py", "search.py", "baseline.py",
-          "baseline_run.py", "picks.py", "picks_r2.py", "picks_r3.py", "final_score.py", "final_score_r2.py", "final_score_r3.py", "mc.py",
+          "baseline_run.py", "picks.py", "picks_r2.py", "picks_r3.py", "picks_r4.py", "r4.py", "regime.py", "r4_base.py", "r4_legregime.py", "r4_search.py", "final_score_r4.py", "compare_r4.py", "reports_r4.py", "data_h2_ports.py", "data_h3.py", "data_h3_ports.py", "firm_lockpay.py", "check_flex_lock.py", "final_score.py", "final_score_r2.py", "final_score_r3.py", "mc.py",
           "compare.py", "compare_r2.py", "compare_r3.py", "reports_r3.py", "confirm.py", "run_r3.py", "data_h2.py", "port_legs.py", "verify_ports.py",
-          "verify_port_bots.py", "stats.py", "gates.py", "build_repo_zip.py"]
+          "verify_port_bots.py", "stats.py", "gates.py", "build_repo_zip.py", "r5.py", "r5_search.py", "r5_pick.py", "r5_confirm.py", "reports_r5.py", "picks_r5.py",
+          "r6.py", "r6feat.py", "r6_filters.py", "r6_base.py", "r6_search.py", "r6_pick.py", "r6_plateau.py", "r6_plateau_eval.py", "r6_confirm.py",
+          "r6_cells.py", "screen_r6.py", "screen_r6b.py", "reports_r6.py", "lib_screen.py"]
 def relpath(txt):
     txt = txt.replace('Path(__import__("os").environ.get("T58_REPO", "."))', 'Path(__import__("os").environ.get("T58_REPO", "."))')
     txt = txt.replace('Path(__import__("os").environ.get("T58_CACHE", "research/t58_final_bots/.cache"))', 'Path(__import__("os").environ.get("T58_CACHE", "research/t58_final_bots/.cache"))')
@@ -32,8 +35,10 @@ def relpath(txt):
     txt = txt.replace("research/t58_final_bots", "research/t58_final_bots")
     return txt
 def bot_py():
-    bots = {"A": picks_r3.BOT_A, "B": picks_r3.BOT_B}
-    lines = ['"""T58 final bots (research, 2026-11-24): BOT-A for passing a LucidPro 50K evaluation, BOT-B for LucidFlex 50K payouts.',
+    bots = {"A": A6, "B": picks_r4.BOT_B}
+    lines = ['"""T58 final bots (research, round 6, 2026-11-25): BOT-A for passing a LucidPro 50K evaluation, BOT-B for LucidFlex 50K payouts.',
+             "", "BOT-A (round 6) skips some entries using prior-day inputs (T58_ENTRY_FILTERS); the reference definitions are in",
+             "research/t58_final_bots/engine/r6feat.py and r6.fapply. k100 scales every dollar knob of the policy on a Pro 100K account.",
              "", "Not seeded as presets: load with ``next(c for c in t58_final_configs() if c.id == 'bot-t58-final-a')``.",
              "Every number in docs/T58_FINAL_BOTS_PERFORMANCE_2026-11-24.md comes from the research engine in research/t58_final_bots/engine",
              "(firm simulator + the sizing policy in T58_POLICY below). The GovernorConfig here is the closest setting of the repo's own",
@@ -43,6 +48,8 @@ def bot_py():
     lines.append("T58_PICKS = " + json.dumps(bots, indent=1).replace("null", "None").replace("true", "True").replace("false", "False"))
     lines.append("T58_POLICY = {k: v['policy'] for k, v in T58_PICKS.items()}   # exact sizing used in research (research/t58_final_bots/engine/policy.py)")
     lines.append("T58_FILTERS = {k: v.get('spec') for k, v in T58_PICKS.items()}   # crash: size x0.5 when the 504-day return < 0 and 126-day vol > its median")
+    lines.append("T58_REGIME = {k: v.get('rspec') for k, v in T58_PICKS.items()}   # per-leg causal regime filter (engine/regime.py); eq N: the leg's last N closed signals average > 0R")
+    lines.append("T58_ENTRY_FILTERS = {k: v.get('fspec') for k, v in T58_PICKS.items()}   # (input, side, threshold) per leg: skip_low = skip when input <= threshold")
     lines.append("LEG_FILES = " + json.dumps({k: list(v) for k, v in LEG.items()}, indent=1))
     lines += ["", "", "def _legs(obj: str) -> list:",
               "    out = []",
@@ -59,8 +66,8 @@ def bot_py():
               "                           early_mult=1.0, mid_mult=1.0, late_mult=1.0, low_cushion_mult=1.0, win_day_lock_mult=(pb.get('fund_day_cap') or 0) / 150.0 or None)",
               "    return [",
               "        BotConfig(id='bot-t58-final-a', name='T58_FINAL_BOT_A', objective='A', preset_key='t58-final-a',",
-              "                  tagline='Research: pass the Lucid 50K Pro evaluation (T58 final bots, 2026-11-24).',",
-              "                  description='See docs/T58_FINAL_BOTS_PERFORMANCE_2026-11-24.md. Sizing: T58_POLICY[\"A\"] (research engine); governor here is an unvalidated approximation.',",
+              "                  tagline='Research: pass the Lucid 50K Pro evaluation (T58 final bots, round 6, 2026-11-25).',",
+              "                  description='See docs/T58_FINAL_BOTS_ROUND6_2026-11-25.md. Sizing: T58_POLICY[\"A\"], entry filters: T58_ENTRY_FILTERS[\"A\"] (research engine); the repo runtime applies neither.',",
               "                  legs=_legs('A'), governor=gov_a.to_dict(), max_open_positions=int(T58_PICKS['A']['max_open']), max_trades_per_day=6,",
               "                  account=AccountLink(venue='demo', account_id='t58-demo', size=50_000.0, broker_symbol='MNQ', preset_key='lucid_50k')),",
               "        BotConfig(id='bot-t58-final-b', name='T58_FINAL_BOT_B', objective='B', preset_key='t58-final-b',",
@@ -108,11 +115,15 @@ def test_new_strategies_are_flat_on_tiny_data():
         s = m.generate_signals(df)
         assert len(s) == len(df) and (s == 0).all()      # no prior sessions -> no ATR -> no trades
 '''
-REPO_SETUP = '''"""First-run setup inside the T58-QUANT-ENGINE repo: builds the session matrices the engine reads (mat_<I>_dev2.pkl = every session
-before 2026-03-02) from the repo's own data/raw files. The Mar-Nov 2026 holdout (mat_<I>_full2.pkl) is NOT rebuilt here: put Owen's three
-2026-03-01..2026-11-24 parquet files in research/t58_final_bots/data_holdout2/ (they must match SEAL.sha256 there) and run
-engine/data_h2.py to rebuild it."""
-import pickle, numpy as np
+REPO_SETUP = '''"""First-run setup inside the T58-QUANT-ENGINE repo. Round-4 scores (the default) need two session-matrix files per market
+in T58_CACHE that this zip cannot ship (no market data):
+  mat_<I>_full2.pkl  2020-01 .. 2026-11-20: repo data/raw files + Owen's Mar-Nov 2026 pack, put in research/t58_final_bots/data_holdout2/
+                     (must match SEAL.sha256 there), then run engine/data_h2.py and engine/data_h2_ports.py.
+  mat_<I>_full4.pkl  adds 2016-11-24 .. 2019-12-31: Owen's 2016-2021 pack in research/t58_final_bots/data_holdout3/ (must match
+                     SEAL.sha256), then engine/data_h3.py and engine/data_h3_ports.py. Only needed for windows before 2020.
+This builds mat_<I>_dev2.pkl (sessions before 2026-03-02, the round-3 dev set) from the repo's own data and stops with a clear
+message if the round-4 files are missing."""
+import os, pickle, numpy as np
 import data as D
 
 def ensure():
@@ -123,6 +134,11 @@ def ensure():
         d = D._build(inst); keep = d["days"] < np.datetime64("2026-03-02")
         dev = {k: (v[keep] if isinstance(v, np.ndarray) and len(v) == len(d["days"]) else v) for k, v in d.items()}
         pickle.dump(dev, open(p, "wb"), protocol=4)
+    if D.R4:
+        miss = [i for i in D.FILES if not (D.CACHE / f"mat_{i}_full2.pkl").exists()]
+        if miss:
+            raise SystemExit("round-4 scores need mat_<I>_full2.pkl for " + ", ".join(miss) + ": see engine/repo_setup.py. "
+                             "For the round-3 numbers run with T58_R3=1 and params_r3.json.")
 '''
 def build():
     E = Z / "research/t58_final_bots/engine"; E.mkdir(parents=True, exist_ok=True)
@@ -133,7 +149,7 @@ def build():
         if (W / "code" / sub).exists():
             shutil.copytree(W / "code" / sub, E / sub, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
     RB = Z / "research/t58_final_bots"
-    for f in ("FROZEN_PICKS.md", "FROZEN_PICKS_R2.md", "FROZEN_PICKS_R3.md", "gate_ladder_log.md", "STATE.md", "papers_notes.md"):
+    for f in ("FROZEN_PICKS.md", "FROZEN_PICKS_R2.md", "FROZEN_PICKS_R3.md", "FROZEN_PICKS_R4.md", "PREREG_R4.md", "PREREG_R5.md", "FROZEN_PICKS_R5.md", "PREREG_R6.md", "FROZEN_PICKS_R6.md", "picks_r6_A.json", "picks_r6_Balt.json", "gate_ladder_log.md", "STATE.md", "papers_notes.md"):
         for base in (R, W, FIN):
             if (base / f).exists(): shutil.copy(base / f, RB / f); break
     for d in ("BOT-A", "BOT-B"):
@@ -146,6 +162,10 @@ def build():
     (RB / "research").mkdir(exist_ok=True)
     for f in R.glob("FROZEN_PICKS*"): shutil.copy(f, RB / "research" / f.name)   # data.load checks the seal files here
     (RB / "data_holdout2").mkdir(exist_ok=True); shutil.copy(W / "data_holdout2/SEAL.sha256", RB / "data_holdout2/SEAL.sha256")
+    (RB / "data_holdout3").mkdir(exist_ok=True); shutil.copy(W / "data_holdout3/SEAL.sha256", RB / "data_holdout3/SEAL.sha256")
+    shutil.copytree(W / "data_r6/ext", RB / "data_r6/ext", dirs_exist_ok=True)   # VIX, VIX3M, NYSE TICK daily and FOMC dates (round-6 filters)
+    for f in ("SEAL.sha256", "seal_info.json"):
+        if (W / "data_r6" / f).exists(): shutil.copy(W / "data_r6" / f, RB / "data_r6" / f)
     RS = Z / "results/t58_final_bots"; RS.mkdir(parents=True, exist_ok=True)
     for f in sorted(R.glob("*.csv")) + sorted(FIN.glob("*.csv")):
         shutil.copy(f, RS / f.name)
@@ -161,7 +181,7 @@ import runpy, sys
 sys.argv = ["run_bot.py"] + sys.argv[1:]
 runpy.run_path("research/t58_final_bots/run_bot.py", run_name="__main__")
 ''')
-    for f in ("T58_FINAL_BOTS_PERFORMANCE_2026-11-24.md", "T58_FINAL_BOTS_COMPARISON_2026-11-24.md"):
+    for f in ("T58_FINAL_BOTS_PERFORMANCE_2026-11-24.md", "T58_FINAL_BOTS_COMPARISON_2026-11-24.md", "T58_FINAL_BOTS_ROUND5_2026-11-24.md", "T58_FINAL_BOTS_ROUND6_2026-11-25.md"):
         if (FIN / f).exists(): (Z / "docs").mkdir(exist_ok=True); shutil.copy(FIN / f, Z / "docs" / f)
     if (FIN / "PASTE_INTO_REPO.md").exists(): shutil.copy(FIN / "PASTE_INTO_REPO.md", Z / "PASTE_INTO_REPO.md")
     out = FIN / "T58-QUANT-ENGINE_t58_final_bots.zip"

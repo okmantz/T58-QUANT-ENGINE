@@ -61,11 +61,14 @@ def gen(stem, inst, consts=None, tag=None, src=None, datafile=None):
 def _r3(rows, tag, inst):
     """Round 3: old-pack trades before H2 + trades generated on the spliced file inside H2 (data_h2.py). Old-pack ES/GC files run past
     2026-03 and their trades there are dropped: H2 uses Owen's 2026-03..11 pack only."""
-    if not D.R3 or tag.endswith("__cmb"):
+    if not D.R3 or tag.endswith("__cmb") or tag.endswith("__cmb4"):
         return rows
-    keep = [r for r in rows if _sess([r["entry"]])[0][0] < D.HOLD_FROM]
+    keep = [r for r in rows if _sess([r["entry"]])[0][0] < D.H2_FROM]
     h2 = RAW / f"{tag}__{inst}__h2.pkl"
-    return keep + (pickle.load(h2.open("rb")) if h2.exists() else [])
+    out = keep + (pickle.load(h2.open("rb")) if h2.exists() else [])
+    h3 = RAW / f"{tag}__{inst}__h3.pkl"                 # round 4: H3 trades; points() drops them unless the sealed full4 mats are used
+    if D.R4 and h3.exists(): out = pickle.load(h3.open("rb")) + out
+    return out
 
 
 _M = {}
