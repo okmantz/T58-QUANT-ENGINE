@@ -11,6 +11,8 @@ deaths cost nothing, 8 is a ban. This module turns the same record into a smooth
   ``family_weight(family)``         sampling weight for allocating Stage-1 / GA budget across families: families with a history of
                                     near-misses get MORE budget than families that only ever produced clear losers
   ``reorder(candidates)``           stable sort of a candidate list so well-prior families are screened first
+  ``hard_closed(family)``           the HARD rule on top of the soft penalty (app.research_ledger.closure): a family buried across several
+                                    markets with no near miss is closed outright until a person reopens it
 
 It is a PRIOR for where to spend compute, never evidence of an edge: nothing here lifts a candidate over any gate. Every use is
 logged by the caller with ``summary()``.
@@ -90,6 +92,25 @@ class GraveyardGuidance:
         if rec is None:
             return 0.5
         return float((rec.near_misses + 1.0) / (rec.deaths + 2.0))
+
+    def hard_closed(self, family: str) -> bool:
+        """True when the research ledger has CLOSED this family (every market and timeframe, not just this one). The soft penalty above is
+        capped and never bans; this is the ban, and it is lifted only by ``app.research_ledger.reopen_family``."""
+        try:
+            from app.research_ledger.closure import is_closed
+            return bool(is_closed(family))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def drop_closed(self, candidates: list, family_of=lambda c: c) -> tuple[list, list]:
+        """(kept, dropped) -- candidates whose family is hard-closed are dropped, order otherwise unchanged."""
+        try:
+            from app.research_ledger.closure import closed_families, enabled
+            closed = closed_families() if enabled() else {}
+        except Exception:  # noqa: BLE001
+            closed = {}
+        kept = [c for c in candidates if family_of(c) not in closed]
+        return kept, [c for c in candidates if family_of(c) in closed]
 
     def reorder(self, candidates: list, family_of=lambda c: c) -> list:
         """Stable sort, best-prior family first. ``family_of(item)`` extracts the family name."""

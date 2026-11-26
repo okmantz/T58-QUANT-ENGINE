@@ -1132,6 +1132,9 @@ app.register_blueprint(options_outlook_bp)
 app.register_blueprint(hedge_fund_bp)
 app.register_blueprint(investing_bp)
 app.register_blueprint(pages_bp)
+# Lifecycle endpoints (heartbeat / quit), Agent Desk and Research Ledger pages (2026-11).
+from app.web.desk_routes import desk_bp  # noqa: E402
+app.register_blueprint(desk_bp)
 # Strategy Compare, native PDF export, and the Dukascopy forex/CFD fetch button --
 # see app/web/extra_routes.py's module docstring (Deploy Live's live-money
 # routes are deliberately NOT here; see that file for why).
@@ -12949,16 +12952,6 @@ def research_job(job_id):
     return render_template("research_job.html", job_id=job_id, not_found=False)
 
 
-# Legacy synchronous implementation (pre-S3) preserved below for reference.
-# Legacy synchronous implementation (pre-S3) preserved below for reference.
-def _research_run_legacy_sync():
-    """The pre-S3 synchronous /research/run implementation, kept for reference.
-
-    The live route now creates a JobManager job and runs _run_research_job in a
-    background thread. This stub documents the old flow; do not call it.
-    """
-    raise NotImplementedError("Legacy sync path retired in S3 (2026-10-19); see _run_research_job.")
-
 def _retired_lab_page():
     """Search Lab / Evolution Lab / Forge / Speed Run (and their multi-instrument twins) are retired as pages: their searches
     live on inside the Strategy Discovery Engine as presets, and the run/job/API routes below stay for jobs already started."""
@@ -14846,7 +14839,25 @@ def main():
         vault.start_background()
     except Exception:  # noqa: BLE001
         pass
+    _start_lifecycle()
     app.run(host=host, port=5000, debug=False, threaded=True)
+
+
+def _start_lifecycle() -> None:
+    """Exit with the install folder / after idle (packaged builds); stop pools, vault and children on shutdown. See app/lifecycle.py."""
+    try:
+        from app import lifecycle
+        from app.orchestration.resource_guard import HEAVY_JOB_GUARD
+
+        def _busy() -> bool:
+            if HEAVY_JOB_GUARD.active_names():
+                return True
+            return any(str(j.get("status", "")).lower() in ("running", "queued") for j in JOB_MANAGER.list_jobs(limit=50))
+
+        lifecycle.set_busy_probe(_busy)
+        lifecycle.start_watchdog()
+    except Exception:  # noqa: BLE001 -- lifecycle management must never stop the app from starting
+        pass
 
 
 if __name__ == "__main__":

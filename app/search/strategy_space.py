@@ -4941,7 +4941,19 @@ def use_all_families() -> bool:
 def active_family_names() -> list[str]:
     """Families an "all" search runs. By default (use_all_families) that is EVERY family, including the formerly RETIRED near-duplicates
     and the v13 batches the surrogate gate had held closed; only v13 families that need data not supplied (status != "ready") are
-    skipped, because they cannot run at all. With T58_USE_ALL_FAMILIES=0 the old narrowing applies."""
+    skipped, because they cannot run at all. With T58_USE_ALL_FAMILIES=0 the old narrowing applies.
+
+    Families the research ledger has CLOSED (app.research_ledger.closure: a hard rule on top of the graveyard's soft penalty) are removed
+    last; a person reopens one with app.research_ledger.reopen_family."""
+    names = _active_family_names_unfiltered()
+    try:
+        from app.research_ledger.closure import filter_open
+        return filter_open(names)[0]
+    except Exception:  # noqa: BLE001 -- the ledger is advisory plumbing; a failure to read it must not empty a search
+        return names
+
+
+def _active_family_names_unfiltered() -> list[str]:
     v13 = globals().get("_V13_META")
     if use_all_families():
         return [n for n in FAMILIES if not v13 or n not in v13 or v13[n].status == "ready"]

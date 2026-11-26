@@ -240,6 +240,8 @@ def main() -> None:
         pass
 
     print_startup_banner(url, qr_path)
+    from app.web.server import _start_lifecycle  # noqa: WPS433
+    _start_lifecycle()
     try:
         app.run(host="0.0.0.0", port=port, debug=False)
     except OSError as exc:

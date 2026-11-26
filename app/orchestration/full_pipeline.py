@@ -388,6 +388,26 @@ class FullPipelineConfig:
     # average R at 100 trades is 0.12-0.15R -- the same size as the edge being detected. Raised to 300; the expectancy
     # lower-bound gate (min_expectancy_lb_r) is the statistical version of the same idea.
     min_trades_for_ready: int = 300
+    # Independent-event floor for BASKET and POOLED runs (app.validation.independent_events). 300 trades that fire together on the same
+    # days are one observation each, not 300: a READY basket must also reach this many independent trading-day events. A single-market run
+    # is not held to it (its trades are already close to independent). Set 0 to switch the extra floor off.
+    min_independent_events_for_ready: int = 150
+    basket_run: bool = False               # tell the verdict this run pools several markets (also inferred from the pooled test status)
+    # Hard cliff gate (app.validation.cliff_gate): every ONE-STEP neighbour of the chosen parameters must stay profitable after costs, or a
+    # READY verdict is capped at MARGINAL. Parameter stability is only 5 of the 100 score points; this is the gate that backs it.
+    cliff_gate_enabled: bool = True
+    cliff_gate_direct: bool = True         # measure the neighbours with the real engine (the optimizer's probe is a free pre-screen)
+    cliff_gate_step_frac: float = 0.10
+    cliff_gate_max_params: int = 8
+    cliff_gate_min_neighbours: int = 2
+    # Spec-conformance verifier (app.validation.spec_conformance): pass 1 (cheap, sampled) right after the final backtest, pass 2 (full) only
+    # when the strategy has survived validation. Critical findings -> NOT READY, major -> cap at MARGINAL. Demote-only.
+    spec_conformance_enabled: bool = True
+    spec_stated_trades_per_day: float | None = None     # from the spec card; None = trigger-rate check not measured
+    spec_session: tuple | None = None                   # ("09:30", "16:00") local to spec_session_tz; None = session check off
+    spec_session_tz: str = "America/New_York"
+    spec_direction: str = "both"
+    spec_max_hold_minutes: float | None = None
     # Hard READY gate: the 95% lower bound on average R per trade AFTER the 2x cost stress must exceed this (R units).
     min_expectancy_lb_r: float = 0.0
     # READY demote: share of FUNDED accounts (after passing) that may breach within the ruin horizon.
@@ -973,6 +993,9 @@ def _make_verdict_core(
     cpcv_supporting_result: "CPCVResult | None" = None,
     lookahead_bug_detected: bool = False,
     min_trades_for_ready: int = 300,
+    min_independent_events_for_ready: int = 0,
+    basket_run: bool = False,
+    trades=None,
     holdout: dict | None = None,
     # D1: minimum holdout trade count for the holdout gate to count as
     # "ran" (see FullPipelineConfig.min_holdout_trades_for_gate).
@@ -1343,6 +1366,17 @@ def _make_verdict_core(
             "regardless of how good its score is. See FullPipelineConfig.min_trades_for_ready."
         )
 
+    # -- Independent-event floor for basket / pooled runs (the trade floor above counts trades, this counts observations) ------------
+    if verdict == "READY" and int(min_independent_events_for_ready or 0) > 0 and trades is not None:
+        try:
+            from app.validation.independent_events import independent_event_gate
+            _ev_gate = independent_event_gate(trades, min_events=int(min_independent_events_for_ready), basket_hint=bool(basket_run))
+            if _ev_gate["applies"] and not _ev_gate["passed"]:
+                verdict = "MARGINAL"
+                reasons.append("CAPPED AT MARGINAL: " + _ev_gate["reason"] + ".")
+        except Exception as _exc:  # noqa: BLE001 -- an unreadable trade list must not turn into a pass OR a crash
+            reasons.append(f"Independent-event count skipped: {_exc}")
+
     # -- 2026-10-15: missing evidence must cap a verdict, never lift it ------------------
     # compute_t58_score() re-normalizes over the components that were measured. That is fair to
     # a strategy whose parsimony simply could not be counted, but it also means omitting weak
@@ -1691,7 +1725,7 @@ def _make_verdict(*args, **kwargs):
         core = {n: (args[i] if len(args) > i else kwargs.get(n)) for i, n in enumerate(names)}
         for k in ("statistics", "risk_of_ruin_cap", "cpcv_primary_result", "primary_robustness_method", "dsr_gate_result",
                   "pbo_gate_result", "dsr_hard_gate", "holdout", "min_holdout_trades_for_gate", "min_per_attempt_pass_pct", "per_attempt_pass_mode",
-                  "min_trades_for_ready", "lookahead_bug_detected"):
+                  "min_trades_for_ready", "lookahead_bug_detected", "min_independent_events_for_ready", "basket_run", "trades"):
             if k in kwargs:
                 core[k] = kwargs[k]
         extra = dict(kwargs)
@@ -1830,6 +1864,13 @@ def _size_to_drawdown_budget(strategy, dev_df, risk, baseline_bt, prop_rules, ad
     return risk, baseline_bt, None
 
 
+def _fp_inst_for_spec(instrument) -> str:
+    try:
+        return str(instrument_from_dataset_label(instrument) or instrument or "")
+    except Exception:  # noqa: BLE001
+        return str(instrument or "")
+
+
 def _gate_vector(core: dict, extra: dict, scorecard=None, core_verdict: str | None = None) -> dict:
     """2026-10-27 audit (fix 7). Every verdict gate evaluated INDEPENDENTLY and stored, instead of reporting only the first failure
     (_make_verdict returns on the first one). status: "pass" | "fail" (rejects -> NOT READY) | "cap" (caps at MARGINAL) | "n/a" (not
@@ -1903,6 +1944,19 @@ def _gate_vector(core: dict, extra: dict, scorecard=None, core_verdict: str | No
         n = getattr(stats, "total_trades", None) if stats is not None else None
         floor = int(core.get("min_trades_for_ready", 300))
         add("trades", "Trade count", "n/a" if n is None else ("pass" if n >= floor else "cap"), f"{n} vs {floor}")
+    def _events():
+        floor = int(core.get("min_independent_events_for_ready", 0) or 0)
+        tr = core.get("trades")
+        if not floor or tr is None:
+            return add("events", "Independent events", "n/a", "floor off or no trade list")
+        try:
+            from app.validation.independent_events import independent_event_gate
+            g = independent_event_gate(tr, min_events=floor, basket_hint=bool(core.get("basket_run", False)))
+        except Exception:  # noqa: BLE001
+            return add("events", "Independent events", "n/a")
+        if not g["applies"]:
+            return add("events", "Independent events", "n/a", f"single-market run: {g['n_events']} events from {g['n_trades']} trades (floor applies to baskets and pooled runs)")
+        add("events", "Independent events", "pass" if g["passed"] else "cap", f"{g['count']:.0f} vs {floor} ({g['n_trades']} trades, {g['n_markets']} market(s))")
     def _score():
         if scorecard is None:
             return add("score", "T58 score", "n/a")
@@ -1971,7 +2025,7 @@ def _gate_vector(core: dict, extra: dict, scorecard=None, core_verdict: str | No
             return add("transfer", "Cross-instrument transfer", "n/a")
         add("transfer", "Cross-instrument transfer", "pass" if t["status"] == "PASS" else ("cap" if str(extra.get("transfer_mode")).lower() == "cap" else "pass"))
 
-    for fn in (_lookahead, _ruin, _pooled, _cpcv, _dsr, _pbo, _pass_lb, _holdout, _trades, _score, _exp, _replay, _null, _cost, _paid,
+    for fn in (_lookahead, _ruin, _pooled, _cpcv, _dsr, _pbo, _pass_lb, _holdout, _trades, _events, _score, _exp, _replay, _null, _cost, _paid,
                _funded, _horizon, _sample, _payout, _seed, _transfer):
         safe(fn)
     failing = [g["id"] for g in gates if g["status"] == "fail"]
@@ -3134,6 +3188,22 @@ def run_full_pipeline(
             final_strategy = build_strategy_from_spec(final_spec, final_tmp_dir)
             final_bt = baseline_bt
 
+        # -- Spec conformance, pass 1 (cheap): sampled entries/exits, trigger rate, roll straddle ------------
+        _spec_conf = None
+        _spec_p1 = None
+        if getattr(cfg, "spec_conformance_enabled", True) and final_bt.trades:
+            try:
+                from app.validation.spec_conformance import SpecConformanceSpec, run_pass1
+                _sess = getattr(cfg, "spec_session", None)
+                _spec_conf = SpecConformanceSpec(
+                    instrument=str(_fp_inst_for_spec(instrument)), session_start=(_sess[0] if _sess else None), session_end=(_sess[1] if _sess else None),
+                    session_tz=getattr(cfg, "spec_session_tz", "America/New_York"), direction=getattr(cfg, "spec_direction", "both"),
+                    stated_trades_per_day=getattr(cfg, "spec_stated_trades_per_day", None), max_hold_minutes=getattr(cfg, "spec_max_hold_minutes", None))
+                _spec_p1 = run_pass1(dev_df, list(final_bt.trades), _spec_conf)
+                log("  " + _spec_p1.render().replace("\n", "\n  "))
+            except Exception as exc:  # noqa: BLE001 -- verifier must never sink a run
+                log(f"  Spec conformance pass 1 skipped: {exc}")
+
         # -- Lookahead re-check on the ACTUAL final candidate ----------------
         # FIX (audit): the check above only ever looked at the strategy as
         # handed in, before Step 2's optimization had a chance to run. This
@@ -3694,6 +3764,9 @@ def run_full_pipeline(
                 cpcv_primary_result=cpcv_primary_result, cpcv_supporting_result=cpcv_supporting_result,
                 lookahead_bug_detected=lookahead_bug_detected,
                 min_trades_for_ready=cfg.min_trades_for_ready,
+                min_independent_events_for_ready=int(getattr(cfg, "min_independent_events_for_ready", 0) or 0),
+                basket_run=bool(getattr(cfg, "basket_run", False) or (getattr(oos_validation, "pooled_status", None) is not None if oos_validation is not None else False)),
+                trades=list(getattr(final_bt, "trades", None) or []),
                 holdout=final_holdout,
                 min_holdout_trades_for_gate=cfg.min_holdout_trades_for_gate,
                 min_per_attempt_pass_pct=cfg.min_per_attempt_pass_pct,
@@ -3834,6 +3907,37 @@ def run_full_pipeline(
             null_ev=_null_ev, cost_ev=_cost_ev, transfer_ev=_transfer_ev,
             hard_failed=bool(risk_of_ruin_hard_fail or lookahead_hard_fail),
         )
+        # Hard cliff gate: demote-only, runs only when the verdict is still READY (a neighbour sweep costs real backtests)
+        try:
+            from app.validation.cliff_gate import apply_cliff_cap as _acc
+            _plat0 = (getattr(ga_result, "plateau_robustness", None) or {}) if ga_result is not None else {}
+            verdict, verdict_reasons, _cliff_ev = _acc(verdict, verdict_reasons, cfg=cfg, strategy=final_strategy, df=dev_df if dev_df is not None else df,
+                                                       risk=risk, prop_rules=prop_rules, plateau=_plat0, log=log)
+            if isinstance(_audit_ev, dict):
+                _audit_ev["cliff_gate"] = _cliff_ev
+                _gv0 = getattr(scorecard, "gate_vector", None)
+                if isinstance(_gv0, dict) and _cliff_ev.get("status"):
+                    _gv0["gates"].append({"id": "cliff", "label": "One-step neighbours profitable after costs",
+                                          "status": {"PASS": "pass", "FAIL": "cap"}.get(_cliff_ev["status"], "n/a"),
+                                          "detail": (_cliff_ev.get("result") or {}).get("source", "")})
+                    if _cliff_ev["status"] == "FAIL":
+                        _gv0.setdefault("capping", []).append("cliff")
+        except Exception as exc:  # noqa: BLE001 -- demote-only layer; never blocks a run
+            log(f"  Cliff gate skipped: {exc}")
+        # Spec conformance: apply pass 1; run the full pass 2 only on survivors (verdict not already NOT READY)
+        try:
+            if _spec_p1 is not None:
+                from app.validation.spec_conformance import apply_spec_cap, run_pass2
+                verdict, verdict_reasons = apply_spec_cap(verdict, verdict_reasons, _spec_p1)
+                _spec_p2 = None
+                if verdict != "NOT READY" and _spec_conf is not None:
+                    _spec_p2 = run_pass2(dev_df, list(final_bt.trades), _spec_conf)
+                    log("  " + _spec_p2.render().replace("\n", "\n  "))
+                    verdict, verdict_reasons = apply_spec_cap(verdict, verdict_reasons, _spec_p2)
+                if isinstance(_audit_ev, dict):
+                    _audit_ev["spec_conformance"] = {"pass1": _spec_p1.to_dict(), "pass2": _spec_p2.to_dict() if _spec_p2 else None}
+        except Exception as exc:  # noqa: BLE001
+            log(f"  Spec conformance (apply) skipped: {exc}")
         # 2026-11-04 (P0-2): fold the unseen-data DSR into the scorecard as a (low-weight) input
         try:
             _du = (_audit_ev or {}).get("dsr_unseen") if isinstance(_audit_ev, dict) else None

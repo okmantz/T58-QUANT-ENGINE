@@ -43,19 +43,31 @@ from werkzeug.utils import secure_filename
 RAW_DATA_EXTENSIONS = (".csv", ".tsv", ".txt", ".parquet") + tuple(SUPPORTED_ARCHIVE_EXTENSIONS)
 
 
+_BASE_CACHE: Path | None = None
+
+
 def get_app_base_dir() -> Path:
-    """Return a writable persistent application-data root."""
-    if getattr(sys, "frozen", False):
-        preferred = Path(sys.executable).resolve().parent
-        try:
-            preferred.mkdir(parents=True, exist_ok=True)
-            probe = preferred / ".t58_write_test"
-            probe.touch(exist_ok=True)
-            probe.unlink(missing_ok=True)
-            return preferred
-        except OSError:
-            return user_data_dir()
-    return Path(__file__).resolve().parents[2]
+    """Return a writable persistent application-data root.
+
+    2026-11 fix ("the t58 folder reappears after I delete it"): this used to ``mkdir(parents=True)`` the folder holding the executable and
+    write-probe it on EVERY call (93 call sites), so any process still alive after the folder was deleted recreated it. It never creates
+    the install folder now, probes writability once, and caches the answer; the lifecycle watchdog ends the process when the folder goes."""
+    global _BASE_CACHE
+    if not getattr(sys, "frozen", False):
+        return Path(__file__).resolve().parents[2]
+    preferred = Path(sys.executable).resolve().parent
+    if _BASE_CACHE is not None:
+        return _BASE_CACHE
+    if not preferred.is_dir():
+        return user_data_dir()          # install folder is gone: do not recreate it, and do not cache this answer
+    try:
+        probe = preferred / ".t58_write_test"
+        probe.touch(exist_ok=True)
+        probe.unlink(missing_ok=True)
+        _BASE_CACHE = preferred
+    except OSError:
+        _BASE_CACHE = user_data_dir()
+    return _BASE_CACHE
 
 
 _APP_DATA_NAME = "T58 Quant Engine"

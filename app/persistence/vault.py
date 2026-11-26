@@ -836,6 +836,9 @@ def cloud_pull(mode: str = "merge") -> dict:
 # -------------------------------------------------------------------------------------------- lifecycle
 def _restore_everything() -> dict:
     """Bring this account's saved state back: local vault first (instant, offline), then the account on the license server."""
+    from app import lifecycle
+    if not lifecycle.install_present():
+        return {"skipped": "install folder missing"}
     out: dict = {"restore": restore_local()}
     try:
         if load_settings().get("cloud_auto", True) and cloud_available()[0]:
@@ -845,6 +848,18 @@ def _restore_everything() -> dict:
     except Exception as exc:  # noqa: BLE001
         logger.debug("vault cloud restore: %s", exc)
     return out
+
+
+def stop_background() -> None:
+    """Ask the mirror thread to end (lifecycle.shutdown does this; the thread also ends when the lifecycle stop event is set)."""
+    global _PROFILE_TIMER
+    try:
+        with _LOCK:
+            if _PROFILE_TIMER is not None:
+                _PROFILE_TIMER.cancel()
+                _PROFILE_TIMER = None
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def on_startup() -> dict:
@@ -903,11 +918,13 @@ def schedule_profile_backup(delay: float = 3.0) -> None:
 
 
 def _loop() -> None:
+    from app import lifecycle
     last_cloud = 0.0
     last_full = 0.0
     last_seen_identity = ""
-    while True:
-        time.sleep(30)
+    while not lifecycle.stop_event().wait(30):
+        if not lifecycle.install_present():
+            return                       # the install folder was deleted: never restore or back up into it (that recreates it)
         try:
             s = load_settings()
             ident = account_id() if has_identity() else ""
@@ -943,12 +960,14 @@ def start_background() -> None:
 
     _thread = threading.Thread(target=run, name="t58-vault", daemon=True)
     _thread.start()
-    import atexit
-    atexit.register(lambda: _safe_final_backup())
+    # the final backup runs from lifecycle.shutdown (one place, skipped when the install folder is gone) -- no second atexit here
 
 
 def _safe_final_backup() -> None:
     try:
+        from app import lifecycle
+        if not lifecycle.install_present():
+            return
         if load_settings().get("local_auto", True):
             backup_local()
     except Exception:  # noqa: BLE001

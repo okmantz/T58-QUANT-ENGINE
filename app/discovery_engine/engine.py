@@ -152,6 +152,14 @@ def resolve_families(requested, preset: Preset, *, store=None, objective_mode: s
         for n in want:
             if n not in ss.FAMILIES:
                 gated[n] = "unknown family"
+    # HARD CLOSE (app.research_ledger.closure): a family the graveyard has buried everywhere is refused here, explicit lists included,
+    # until a person reopens it with a written reason. The graveyard's own penalty stays soft (capped at 0.04R) and never bans.
+    try:
+        from app.research_ledger.closure import filter_open
+        names, _closed = filter_open(names)
+        gated.update(_closed)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("closed-family filter skipped: %s: %s", type(exc).__name__, exc)
     out = []
     if ss.use_all_families():
         # "use everything": the kill-condition ledger is bookkeeping, so write it for the person instead of gating the family out.

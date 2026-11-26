@@ -86,7 +86,13 @@ def test_pooled_step_requires_enough_markets():
     r = pr.pooled_step(per, cfg)
     assert not r.passed and "market" in r.detail
     per = {f"M{i}": (list(rng.normal(0.3, 1, 60)), [d + i * 5 for d in range(60)]) for i in range(8)}
-    assert pr.pooled_step(per, cfg).passed
+    assert pr.pooled_step(per, pr.PromotionConfig(pooled_min_independent_events=0)).passed      # the market-count / edge test on its own
+    # 8 markets over ~95 distinct trading days: 480 trades but only 95 independent events, so the event floor (150) refuses it
+    refused = pr.pooled_step(per, cfg)
+    assert not refused.passed and refused.data["status"] == "INSUFFICIENT_EVENTS" and refused.data["independent_events"] < 150
+    # the same trades spread over enough distinct days pass
+    wide = {f"M{i}": (list(rng.normal(0.3, 1, 60)), [d * 3 + i for d in range(60)]) for i in range(8)}
+    assert pr.pooled_step(wide, cfg).passed
 
 
 def test_sealed_step_is_stricter_for_tied_families():

@@ -134,6 +134,7 @@ class PromotionConfig:
     null_seeds: int = 200
     null_p_max: float = 0.10
     pooled_min_trades: int = 100
+    pooled_min_independent_events: int = 150  # trading-day clusters across ALL markets (trades fired together are one observation)
     pooled_min_markets: int = 8
     pooled_conf: float = 0.95
     sealed_min_trades: int = 30
@@ -231,6 +232,18 @@ def pooled_step(per_market: dict, cfg: PromotionConfig) -> StepResult:
     res = pooled_edge_test(per_market, cost_multiplier=cfg.cost_multiplier, min_trades=cfg.pooled_min_trades, conf=cfg.pooled_conf)
     data = res.to_dict()
     data.update({"duplicates": dict(_dups), "n_independent": len(with_trades), "floor": int(cfg.pooled_min_markets)})
+    # Independent-event floor (the trade floor counts trades; eight correlated markets can reach it from a few dozen market-days).
+    try:
+        from app.validation.independent_events import pooled_event_count
+        n_events = pooled_event_count(per_market)
+        data.update({"independent_events": int(n_events), "independent_events_floor": int(cfg.pooled_min_independent_events)})
+        if res.passed and n_events < int(cfg.pooled_min_independent_events):
+            return StepResult("pooled_edge", False, detail=(
+                res.render() + dup_note + f"; BUT only {n_events} independent trading-day events (< {cfg.pooled_min_independent_events}): "
+                f"{res.n_trades} trades fired together on the same days are one observation, not {res.n_trades}"),
+                data={**data, "status": "INSUFFICIENT_EVENTS"})
+    except Exception:  # noqa: BLE001 -- the extra floor must not break the step if the helper is unavailable
+        pass
     return StepResult("pooled_edge", res.passed, detail=res.render() + dup_note, data=data)
 
 

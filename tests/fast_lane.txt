@@ -41,3 +41,8 @@ tests/validation/test_prop30_validation.py
 tests/strategy/test_bot_strategy.py
 tests/backtest/test_profit_lock.py
 tests/bots/
+
+# 2026-11 gates, same-days replay, research ledger, agent desk, lifecycle (no resurrected install folder)
+tests/validation/test_t58_new_gates.py
+tests/ai/test_agent_desk.py
+tests/persistence/test_lifecycle_no_resurrection.py

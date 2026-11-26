@@ -207,6 +207,16 @@ from one resampled trade list; the other 70 points are evidence independent of i
 | Seed spread above 10 points | Capped at MARGINAL |
 | Attempt replay (**48** real start dates) disagrees with Monte Carlo: the two 95% intervals do not overlap **and** the gap is 10+ points | Capped at MARGINAL |
 | No clean holdout, unverified firm rules, failed data gate, search-bias haircut | Capped at MARGINAL |
+| **Cliff gate**: any one-step neighbour of the chosen parameters (each parameter moved one step, others fixed) loses money after costs. Parameter stability is only 5 of the 100 score points, so this is a gate (`app/validation/cliff_gate.py`) | Capped at MARGINAL |
+| **Independent events**: a basket or pooled run with fewer than **150** independent trading-day events (`min_independent_events_for_ready`), however many trades it has (`app/validation/independent_events.py`; a pooled promotion test needs the same) | Capped at MARGINAL |
+| **Spec conformance** (`app/validation/spec_conformance.py`): pass 1 (cheap, sampled entries / exits, trigger rate vs the stated rate, trades held across a contract roll) runs right after the final backtest; pass 2 (every trade, missed signals vs an independent reference signal, the full `contract_calendar` / `roll_handling` audit) runs only on strategies that survived validation. A fill outside its bar, overlapping trades or an exit before its entry | NOT READY |
+| Spec conformance: trigger rate off the stated rate, entries outside the stated session, signals missed, a spread booked across a roll | Capped at MARGINAL |
+
+All three new gates are demote-only. A check that cannot be measured (no stated rate, no reference signal, too few neighbours) is reported as not measured and never counts as a pass or a failure.
+
+### Forward tests: same-days replay
+
+The frozen-code guard, SPRT and the win-rate / drawdown drift flags are joined by a **same-days replay** (`app/forward_test/same_days_replay.py`): the frozen strategy is backtested over the exact days it traded live and the two trade lists are diffed (one-to-one, by direction and entry time within two bars). **Any trade that appears in one list and not the other kills the forward test** (entries blocked, open position flattened, sticky until a fresh forward test). The window ends where entries were first blocked, open trades are excluded from both sides, and price differences between matched trades are reported (slippage) but never a kill.
 
 ### What READY effectively asks for
 
@@ -272,6 +282,10 @@ Cost-stress-adjusted fitness (every GA candidate re-backtested at inflated sprea
 strategies to compare, and you can promote a strategy from there. See the Deployment table above for the live tools.
 
 ## Library and research
+
+**Research Ledger** (`/research-ledger`, `app/research_ledger/`): append-only ledgers for sources read, queries asked and coverage (family x market x timeframe cells tested), and an evidence grade for all 100 v13 families (A replicated out of sample, B documented, C plausible mechanism, D speculative or blocked; grades are priors, not results, and the references were written from recall, so spot-check them). On top of the graveyard's soft penalty (capped at 0.04R, never a ban) a **hard close rule** closes a family when its deaths reach 40 x a grade multiplier (A 2.0, B 1.5, C 1.0, D 0.5) spread over at least 3 market / timeframe cells with no near miss and a non-positive median net R. Closed families are filtered out of every "all families" and explicit-list search until a person reopens one with a written reason naming what is different. `T58_HARD_CLOSE=0` switches the filter off.
+
+**Agent Desk** (`/desk`, `app/ai/agent_desk/`): nine roles (scout, designer, analyst, builder, verifier, quant, portfolio manager, prop strategist, head of desk) take a lead to a decision. The desk enforces role separation when it files: builder, verifier and quant are three different agents; a review's author may not appear anywhere in the lineage of the build it grades; the builder never reads reviews; a forward-test or promote decision needs a PASS from the verifier and the quant, from different agents on the same build. It never lifts a pipeline verdict.
 
 - **Library** (Playground): your book shelf with progress, an in-app PDF reader for PDFs you add, a list of free legal books to read online (statistics,
   machine learning, forecasting, optimization, probability), a Bible reader (KJV offline, ESV with your own free key) and focus sessions.
@@ -346,7 +360,7 @@ policy and does not apply the round-6 entry filters, so live demo results will n
 
 `app/` the application (web UI, engines, bots) · `strategies/` the 13 Python strategy files the bots use + the Gate 27 EA + the Pine port · `tests/` · `data/raw/` ES / NQ / GC 1-minute history ·
 `docs/` guides and the three bot records · `research/` reading lists and papers for the AI assist, plus `t58_final_bots/` (the bot research engine, frozen picks and seals) ·
-`scripts/` command-line and CI tools · `launchers/`, `build_tools/`, `license_server/`, `license_sheet/` packaging and licensing · `assets/` branding.
+`scripts/` command-line and CI tools (including `benchmark_optimizer_modes.py`) · `app/lifecycle.py` shutdown / idle-exit / install-folder watchdog · `launchers/`, `build_tools/`, `license_server/`, `license_sheet/` packaging and licensing · `assets/` branding.
 
 ## Tests
 

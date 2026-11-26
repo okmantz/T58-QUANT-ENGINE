@@ -13,6 +13,7 @@ def ready_bar() -> dict:
     c = FullPipelineConfig()
     out = {
         "min_trades": int(c.min_trades_for_ready),
+        "min_independent_events": int(c.min_independent_events_for_ready),
         "preflight_trades": int(c.preflight_min_trades),
         "pass_pct": float(c.min_per_attempt_pass_pct),
         "breach_cap_pct": float(c.risk_of_ruin_cap),

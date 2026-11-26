@@ -165,10 +165,10 @@ OPTIMIZER_MODES: dict[str, str] = {
     "genetic": "Genetic Algorithm -- tournament selection + crossover/mutation + random immigrants (default, dependency-free)",
     "tpe": "TPE / Bayesian (Optuna) -- models which regions of the parameter space score well and samples more there each trial",
     "cma_es": "CMA-ES -- adapts a search distribution's shape/scale to the space's curvature; strong on continuous, correlated parameters",
-    "auto": "Auto (default) -- picks the search method from the size of the parameter space: TPE for up to 8 parameters, Genetic above that (measured: tools/benchmark_optimizer_modes.py)",
+    "auto": "Auto (default) -- picks the search method from the size of the parameter space: TPE for up to 8 parameters, Genetic above that (measured: scripts/benchmark_optimizer_modes.py)",
 }
 
-AUTO_TPE_MAX_PARAMS = 8   # 2026-11-05 audit: TPE up to ~8 parameters. The audit proposed CMA-ES above that, but tools/benchmark_optimizer_modes.py
+AUTO_TPE_MAX_PARAMS = 8   # 2026-11-05 audit: TPE up to ~8 parameters. The audit proposed CMA-ES above that, but scripts/benchmark_optimizer_modes.py
                           # (equal budget, noisy landscapes) shows the genetic search ahead of CMA-ES at 10 and 16 parameters, so above 8 auto uses genetic.
 
 

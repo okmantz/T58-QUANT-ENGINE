@@ -45,6 +45,8 @@ PAGES = [
     "/research-labs/stat-arb", "/research-labs/event-study", "/research-labs/hypothesis", "/pine-indicator/", "/pine-indicator/bridge",
     "/quant-lab/", "/api/memory",
     # 2026-10-21 release: Global Events (store-only endpoints; must answer instantly even with no internet)
+    # 2026-11 release: Agent Desk, Research Ledger, lifecycle heartbeat, design layer
+    "/desk", "/research-ledger", "/api/desk/board", "/api/heartbeat", "/static/t58-design.css", "/static/t58-design.js",
     "/events/", "/events/api/bootstrap", "/events/api/health", "/static/global-events/global-events.js", "/static/global-events/land.json",
 ]
 

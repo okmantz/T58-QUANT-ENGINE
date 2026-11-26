@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Research Ledger — T58 Quant Engine</title>
+{% include '_head_common.html' %}
+</head>
+<body>
+{% set active_page = 'research_ledger' %}
+{% include '_lucide_sprite.html' %}
+<div class="t58-shell">
+{% include '_sidebar.html' %}
+<div class="t58-main">
+  <div class="ds-page-head">
+    <div>
+      <h1>Research Ledger</h1>
+      <p>What was read, what was asked, and what was tested where. Every family carries an evidence grade, and a family that keeps dying across markets is closed by a hard rule, on top of the graveyard's soft penalty.</p>
+    </div>
+    <div class="ds-row">
+      <span class="ds-badge ok">{{ closure.counts.get('OPEN', 0) }} open</span>
+      <span class="ds-badge warn">{{ closure.counts.get('WATCH', 0) }} watch</span>
+      <span class="ds-badge bad">{{ closure.counts.get('CLOSED', 0) }} closed</span>
+    </div>
+  </div>
+
+  <div class="ds-grid cols-4" style="margin-bottom:24px">
+    <div class="card ds-kpi"><span class="v">{{ coverage.n_cells_observed }}</span><span class="k">family × market × timeframe cells tested</span></div>
+    <div class="card ds-kpi"><span class="v">{{ coverage.never_tested|length }}</span><span class="k">families never tested</span></div>
+    <div class="card ds-kpi"><span class="v">{{ coverage.thin_high_evidence|length }}</span><span class="k">well-evidenced, thinly covered</span></div>
+    <div class="card ds-kpi"><span class="v">{{ sources|length }} / {{ queries|length }}</span><span class="k">recent sources / queries</span></div>
+  </div>
+
+  {% if not closure.enabled %}<div class="ds-note" style="margin-bottom:16px">The hard close rule is switched off (T58_HARD_CLOSE=0). Closed families are not being filtered out of searches.</div>{% endif %}
+
+  <h2 style="margin:0 0 12px">The 100 families</h2>
+  <div class="card" style="padding:0;overflow:auto;max-height:70vh"><table>
+    <thead><tr><th>#</th><th>Family</th><th>Evidence</th><th>State</th><th>Deaths / needed</th><th>Near misses</th><th>Coverage</th><th></th></tr></thead>
+    <tbody>
+    {% set cov = {} %}{% for c in coverage.families %}{% set _ = cov.update({c.family: c}) %}{% endfor %}
+    {% for r in closure.rows %}
+    <tr>
+      <td>{{ r.number }}</td>
+      <td><strong>{{ r.family }}</strong></td>
+      <td><span class="ds-badge {{ {'A':'ok','B':'info','C':'mute','D':'warn'}.get(r.grade,'mute') }}">{{ r.grade }}</span></td>
+      <td>{% if r.state == 'CLOSED' %}<span class="ds-badge bad">closed</span>{% elif r.state == 'WATCH' %}<span class="ds-badge warn">watch</span>{% elif r.state == 'REOPENED' %}<span class="ds-badge info">reopened</span>{% else %}<span class="ds-badge ok">open</span>{% endif %}</td>
+      <td>{{ r.deaths }} / {{ r.required }}</td>
+      <td>{{ r.near_misses }}</td>
+      <td>{% set c = cov.get(r.family) %}{{ ('%.0f%%' % c.pct) if c else '—' }}</td>
+      <td>{% if r.state == 'CLOSED' %}<button type="button" onclick="reopen('{{ r.family }}')">Reopen…</button>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody></table></div>
+  <p class="help" style="margin-top:8px">Grades are priors about how good the published evidence is (A: replicated out of sample, B: replicated or well-documented, C: mechanism plausible, D: speculative or blocked), not results. References in the grade table were written from recall: spot-check them before citing.</p>
+
+  <div class="ds-grid cols-3" style="margin-top:28px">
+    <div class="card"><h2>Sources</h2>
+      {% if sources %}<ul style="margin:0;padding-left:18px">{% for s in sources[:12] %}<li style="margin-bottom:6px"><strong>{{ s.title }}</strong> <span class="help">{{ s.kind }}{% if s.year %} · {{ s.year }}{% endif %}{% if s.grade %} · grade {{ s.grade }}{% endif %}</span></li>{% endfor %}</ul>
+      {% else %}<div class="ds-empty">Nothing logged yet.</div>{% endif %}</div>
+    <div class="card"><h2>Queries</h2>
+      {% if queries %}<ul style="margin:0;padding-left:18px">{% for q in queries[:12] %}<li style="margin-bottom:6px">{{ q.text }} <span class="help">{{ q.channel }} · {{ q.outcome }}</span></li>{% endfor %}</ul>
+      {% else %}<div class="ds-empty">Nothing logged yet.</div>{% endif %}</div>
+    <div class="card"><h2>Never tested</h2>
+      {% if coverage.never_tested %}<p class="help" style="margin:0">{{ coverage.never_tested[:40]|join(', ') }}{% if coverage.never_tested|length > 40 %} …{% endif %}</p>
+      {% else %}<div class="ds-empty">Every family has at least one tested cell.</div>{% endif %}</div>
+  </div>
+</div>
+</div>
+<script>
+function reopen(family) {
+  var reason = prompt('Why reopen ' + family + '? Say what is DIFFERENT now (new mechanism, new data, a fixed bug). At least 10 characters.');
+  if (!reason) return;
+  fetch('/api/research-ledger/reopen', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.__T58_CSRF || '' }, body: JSON.stringify({ family: family, reason: reason, what_changed: reason }) })
+    .then(function (r) { return r.json(); })
+    .then(function (j) { if (j.ok) location.reload(); else window.t58Toast ? t58Toast(j.error || 'Could not reopen') : alert(j.error); });
+}
+</script>
+</body>
+</html>

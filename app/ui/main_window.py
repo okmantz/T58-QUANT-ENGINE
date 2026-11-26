@@ -463,4 +463,13 @@ def launch(root: "Tk | None" = None, splash=None):
         _apply_dark_titlebar(root)
     except Exception:
         pass
+    try:
+        from app import lifecycle
+        lifecycle.start_watchdog()        # ends the app if its install folder is deleted; registers pool / vault / child-process cleanup
+    except Exception:
+        pass
     root.mainloop()
+    try:
+        lifecycle.shutdown("desktop window closed")   # nothing keeps running after the window is closed
+    except Exception:
+        pass

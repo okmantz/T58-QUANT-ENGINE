@@ -56,6 +56,7 @@ class ForwardTestStatus:
     drift_flag: Optional[str] = None
     sprt: Optional[dict] = None          # 2026-11-12 audit P1-13: latest SPRT / kill-switch status (decision, LLR, ladder state)
     floating_pnl: float = 0.0
+    replay: Optional[dict] = None        # latest same-days replay diff (app.forward_test.same_days_replay)
 
 
 @dataclass
@@ -72,6 +73,12 @@ class ForwardTestConfig:
     h1_r: float = 0.05                         # the edge (R per trade) the backtest earned after costs/shrinkage; SPRT H1
     expected_max_drawdown_r: Optional[float] = None   # backtest's worst drawdown in R; live drawdown beyond it is flagged as drift
     strategy_config: Optional[dict] = None     # frozen at start; any later change refuses new entries (the evidence clock must not restart silently)
+    # Same-days replay (app.forward_test.same_days_replay): re-run the frozen strategy over the live days and diff the trade lists; ANY trade
+    # present in one list and absent from the other kills the forward test (entries blocked, sticky, open position flattened).
+    same_days_replay: bool = True
+    replay_history_bars: int = 6000            # bars fetched for the replay (warm-up before the live start + the live days)
+    replay_every_bars: int = 12                # also re-check every N new bars even if no trade closed
+    replay_tol_bars: float = 2.0               # entry-time match tolerance, in bars
 
 
 class ForwardTestSession:
@@ -114,6 +121,11 @@ class ForwardTestSession:
         self._frozen = _frozen.freeze(config.strategy_config, config.risk)
         self._open_risk_dollars: Optional[float] = None
         self._entries_blocked_reason: Optional[str] = None
+        self._replay_killed: Optional[str] = None        # sticky: once set, only a fresh forward test clears it
+        self._live_start: Optional[pd.Timestamp] = None
+        self._first_halt_time: Optional[pd.Timestamp] = None
+        self._replay_last_n_closed = -1
+        self._replay_bars_since = 0
         self.last_problem = None  # set by start() when it fails: the structured, plain-language explanation
 
     # -- public controls ----------------------------------------------------
@@ -155,6 +167,7 @@ class ForwardTestSession:
         )
         self.status.baseline_win_rate = self.cfg.baseline_win_rate
         self._reconcile_existing_position()
+        self._live_start = pd.Timestamp.now(tz="UTC")
 
         self._stop_flag.clear()
         self.status.running = True
@@ -245,6 +258,9 @@ class ForwardTestSession:
 
     def _sequential_checks(self) -> None:
         """Frozen-code guard + SPRT/kill-switch + expectancy/drawdown drift. Sets ``_entries_blocked_reason`` (fail-closed)."""
+        if self._replay_killed:
+            self._entries_blocked_reason = self._replay_killed
+            return
         ok, problems = self._frozen_mod.verify(
             self._frozen, self.cfg.strategy_config if self.cfg.strategy_config is not None
             else {"type": self.strategy_type, "file": self.strategy_filename}, self.cfg.risk)
@@ -264,6 +280,31 @@ class ForwardTestSession:
             if dd > float(dd_cap):
                 reasons.append(f"live drawdown {dd:.1f}R exceeds the backtest's worst ({float(dd_cap):.1f}R)")
         self._entries_blocked_reason = "FORWARD-TEST HALT: " + "; ".join(reasons) if reasons else None
+
+    def _same_days_replay_check(self, latest_bar_time: pd.Timestamp) -> None:
+        """Backtest the frozen strategy over the live days and diff against the journal. Any one-sided trade kills the session (sticky)."""
+        if not self.cfg.same_days_replay or self._replay_killed or self._live_start is None or self._session_id is None:
+            return
+        self._replay_bars_since += 1
+        n_closed = self.journal.closed_trade_stats(self._session_id)["n_trades"]
+        if n_closed == self._replay_last_n_closed and self._replay_bars_since < max(int(self.cfg.replay_every_bars), 1):
+            return
+        self._replay_last_n_closed, self._replay_bars_since = n_closed, 0
+        try:
+            from app.forward_test.same_days_replay import run_same_days_replay
+            bars = self.connector.fetch_completed_bars(self.cfg.symbol, self.cfg.timeframe_minutes, int(self.cfg.replay_history_bars))
+            end = min(latest_bar_time, self._first_halt_time) if self._first_halt_time is not None else latest_bar_time
+            diff = run_same_days_replay(journal=self.journal, session_id=self._session_id, bars=bars, strategy=self.strategy, risk=self.cfg.risk,
+                                        live_start=self._live_start, live_end=end, timeframe_minutes=self.cfg.timeframe_minutes,
+                                        tol_bars=self.cfg.replay_tol_bars)
+        except Exception as exc:  # noqa: BLE001 -- an unmeasurable replay is reported, never converted into a kill or a pass
+            self.status.replay = {"status": "UNMEASURED", "notes": [f"{type(exc).__name__}: {exc}"]}
+            self._log("warn", f"Same-days replay could not run: {exc}")
+            return
+        self.status.replay = diff.to_dict()
+        if diff.kill:
+            self._replay_killed = "FORWARD-TEST KILL: " + diff.kill_reason()
+            self._log("error", self._replay_killed)
 
     def _resolve_stop_distance(self, result, price: float) -> float:
         """Same precedence order as app.backtest.execution: per-bar dynamic
@@ -353,10 +394,15 @@ class ForwardTestSession:
             if self.status.halted_reason != reason:
                 self._log("warn", reason)
             self.status.halted_reason = reason
+            if self._first_halt_time is None:
+                self._first_halt_time = latest_bar_time
             self._check_drift()
             return
 
+        self._same_days_replay_check(latest_bar_time)
         self._sequential_checks()
+        if self._entries_blocked_reason and self._first_halt_time is None:
+            self._first_halt_time = latest_bar_time
         if self._entries_blocked_reason:
             if self.status.halted_reason != self._entries_blocked_reason:
                 self._log("warn", self._entries_blocked_reason)

@@ -395,9 +395,8 @@ def qr_code_file(url: str) -> Path | None:
         qr.add_data(url)
         qr.make(fit=True)
         img = qr.make_image()
-        out_dir = Path.home() / ".t58-quant-engine"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / "phone-qr-code.png"
+        import tempfile
+        out_path = Path(tempfile.gettempdir()) / "t58-phone-qr-code.png"      # temp, not a folder in the home directory
         img.save(out_path)
         return out_path
     except Exception:
