@@ -102,7 +102,7 @@
   {% set validate_pages = ['validate_hub', 'validate_simple', 'wfo', 'wfga', 'cpcv', 'pbo', 'sensitivity', 'parameter_robustness', 'regime_matrix'] %}
   {% set champion_pages = ['champion_simple', 'family_diversity', 'ensemble', 'portfolio', 'universe', 'compare'] %}
   {% set deploy_pages   = ['forward_test', 'deploy_live', 'live_market', 'replay', 'webhook_relay', 'demo_account', 'trading_bots', 'start_here_deployment'] %}
-  {% set lab_pages      = create_pages + test_pages + optimize_pages + validate_pages + champion_pages + deploy_pages + ['desk', 'research_ledger', 'graveyard', 'start_here_graveyard', 'strategy_library'] %}
+  {% set lab_pages      = create_pages + test_pages + optimize_pages + validate_pages + champion_pages + deploy_pages + ['library_research', 'graveyard', 'start_here_graveyard', 'strategy_library'] %}
   {% set quant_pages    = ['quant_lab', 'research_labs', 'options_outlook', 'hedge_fund', 'investing'] %}
   {% set prop_pages     = ['mission', 'guardian', 'accounts', 'buy_challenge', 'research_integrity'] %}
   {% set acct_pages     = ['account_settings', 'data_center', 'education', 'books_library'] %}
@@ -133,7 +133,7 @@
     </div>
   </details>
 
-  <!-- (2) Strategy Lab: the 6-step journey (Create ... Deploy) plus the Strategy Library (the Strategy Graveyard is a tab on it), folded into one header.
+  <!-- (2) Strategy Lab: the 6-step journey (Create ... Deploy) plus the Strategy Library (Research = Agent Desk + Research Ledger, and the Graveyard, are tabs on it), folded into one header.
        Each step is a single link to one consolidated page; that page's tools live on its own tools grid. -->
   <details class="t58-nav-group" data-nav="strategy-lab" {{ 'open' if open_ok and active_page in lab_pages else '' }}>
     <summary><span class="t58-nav-icon"><svg class="lu"><use href="#lu-flask-conical"/></svg></span> Strategy Lab <span class="chev"><svg class="lu"><use href="#lu-chevron-right"/></svg></span></summary>
@@ -156,13 +156,7 @@
       <a href="/forward-test" class="t58-nav-item {{ 'active' if active_page in deploy_pages else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-rocket"/></svg></span><span class="label">Deploy</span>
       </a>
-      <a href="/desk" class="t58-nav-item {{ 'active' if active_page == 'desk' else '' }}">
-        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-bot"/></svg></span><span class="label">Agent Desk</span>
-      </a>
-      <a href="/research-ledger" class="t58-nav-item {{ 'active' if active_page == 'research_ledger' else '' }}">
-        <span class="t58-nav-icon"><svg class="lu"><use href="#lu-microscope"/></svg></span><span class="label">Research Ledger</span>
-      </a>
-      <a href="/library" class="t58-nav-item {{ 'active' if active_page in ['strategy_library', 'graveyard', 'start_here_graveyard'] else '' }}">
+      <a href="/library" class="t58-nav-item {{ 'active' if active_page in ['strategy_library', 'library_research', 'graveyard', 'start_here_graveyard'] else '' }}">
         <span class="t58-nav-icon"><svg class="lu"><use href="#lu-library"/></svg></span><span class="label">Strategy Library</span>
       </a>
     </div>

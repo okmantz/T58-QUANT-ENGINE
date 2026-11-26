@@ -1,8 +1,8 @@
 """Clean slate for the owner (master key).
 
 EVERY time the master key is entered, the first time it is found saved on a device, and after every uninstall + reinstall, the app starts like a brand-new
-install: saved runs, achievements, look-and-feel choices, journal, prop desk, AI memory, current strategy and the account vault copy are MOVED (never deleted)
-into a dated backup folder. After that a marker file is written and everything saves normally until the master key is entered again.
+install: saved runs, achievements, look-and-feel choices, journal, prop desk, AI memory, current strategy, the Investing paper portfolio and the
+account vault copy are MOVED (never deleted) into a dated backup folder. After that a marker file is written and everything saves normally until the master key is entered again.
 
 REINSTALL DETECTION: the marker lives in the per-user data folder, which survives an uninstall, while the install folder does not. So each install writes a
 random id to `.t58_install_id` next to the app; the marker remembers which install it belongs to. A reinstall has a different id, which makes `needed()`
@@ -33,6 +33,41 @@ _MOVE_FILES = (
     "data/config/current_strategy.json", "data/config/validation_checklist.json", "data/config/ui_theme.json",
 )
 INSTALL_ID_NAME = ".t58_install_id"
+
+# Files in the per-user data folder (it survives an uninstall, like the marker) that belong to the account's own history.
+_MOVE_USER_FILES = ("payout_forecast_ledger.jsonl",)
+
+
+def _move_outside_state(backup: Path) -> int:
+    """State that lives OUTSIDE the app folder, so the relative lists above can never reach it:
+      * the Investing tab's paper portfolio (default ``~/.t58/investing``, or ``T58_INVEST_DIR``) -- this is why a reinstall + master key
+        used to reset everything EXCEPT the Investing tab, which kept running the same portfolio;
+      * the payout-forecast calibration ledger in the per-user data folder.
+    Everything is moved into ``backup`` (never deleted). Never raises."""
+    moved = 0
+    try:
+        from app.investing import paper
+        d = paper.storage_dir()
+        if d.is_dir():
+            for child in list(d.iterdir()):
+                dest = backup / "investing" / child.name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(child), str(dest))
+                moved += 1
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.data.storage import user_data_dir
+        for name in _MOVE_USER_FILES:
+            f = user_data_dir() / name
+            if f.exists():
+                dest = backup / "user_data" / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(f), str(dest))
+                moved += 1
+    except Exception:  # noqa: BLE001
+        pass
+    return moved
 
 
 def _marker() -> Path:
@@ -119,6 +154,7 @@ def run_if_needed(force: bool = False) -> bool:
                     moved += _move(child, backup, base)
             else:
                 moved += _move(p, backup, base)
+        moved += _move_outside_state(backup)
         # The account vault would silently restore everything we just moved on the next sign-in.
         try:
             from app.persistence import vault

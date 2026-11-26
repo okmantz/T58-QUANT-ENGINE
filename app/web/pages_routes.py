@@ -188,6 +188,38 @@ def inbox_delete():
     return jsonify({"ok": True})
 
 
+@pages_bp.route("/api/digest/prefs", methods=["GET", "POST"])
+def digest_prefs():
+    """Weekly digest email: GET status, POST {enabled: bool} to opt in/out (default is in)."""
+    from app.inbox import digest_email
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        if "enabled" in data:
+            digest_email.save_prefs(enabled=bool(data["enabled"]))
+    return jsonify({"ok": True, **digest_email.status()})
+
+
+@pages_bp.route("/api/digest/test", methods=["POST"])
+def digest_test():
+    """'Send me a test' -- emails the current week's digest right now to the account email. Never marks the week as sent."""
+    from app.inbox import digest_email
+    try:
+        res = digest_email.send_due_digest(force=True)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "message": f"Could not send: {exc}"})
+    return jsonify({"ok": bool(res.get("sent")), "message": res.get("message") or ""})
+
+
+@pages_bp.route("/api/digest/preview.html")
+def digest_preview_html():
+    """The email exactly as it will be sent, for the 'Preview' link in settings."""
+    from flask import Response
+    from app import inbox
+    from app.inbox import digest_email
+    _subject, html_doc, _text = digest_email.render(inbox.build_weekly_digest(), digest_email.recipient_email())
+    return Response(html_doc, mimetype="text/html")
+
+
 @pages_bp.route("/api/inbox/preview-digest")
 def inbox_preview():
     """The digest for the last 7 days, without saving it (the 'Preview this week' button)."""

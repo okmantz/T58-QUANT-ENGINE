@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Research — Strategy Library — T58 Quant Engine</title>
+{% include '_head_common.html' %}
+<style>
+  .rs-switch { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 18px; padding:5px; width:fit-content; max-width:100%; border:1px solid var(--border); border-radius:14px; background:var(--panel-2); }
+  .rs-switch button { display:inline-flex; align-items:center; gap:8px; padding:9px 18px; border:0; border-radius:10px; background:transparent; color:var(--text-muted);
+    font:inherit; font-size:13.5px; font-weight:650; cursor:pointer; transition:background .18s ease, color .18s ease; }
+  .rs-switch button:hover { color:var(--text); background:rgba(var(--teal-rgb), .08); }
+  .rs-switch button[aria-selected="true"] { background:var(--teal); color:var(--on-teal, #04120e); }
+  .rs-switch button:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+  .rs-switch .n { font-size:11px; font-weight:700; padding:1px 8px; border-radius:99px; background:rgba(0,0,0,.18); }
+  .rs-switch button:not([aria-selected="true"]) .n { background:var(--panel-3); color:var(--text-muted); }
+  .rs-lead { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; margin:0 0 20px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+  .rs-lead p { margin:0; max-width:72ch; color:var(--text-muted); font-size:13.5px; line-height:1.55; }
+  .rs-panel[hidden] { display:none; }
+</style>
+</head>
+<body>
+{% set active_page = 'library_research' %}
+{% include '_lucide_sprite.html' %}
+<div class="t58-shell">
+{% include '_sidebar.html' %}
+<div class="t58-main">
+{% set lib_tab = 'research' %}{% include '_library_tabs.html' %}
+  <div class="ds-page-head" style="margin-bottom:16px">
+    <div>
+      <h1>Research</h1>
+    </div>
+  </div>
+
+  <div class="rs-switch" role="tablist" aria-label="Research pages">
+    <button type="button" role="tab" id="rs-tab-desk" data-view="desk" aria-controls="rs-desk" aria-selected="{{ 'true' if view == 'desk' else 'false' }}"><svg class="lu"><use href="#lu-bot"/></svg>Agent Desk <span class="n">{{ n_artifacts }}</span></button>
+    <button type="button" role="tab" id="rs-tab-ledger" data-view="ledger" aria-controls="rs-ledger" aria-selected="{{ 'true' if view == 'ledger' else 'false' }}"><svg class="lu"><use href="#lu-microscope"/></svg>Research Ledger <span class="n">{{ closure.counts.get('OPEN', 0) }} open</span></button>
+  </div>
+
+  <section class="rs-panel" id="rs-desk" role="tabpanel" aria-labelledby="rs-tab-desk"{% if view != 'desk' %} hidden{% endif %}>
+{% include '_desk_panel.html' %}
+  </section>
+  <section class="rs-panel" id="rs-ledger" role="tabpanel" aria-labelledby="rs-tab-ledger"{% if view != 'ledger' %} hidden{% endif %}>
+{% include '_ledger_panel.html' %}
+  </section>
+</div>
+</div>
+<script>
+(function () {
+  var tabs = [].slice.call(document.querySelectorAll('.rs-switch button'));
+  function show(view, push) {
+    tabs.forEach(function (b) { var on = b.getAttribute('data-view') === view; b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    ['desk', 'ledger'].forEach(function (v) { document.getElementById('rs-' + v).hidden = (v !== view); });
+    if (push) { try { history.replaceState(null, '', '/library/research?view=' + view); } catch (e) {} }
+  }
+  tabs.forEach(function (b) { b.addEventListener('click', function () { show(b.getAttribute('data-view'), true); }); });
+  var sb = document.getElementById('scout-btn');
+  if (sb) sb.addEventListener('click', function () {
+    var box = document.getElementById('leads'); box.innerHTML = '<div class="help">Looking…</div>';
+    var e = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    fetch('/api/desk/scout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.__T58_CSRF || '' }, body: '{"limit":5}' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok || !j.leads.length) { box.innerHTML = '<div class="ds-empty">No leads: every graded family is either closed or already covered.</div>'; return; }
+        box.innerHTML = '<h2 style="margin:0">Leads</h2>' + j.leads.map(function (l) {
+          return '<div class="card"><div class="ds-row" style="justify-content:space-between"><strong>' + e(l.family) + '</strong><span class="ds-badge info">evidence ' + e(l.grade) + '</span></div><p class="help" style="margin:6px 0 0">' + e(l.basis) + ' — ' + e(l.why) + '</p></div>';
+        }).join('');
+      }).catch(function () { box.innerHTML = '<div class="ds-empty">Could not reach the desk.</div>'; });
+  });
+})();
+function reopen(family) {
+  var reason = prompt('Why reopen ' + family + '? Say what is DIFFERENT now (new mechanism, new data, a fixed bug). At least 10 characters.');
+  if (!reason) return;
+  fetch('/api/research-ledger/reopen', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.__T58_CSRF || '' }, body: JSON.stringify({ family: family, reason: reason, what_changed: reason }) })
+    .then(function (r) { return r.json(); })
+    .then(function (j) { if (j.ok) location.reload(); else window.t58Toast ? t58Toast(j.error || 'Could not reopen') : alert(j.error); });
+}
+</script>
+</body>
+</html>

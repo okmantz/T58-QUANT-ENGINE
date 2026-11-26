@@ -3,7 +3,7 @@
 The inbox is a small local list (data/inbox.json, carried by the account vault) shown behind the bell icon beside the profile
 picture. Today it holds one kind of message: the weekly digest, written once per ISO week on (or after) Sunday. Every line in a
 digest is computed from results the app saved -- run history, per-strategy reports, the strategy graveyard and the Champion
-Board -- so it never pads or invents. If the account has email notifications configured, the same digest is also emailed.
+Board -- so it never pads or invents. If the account has email notifications configured, the same digest is also emailed (see digest_email.py: every Sunday, opt-out in Account settings).
 
   what you tested     experiments finished in the last 7 days, by tool, with pass / fail counts
   what died           strategies rejected into the graveyard and tests that failed, with the recorded cause
@@ -160,8 +160,10 @@ def build_weekly_digest(now: float | None = None) -> dict[str, Any]:
 
     start = datetime.fromtimestamp(since)
     end = datetime.fromtimestamp(now)
+    n_pass = sum(1 for es in by_tool.values() for x in es if x.get("passed"))
+    stats = {"experiments": total, "passed": n_pass, "failed": len(failed), "buried": n_dead, "champions": len(live)}
     return {"title": f"Your week in the lab ({start:%b %d} - {end:%b %d})", "subtitle": "What you tested, what died, and what is closest to READY.",
-            "sections": sections, "empty": not sections,
+            "sections": sections, "empty": not sections, "stats": stats,
             "empty_line": "A quiet week: nothing new was saved. Run a test or start a Discovery search and next Sunday's digest will have something to say."}
 
 
@@ -217,31 +219,14 @@ def maybe_generate_weekly(now: float | None = None) -> dict[str, Any] | None:
 
 
 def _email_digest(dg: dict[str, Any]) -> None:
-    try:
-        import smtplib
-        from email.message import EmailMessage
-        from app.web.notifications import load_notification_settings
-        s = load_notification_settings()
-        if not s.is_usable:
-            return
-        em = EmailMessage()
-        em["Subject"] = "T58 weekly digest -- " + dg["title"]
-        em["From"] = s.smtp_from.strip()
-        em["To"] = s.notify_email.strip()
-        em.set_content(digest_text(dg))
-
-        def _send() -> None:
-            try:
-                with smtplib.SMTP(s.smtp_host.strip(), int(s.smtp_port or 587), timeout=15) as srv:
-                    srv.starttls()
-                    if s.smtp_username.strip():
-                        srv.login(s.smtp_username.strip(), s.smtp_password)
-                    srv.send_message(em)
-            except Exception:  # noqa: BLE001
-                pass
-        threading.Thread(target=_send, daemon=True).start()
-    except Exception:  # noqa: BLE001
-        pass
+    """Hand the email to app.inbox.digest_email (license-server relay, local SMTP fallback, opt-out aware) off the request thread."""
+    def _go() -> None:
+        try:
+            from app.inbox import digest_email
+            digest_email.send_due_digest()
+        except Exception:  # noqa: BLE001
+            pass
+    threading.Thread(target=_go, daemon=True).start()
 
 
 def list_messages() -> dict[str, Any]:

@@ -83,6 +83,14 @@ CREATE TABLE IF NOT EXISTS vaults (
     device_id TEXT,
     updated_at TEXT NOT NULL
 );
+
+-- WEEKLY DIGEST RELAY (2026-11-26): one row per digest email relayed, so one account can never be used to spam a mailbox.
+CREATE TABLE IF NOT EXISTS digest_sends (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    sent_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_digest_sends_email ON digest_sends(email, sent_at);
 """
 
 
@@ -391,3 +399,22 @@ def put_vault(email: str, raw: bytes, sha256: str, files: int, device_id: str) -
             (email, sha256, len(raw), int(files), device_id, _now_iso()),
         )
     return get_vault(email)
+
+
+# ---------------------------------------------------------------------------
+# Weekly digest relay: rate-limit bookkeeping (see app.py /v1/digest/send)
+# ---------------------------------------------------------------------------
+DIGEST_MAX_PER_DAY = int(os.environ.get("T58_DIGEST_MAX_PER_DAY", "4"))
+
+
+def digest_sends_since(email: str, hours: int = 24) -> int:
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds")
+    with _connect() as conn:
+        row = conn.execute("SELECT COUNT(*) AS n FROM digest_sends WHERE email = ? AND sent_at >= ?", (email.strip().lower(), since)).fetchone()
+        return int(row["n"])
+
+
+def log_digest_send(email: str) -> None:
+    with _connect() as conn:
+        conn.execute("INSERT INTO digest_sends (email, sent_at) VALUES (?, ?)", (email.strip().lower(), _now_iso()))

@@ -152,6 +152,16 @@
   .t58-pc-msg { max-width: 86%; padding: 9px 12px; border-radius: 14px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .t58-pc-msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--teal), var(--neon-cyan, var(--teal))); color: var(--on-teal); border-bottom-right-radius: 4px; font-weight: 500; }
   .t58-pc-msg.assistant { align-self: flex-start; background: var(--panel-3); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .t58-pc-msg.rich { white-space: normal; max-width: 94%; display: flex; flex-direction: column; gap: 8px; }
+  .t58-pc-msg.rich p { margin: 0; } .t58-pc-msg.rich ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+  .t58-pc-links, .t58-pc-follow { display: flex; flex-wrap: wrap; gap: 6px; }
+  .t58-pc-link { padding: 6px 11px; border-radius: 9px; background: var(--teal); color: var(--on-teal); font-weight: 650; font-size: 12px; text-decoration: none; }
+  .t58-pc-link:hover { filter: brightness(1.1); }
+  .t58-pc-follow .t58-pc-chip { font-size: 11.5px; padding: 5px 10px; text-align: left; }
+  .t58-pc-topic { border: 1px solid var(--border); border-radius: 10px; padding: 2px 10px; background: var(--panel-2); }
+  .t58-pc-topic summary { cursor: pointer; font-weight: 650; font-size: 12.5px; padding: 7px 0; }
+  .t58-pc-topic-q { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); font: inherit; font-size: 12.5px; padding: 6px 4px; border-top: 1px solid var(--border); cursor: pointer; }
+  .t58-pc-topic-q:hover { color: var(--teal); }
   .t58-pc-msg.error { align-self: center; background: var(--coral-dim); color: var(--text); font-size: 12px; text-align: center; max-width: 94%; }
 
   .t58-pc-welcome { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px; }

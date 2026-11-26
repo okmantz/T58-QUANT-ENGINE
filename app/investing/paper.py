@@ -10,8 +10,15 @@ from pathlib import Path
 _lock = threading.Lock()
 
 
+def storage_dir() -> Path:
+    """Where the Investing tab keeps its paper portfolio. NOTE: this is OUTSIDE the app folder and the per-user data folder
+    (default ``~/.t58/investing``), so an uninstall + reinstall never removed it. ``app.licensing.fresh_start`` moves it into
+    the dated backup when the master key starts a clean slate. Never creates the folder."""
+    return Path(os.environ.get("T58_INVEST_DIR") or (Path.home() / ".t58" / "investing"))
+
+
 def _path() -> Path:
-    p = Path(os.environ.get("T58_INVEST_DIR") or (Path.home() / ".t58" / "investing"))
+    p = storage_dir()
     p.mkdir(parents=True, exist_ok=True)
     return p / "paper_account.json"
 

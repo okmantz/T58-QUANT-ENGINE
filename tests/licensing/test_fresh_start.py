@@ -51,3 +51,23 @@ def test_disabled_under_pytest_by_default(env, monkeypatch):
     monkeypatch.delenv("T58_FORCE_FRESH_START")
     assert fresh_start.run_if_needed() is False
     assert fresh_start.needed()
+
+
+def test_investing_portfolio_and_payout_ledger_are_reset_too(env, monkeypatch, tmp_path):
+    """The Investing tab keeps its paper portfolio outside the app folder; the master-key clean slate must reset it as well."""
+    base, ud = env
+    inv = tmp_path / "home_t58" / "investing"
+    inv.mkdir(parents=True)
+    (inv / "paper_account.json").write_text('{"cash": 9500.0, "start_cash": 10000.0, "orders": [], "settings": {}, "positions": {"AAPL": {"qty": 5, "avg_cost": 100}}}')
+    monkeypatch.setenv("T58_INVEST_DIR", str(inv))
+    ud.mkdir(parents=True, exist_ok=True)
+    (ud / "payout_forecast_ledger.jsonl").write_text("{}\n")
+    from app.investing.paper import PaperAccount
+    assert PaperAccount().state()["positions"]            # the portfolio is there before the clean slate
+    assert fresh_start.run_if_needed(force=True) is True
+    assert not (inv / "paper_account.json").exists()
+    assert PaperAccount().state()["positions"] == []      # a brand-new default paper account
+    assert not (ud / "payout_forecast_ledger.jsonl").exists()
+    backup = next(ud.glob("fresh_start_backup_*"))
+    assert (backup / "investing" / "paper_account.json").exists()       # moved, never deleted
+    assert (backup / "user_data" / "payout_forecast_ledger.jsonl").exists()

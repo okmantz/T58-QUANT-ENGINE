@@ -38,6 +38,36 @@
   .badge.type { background: var(--panel-3); color:var(--text-muted); }
   .badge.status { background: rgba(var(--teal-rgb), 0.15); color: var(--teal); }
   .tag { display: inline-block; background: var(--panel-3); color: var(--t-soft); padding: 1px 6px; border-radius: 4px; font-size: 10.5px; margin: 4px 4px 0 0; }
+  /* ---- Trading Bots section (2026-11-26) ---- */
+  .lib-bots { margin: 0 0 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel-2); }
+  .lib-bots > summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; cursor: pointer; list-style: none; font-weight: 700; font-size: 14.5px; }
+  .lib-bots > summary::-webkit-details-marker { display: none; }
+  .lib-bots > summary .chev { margin-left: auto; transition: transform .18s ease; color: var(--text-muted); }
+  .lib-bots[open] > summary .chev { transform: rotate(90deg); }
+  .lib-bots .lb-sub { font-weight: 500; font-size: 12px; color: var(--text-muted); }
+  .lib-bots .lb-count { font-size: 11.5px; font-weight: 700; padding: 2px 10px; border-radius: 99px; background: rgba(var(--teal-rgb), .14); color: var(--teal); }
+  .lib-bots .lb-body { padding: 4px 16px 16px; }
+  .bt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .bt { position: relative; display: flex; flex-direction: column; gap: 9px; padding: 14px; border-radius: 14px; min-width: 0; background: rgba(var(--teal-rgb), .04); border: 1px solid var(--border); --tone: var(--teal-rgb); transition: border-color .15s, transform .15s; }
+  .bt:hover { border-color: rgba(var(--tone), .55); transform: translateY(-2px); }
+  .bt-running { border-color: rgba(var(--teal-rgb), .45); } .bt-halted { --tone: 255, 107, 107; }
+  .bt-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+  .bt-id { min-width: 0; } .bt-goal { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--text-dim, var(--text-muted)); font-weight: 650; }
+  .bt-id h3 { margin: 2px 0 0; font-size: 15px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bt-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 650; padding: 3px 9px; border-radius: 99px; color: var(--text-muted); border: 1px solid var(--border); }
+  .bt-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim, #6b7385); }
+  .bt-running .bt-pill { color: var(--teal); border-color: rgba(var(--teal-rgb), .4); } .bt-running .bt-dot { background: var(--teal); box-shadow: 0 0 8px rgba(var(--teal-rgb), .9); }
+  .bt-halted .bt-pill { color: var(--coral, #f0596a); } .bt-halted .bt-dot { background: var(--coral, #f0596a); }
+  .bt-tag { margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.45; min-height: 34px; }
+  .bt-mid { position: relative; height: 52px; } .bt-spark { width: 100%; height: 100%; } .bt-spark.up polyline { stroke: var(--teal); } .bt-spark.down polyline { stroke: var(--coral, #f0596a); }
+  .bt-nospark { height: 100%; display: grid; place-items: center; font-size: 11.5px; color: var(--text-dim, var(--text-muted)); border: 1px dashed var(--border); border-radius: 10px; }
+  .bt-net { position: absolute; right: 0; top: 0; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; } .bt-net.pos { color: var(--teal); } .bt-net.neg { color: var(--coral, #f0596a); }
+  .bt-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0; }
+  .bt-stats dt { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim, var(--text-muted)); } .bt-stats dd { margin: 2px 0 0; font-size: 13.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .bt-acts { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 9px; border-top: 1px solid var(--border); }
+  .bt-acts a { font-size: 12.5px; font-weight: 650; padding: 6px 12px; border-radius: 9px; text-decoration: none; border: 1px solid var(--border-light); color: var(--text); }
+  .bt-acts a.p { background: var(--teal); border-color: var(--teal); color: var(--on-teal, #04120e); }
+  .bt-custom { font-size: 9.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: 5px; background: var(--panel-3); color: var(--text-muted); margin-left: 6px; vertical-align: middle; }
   /* ---- Control Center cards (2026-10-17) ---- */
   .lanes { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
   .lane { padding: 8px 13px; border-radius: 9px; border: 1px solid var(--border-light); background: var(--panel-3); color: var(--text-muted); font-size: 13px; font-weight: 700; cursor: pointer; }
@@ -130,6 +160,55 @@
 </div>
 
 {% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
+
+<!-- ================= TRADING BOTS (listed here as well as on Deploy > Trading Bots) ================= -->
+<details class="lib-bots" id="lib-bots" open>
+  <summary>
+    <svg class="lu" style="width:18px;height:18px;color:var(--teal)"><use href="#lu-bot"/></svg>
+    Trading Bots <span class="lb-count">{{ bot_cards|length }}</span>
+    <span class="lb-sub">{% set n_run = bot_cards|selectattr('status', 'equalto', 'running')|list|length %}{{ n_run }} running &middot; ready-made bots plus any you built</span>
+    <span class="chev"><svg class="lu" style="width:14px;height:14px"><use href="#lu-chevron-right"/></svg></span>
+  </summary>
+  <div class="lb-body">
+  {% if bot_cards %}
+    <div class="bt-grid">
+    {% for b in bot_cards %}
+      <article class="bt bt-{{ b.status }}">
+        <header class="bt-top">
+          <div class="bt-id"><div class="bt-goal">{{ b.objective or 'Custom bot' }}{% if b.custom %}<span class="bt-custom">yours</span>{% endif %}</div><h3 title="{{ b.name }}">{{ b.name }}</h3></div>
+          <span class="bt-pill"><i class="bt-dot"></i>{{ 'Running' if b.status == 'running' else ('Halted' if b.status == 'halted' else ('Complete' if b.status == 'complete' else 'Stopped')) }}</span>
+        </header>
+        <p class="bt-tag">{{ b.tagline }}</p>
+        <div class="bt-mid">
+          {% if b.spark %}<svg class="bt-spark {{ 'up' if b.up else 'down' }}" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="{{ b.spark }}" fill="none" stroke-width="2.2" vector-effect="non-scaling-stroke"/></svg>
+          {% else %}<div class="bt-nospark">not run yet</div>{% endif %}
+          <div class="bt-net {{ 'pos' if (b.net or 0) >= 0 else 'neg' }}">{% if b.trades %}{{ '+' if b.net >= 0 }}${{ "{:,.0f}".format(b.net) }}{% else %}&ndash;{% endif %}</div>
+        </div>
+        <dl class="bt-stats">
+          <div><dt>Trades</dt><dd>{{ b.trades }}</dd></div>
+          <div><dt>Win</dt><dd>{{ "%.0f%%"|format(b.win_rate) if b.win_rate is not none else '–' }}</dd></div>
+          <div><dt>PF</dt><dd>{{ b.profit_factor if b.profit_factor is not none else '–' }}</dd></div>
+        </dl>
+        <div class="bt-acts">
+          <a class="p" href="/trading-bots?bot={{ b.id }}">Open bot &rarr;</a>
+          <a href="/trading-bots?bot={{ b.id }}&amp;tab=settings">Configure</a>
+        </div>
+      </article>
+    {% endfor %}
+    </div>
+  {% else %}
+    <p style="margin:6px 0 0;font-size:13px;color:var(--text-muted)">The bots could not be loaded. Open <a href="/trading-bots" style="color:var(--teal)">Trading Bots</a> to see them.</p>
+  {% endif %}
+    <p style="margin:12px 0 0;font-size:12.5px"><a href="/trading-bots" style="color:var(--teal);font-weight:650">Manage all bots, build a new one &rarr;</a></p>
+  </div>
+</details>
+<script>
+(function () {
+  var d = document.getElementById('lib-bots'); if (!d) return;
+  try { if (localStorage.getItem('t58-lib-bots') === 'closed') d.open = false; } catch (e) {}
+  d.addEventListener('toggle', function () { try { localStorage.setItem('t58-lib-bots', d.open ? 'open' : 'closed'); } catch (e) {} });
+})();
+</script>
 
 <div class="filters">
   <input type="text" id="filter-search" placeholder="Search name or description..." oninput="renderGrid()">

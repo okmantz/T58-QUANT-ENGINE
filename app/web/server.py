@@ -2168,14 +2168,15 @@ def _dashboard_cards_and_flow(stats: dict, board_rows: list) -> tuple[list, dict
     return cards, flow
 
 
-def _dashboard_bot_cards() -> list:
-    """The three shipped trading bots as small dashboard cards (name, goal, status, P&L, a sparkline). Never raises: the dashboard must load without them."""
+def _dashboard_bot_cards(all_bots: bool = False) -> list:
+    """The three shipped trading bots as small dashboard cards (name, goal, status, P&L, a sparkline). Never raises: the dashboard must load without them.
+    ``all_bots=True`` (the Strategy Library's Trading Bots section) also lists the bots you built yourself, not just the shipped presets."""
     try:
         from app.bots import store as _bot_store
         from app.web.bots_routes import _public as _bot_public
         out = []
         for rec in _bot_store.list_bots():
-            if not (rec.get("config") or {}).get("preset_key"):
+            if not all_bots and not (rec.get("config") or {}).get("preset_key"):
                 continue
             b = _bot_public(rec)
             cfg, m, rt = b["config"], b["metrics"], b["runtime"]
@@ -2190,6 +2191,7 @@ def _dashboard_bot_cards() -> list:
                 "id": cfg["id"], "name": cfg.get("name"), "objective": b.get("objective_name"), "tagline": cfg.get("tagline") or "",
                 "status": status, "net": m.get("net_pnl"), "trades": m.get("trades") or 0, "win_rate": m.get("win_rate"),
                 "profit_factor": m.get("profit_factor"), "spark": pts, "up": (eq[-1] >= eq[0]) if len(eq) > 1 else True,
+                "custom": not bool(cfg.get("preset_key")),
             })
         return out
     except Exception:  # noqa: BLE001
@@ -4602,6 +4604,7 @@ def strategy_library_page():
         "library.html", active_page="strategy_library",
         strategies_json=json.dumps(all_strategies), all_tags=all_tags, all_markets=all_markets,
         strategy_statuses=STRATEGY_STATUSES,
+        bot_cards=_dashboard_bot_cards(all_bots=True),
         notice=request.args.get("strategy_notice"),
     )
 
@@ -14837,6 +14840,11 @@ def main():
     try:
         from app.persistence import vault
         vault.start_background()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.inbox import digest_email
+        digest_email.start_scheduler()      # weekly digest email, Sundays; opt-out in Account settings
     except Exception:  # noqa: BLE001
         pass
     _start_lifecycle()

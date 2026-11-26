@@ -271,6 +271,73 @@ def vault_get():
 
 
 # ---------------------------------------------------------------------------
+# Weekly digest relay (2026-11-26). The desktop app builds the email from the person's own saved results and posts it here;
+# this server only adds the SMTP account. Safeguards: the call is authenticated like every other license call (email +
+# key + device), the message can only ever go to the license's own email address (the client cannot choose a recipient),
+# size is capped, and each account is limited to DIGEST_MAX_PER_DAY sends.
+# ---------------------------------------------------------------------------
+MAX_DIGEST_HTML = 220_000
+MAX_DIGEST_TEXT = 60_000
+
+
+def _smtp_send(msg) -> None:
+    host = os.environ.get("SMTP_HOST", "").strip()
+    user = os.environ.get("SMTP_USER", "").strip()
+    password = os.environ.get("SMTP_PASS", "")
+    if not (host and user and password):
+        raise RuntimeError("smtp_not_configured")
+    import smtplib
+
+    port = int(os.environ.get("SMTP_PORT", "587") or 587)
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=20) as smtp:
+            smtp.login(user, password)
+            smtp.send_message(msg)
+    else:
+        with smtplib.SMTP(host, port, timeout=20) as smtp:
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.ehlo()
+            smtp.login(user, password)
+            smtp.send_message(msg)
+
+
+@app.route("/v1/digest/send", methods=["POST"])
+def digest_send():
+    data = request.get_json(silent=True) or {}
+    status, body = _vault_auth(data)
+    if status:
+        return jsonify(body), status
+    email = str(data.get("email", "")).strip()
+    subject = str(data.get("subject", "")).strip()[:200]
+    html_body = str(data.get("html", ""))
+    text_body = str(data.get("text", ""))
+    if not subject or not text_body or len(html_body) > MAX_DIGEST_HTML or len(text_body) > MAX_DIGEST_TEXT:
+        return jsonify({"ok": False, "error": "bad_payload"}), 400
+    if db.digest_sends_since(email, 24) >= db.DIGEST_MAX_PER_DAY:
+        return jsonify({"ok": False, "error": "rate_limited"}), 429
+    from email.message import EmailMessage
+
+    sender = os.environ.get("SMTP_FROM", "").strip() or os.environ.get("SMTP_USER", "").strip()
+    msg = EmailMessage()
+    msg["From"] = sender
+    msg["To"] = email                      # always the license owner's own address
+    msg["Subject"] = subject
+    msg.set_content(text_body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
+    try:
+        _smtp_send(msg)
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 503
+    except Exception as exc:  # noqa: BLE001 -- never leak SMTP internals to the client
+        app.logger.warning("digest relay send failed: %s", exc)
+        return jsonify({"ok": False, "error": "send_failed", "message": "The mail server refused the message."}), 502
+    db.log_digest_send(email)
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
 # License delivery email (P1-7, Oct 2026)
 #
 # Minimal SMTP-via-env mailer -- no new dependency (stdlib smtplib).

@@ -1,7 +1,7 @@
 /* ==========================================================================
    T58 first-run guided tour (web)
 
-   A short, skippable, 7-step walkthrough shown once, the first time someone
+   A short, skippable walkthrough shown once, the first time someone
    lands on the Dashboard after activating their license. It spotlights the
    real sidebar items ("here is where you add data", "here is where you
    test") and explains the order to do things in.
@@ -31,7 +31,7 @@
   // (2026-10-06): Owen reinstalled and never saw the tour -- his browser
   // profile still carried the v1 "seen" flag from his first run weeks
   // earlier, and a truly fresh install is exactly when it should pop.
-  var STORE_KEY = "t58-tour-v2";
+  var STORE_KEY = "t58-tour-v3";
   var Z = 10050;
   var MOBILE_QUERY = "(max-width: 760px)";
 
@@ -43,6 +43,24 @@
     var a = navLink(href);
     return a ? a.closest("details.t58-nav-group") : null;
   }
+  // A sidebar section by its data-nav key (workspace, strategy-lab, quant-lab, prop-journey, account).
+  function sideGroup(key) {
+    return document.querySelector('.t58-sidebar details.t58-nav-group[data-nav="' + key + '"]');
+  }
+  function q(sel) { return document.querySelector(sel); }
+  // Targets may be one element or a list of neighbours; the spotlight then covers all of them.
+  function asList(t) {
+    if (!t) return [];
+    return (t.length != null && !t.nodeType ? Array.prototype.slice.call(t) : [t]).filter(Boolean);
+  }
+  function groupsOf(targets) {
+    var out = [];
+    asList(targets).forEach(function (n) {
+      var d = n.closest ? n.closest("details.t58-nav-group") : null;
+      if (d && out.indexOf(d) < 0) out.push(d);
+    });
+    return out;
+  }
 
   /* ---- the steps ------------------------------------------------------- */
   // target: () => element to spotlight (null/undefined = centered card, no spotlight)
@@ -52,65 +70,108 @@
       title: "Welcome to T58 \uD83D\uDC4B",
       text: [
         "T58 answers one question: **if you trade this strategy under your prop firm's rules, what are your odds of passing the evaluation and reaching a payout?**",
-        "Getting to that answer follows the steps in the sidebar. This quick tour shows you where each one lives."
+        "This tour points at the real buttons, one stop at a time, so you know exactly where everything lives. It takes about a minute."
       ],
-      chips: ["Data", "Create", "Test", "Optimize", "Validate"]
+      chips: ["Data", "Create", "Test", "Optimize", "Validate", "Deploy"]
     },
     {
-      title: "1 \u00B7 Add your market data",
+      title: "Add your market data",
       text: [
-        "Every test needs price history. Open **Data Center** to import a file (CSV, TSV or Parquet), or fetch data straight from the Test page.",
-        "Either way it's saved, so you only upload once. Columns needed: **timestamp, open, high, low, close, volume**."
+        "Every test needs price history. **Data Center** (highlighted, inside the **Account** section) is where you import a file (CSV, TSV or Parquet) or fetch data.",
+        "It is saved after the first upload. Columns needed: **timestamp, open, high, low, close, volume**."
       ],
       target: function () { return navLink("/data-center"); },
-      group: function () { return navGroup("/data-center"); },
       action: { label: "Open Data Center", href: "/data-center" }
     },
     {
-      title: "2 \u00B7 Create a strategy",
+      title: "Strategy Lab: the six steps",
       text: [
-        "**Create** is where strategies enter. Describe an idea in plain English and let T58 turn it into testable candidates, or paste your own Python, PineScript or MQL5.",
-        "No idea yet? The **Strategy Discovery Engine** on the same page hunts for candidates for you: pick a market and a prop firm and press go. Everything you save lands in the **Strategy Library**."
+        "The **Strategy Lab** section (highlighted) holds the whole journey, top to bottom: **Create, Test, Optimize, Validate, Champion, Deploy**, then the **Strategy Library** where everything you save lives.",
+        "Work down the list and you never have to guess what comes next."
+      ],
+      target: function () { return sideGroup("strategy-lab"); }
+    },
+    {
+      title: "Create a strategy",
+      text: [
+        "**Create** is where strategies enter. Describe an idea in plain English, paste your own Python, PineScript or MQL5, or let the **Discovery Engine** hunt for candidates for you.",
+        "Everything you save lands in the **Strategy Library**."
       ],
       target: function () { return navLink("/start-here/create"); },
       action: { label: "Open Create", href: "/start-here/create" }
     },
     {
-      title: "3 \u00B7 Test it properly",
+      title: "Test it properly",
       text: [
-        "**Test** runs the full pipeline: baseline backtest, lookahead-bias check, a search for a version that holds up out-of-sample, Monte Carlo, then a plain verdict: **READY, MARGINAL or NOT READY**, with reasons.",
-        "Pick your data and strategy, set your prop-firm rules (FTMO, Apex, TopStep, The5%ers, FundedNext and Lucid are built-in presets) and hit run. It is the slowest tool in the app, so give it a moment."
+        "**Test** runs the full pipeline: baseline backtest, lookahead-bias check, an out-of-sample search, Monte Carlo, then a plain verdict: **READY, MARGINAL or NOT READY**, with reasons.",
+        "Pick your data and strategy, choose your prop-firm rules (FTMO, Apex, TopStep, The5%ers, FundedNext and Lucid are built in) and press run."
       ],
       target: function () { return navLink("/full-pipeline"); },
       action: { label: "Open Test", href: "/full-pipeline" }
     },
     {
-      title: "4 \u00B7 Optimize, then Validate",
+      title: "Optimize, Validate, Champion, Deploy",
       text: [
-        "Verdict NOT READY? **Optimize** searches for better parameters. Once something looks good, **Validate** tries to break it with walk-forward, CPCV and robustness checks.",
-        "Strategies that survive move on to **Champion**, **Deploy** (forward test it, including through a TradingView webhook) and finally live."
+        "Verdict NOT READY? **Optimize** searches for better parameters. **Validate** then tries to break the winner (walk-forward, CPCV, robustness). Survivors reach **Champion**, then **Deploy**: forward test, TradingView webhook, and finally live.",
+        "These four neighbours are highlighted together."
       ],
-      target: function () { return navLink("/optimize-simple"); },
+      target: function () { return [navLink("/optimize-simple"), navLink("/validate-simple"), navLink("/champion-simple"), navLink("/forward-test")]; },
       action: { label: "Open Optimize", href: "/optimize-simple" }
+    },
+    {
+      title: "Strategy Library",
+      text: [
+        "**Strategy Library** is your shelf. Its tabs are **Strategies** (everything you saved), **Research** (the Agent Desk and the Research Ledger), **Graveyard** (what died and why) and a **Trading Bots** section.",
+        "Open any card to see its reports, verdicts and next action."
+      ],
+      target: function () { return navLink("/library"); },
+      action: { label: "Open Strategy Library", href: "/library" }
+    },
+    {
+      title: "Prop Journey",
+      text: [
+        "The **Prop Journey** section (highlighted) is for the evaluation itself: the **First Payout Mission**, the **Evaluation Guardian**, your **Accounts**, and **Buy Challenge**, which compares every firm and plan side by side.",
+      ],
+      target: function () { return sideGroup("prop-journey"); }
+    },
+    {
+      title: "Quant Lab and Investing",
+      text: [
+        "**Quant Lab** holds the advanced research tools and the Research Lab. **Investing** is a separate paper-trading portfolio for stocks and ETFs, independent of your prop-firm work."
+      ],
+      target: function () { return sideGroup("quant-lab"); }
     },
     {
       title: "Your home base: what's next?",
       text: [
-        "This panel is the Dashboard's headline. After every run it tells you **what you're working on, whether it's working, why, and the exact next step**, so you never have to guess the order.",
-        "The workflow cards above it jump straight to each step. Your saved strategies live in the Strategy Library."
+        "The Dashboard's focus panel (highlighted) tells you **what you're working on, whether it's working, why, and the exact next step** after every run.",
+        "The pipeline below it shows how many strategies have reached each stage."
       ],
-      target: function () {
-        return document.querySelector(".t58-champion") || document.querySelector(".t58-page-header");
-      },
-      scroll: "start" // big panel in the main area: park it at the top so the card fits below
+      target: function () { return q(".db-focus") || q(".db-kpis") || q(".db-head"); },
+      scroll: "start"
     },
     {
-      title: "Help is always one click away",
+      title: "Coach: ask anything",
       text: [
-        "**University** holds the courses, the User Manual (the full walkthrough) and a short list of trading-basics resources.",
-        "Want this tour again? Use the **Take the tour** button at the top of the Dashboard."
+        "The **Coach** button (highlighted, bottom right) is on every page. Ask it about trading, strategy building, prop-firm rules, how to set something up, or where to find a page, and it answers with a button that takes you there.",
+        "Try \u201CWhat should I do next?\u201D any time."
       ],
-      target: function () { return navLink("/education"); },
+      target: function () { return q("#t58-pc-launcher"); }
+    },
+    {
+      title: "Inbox and your profile",
+      text: [
+        "The **bell** (highlighted, top right) holds your **Weekly digest**, which is also emailed every Sunday (switch that off in Account settings). Beside it, your profile menu opens **Account settings**."
+      ],
+      target: function () { return [q("#t58-pnl-chip"), q("#t58-bell"), q("#t58-avatar-btn")]; }
+    },
+    {
+      title: "Learn, then play",
+      text: [
+        "**University** has the courses and the User Manual. **Playground** has games and puzzles for a break between runs. Both sit in the highlighted **Account** section.",
+        "Want this tour again? Use the **60-second tour** button at the top of the Dashboard."
+      ],
+      target: function () { return [navLink("/education"), navLink("/playground")]; },
       action: { label: "Start my first test \u2192", href: "/start-here/create", primary: true }
     }
   ];
@@ -128,7 +189,7 @@
       chips: ["Mode", "Connect", "Strategy", "Deploy"]
     },
     {
-      title: "1 \u00B7 Pick Demo or Live",
+      title: "Pick Demo or Live",
       text: [
         "T58 starts in **Demo** mode: simulated money, nothing real can happen. To connect a real prop-firm or MT5 account, switch to **Live** in **Account settings**.",
         "You can practise on the demo first. It follows the same rules as a real evaluation."
@@ -137,7 +198,7 @@
       action: { label: "Open Account settings", href: "/settings/account#account-mode" }
     },
     {
-      title: "2 \u00B7 Connect your account",
+      title: "Connect your account",
       text: [
         "In the guided deploy, choose **Live on MT5** or **Live on a prop firm**, pick your firm and paste the login the firm emailed you.",
         "Press **Test connection**: T58 checks the login, the server name and the firm's automation policy, and lists numbered fixes if anything is off."
@@ -146,7 +207,7 @@
       action: { label: "Open guided deploy", href: "/deploy/wizard" }
     },
     {
-      title: "3 \u00B7 Choose the strategy",
+      title: "Choose the strategy",
       text: [
         "Only a **champion** should trade real money. Promote one on the **Champion** page, then press its **Deploy** button.",
         "No champion yet? Run a strategy through **Test**, **Optimize** and **Validate** first. That is what earns the right to go live."
@@ -155,7 +216,7 @@
       action: { label: "Open Champion board", href: "/champion-simple" }
     },
     {
-      title: "4 \u00B7 Set limits and deploy",
+      title: "Set limits and deploy",
       text: [
         "Pick your firm's rule set and T58 fills in the daily-loss and drawdown limits. Review the safety checks, type **DEPLOY LIVE**, and it starts.",
         "A small **Live P&L** pill on every page shows balance and open trades, and you can stop the session any time."
@@ -201,6 +262,9 @@
       ".t58-tour-spot{position:fixed;z-index:" + (Z - 1) + ";pointer-events:none;border-radius:10px;",
       "  box-shadow:0 0 0 9999px rgba(3,6,10,.74),0 0 0 2px var(--teal,#35e0b0),0 0 26px rgba(var(--teal-rgb,53,224,176),.55);",
       "  transition:top .28s ease,left .28s ease,width .28s ease,height .28s ease,opacity .2s ease;}",
+      "@keyframes t58-tour-pulse{0%,100%{box-shadow:0 0 0 9999px rgba(3,6,10,.74),0 0 0 2px var(--teal,#35e0b0),0 0 18px rgba(var(--teal-rgb,53,224,176),.45);}",
+      "  50%{box-shadow:0 0 0 9999px rgba(3,6,10,.74),0 0 0 3px var(--teal,#35e0b0),0 0 34px rgba(var(--teal-rgb,53,224,176),.85);}}",
+      ".t58-tour-spot:not(.t58-tour-nospot){animation:t58-tour-pulse 1.8s ease-in-out infinite;}",
       ".t58-tour-spot.t58-tour-nospot{box-shadow:0 0 0 9999px rgba(3,6,10,.74);width:0;height:0;top:50%;left:50%;}",
       ".t58-tour-card{position:fixed;z-index:" + Z + ";width:min(380px,calc(100vw - 24px));box-sizing:border-box;",
       "  background:var(--pop-bg,#10141c);color:var(--text,#e7ebf2);border:1px solid var(--teal,#35e0b0);",
@@ -232,7 +296,7 @@
       ".t58-tour-btn:focus-visible,.t58-tour-x:focus-visible,.t58-tour-dot:focus-visible{outline:2px solid var(--teal,#35e0b0);outline-offset:2px;}",
       "@media (max-width:760px){.t58-tour-card{left:10px!important;right:10px;top:auto!important;width:auto;",
       "  bottom:calc(10px + env(safe-area-inset-bottom,0px));padding:14px 16px 12px;max-height:62vh;overflow-y:auto;}}",
-      "@media (prefers-reduced-motion:reduce){.t58-tour-spot,.t58-tour-card{transition:none;}}"
+      "@media (prefers-reduced-motion:reduce){.t58-tour-spot,.t58-tour-card{transition:none;animation:none!important;}}"
     ].join("\n");
     var style = document.createElement("style");
     style.id = "t58-tour-css";
@@ -267,9 +331,9 @@
     }
   }
   function closeOpenedExcept(keep) {
-    var still = [];
+    var keepList = asList(keep), still = [];
     state.opened.forEach(function (d) {
-      if (d === keep) { still.push(d); return; }
+      if (keepList.indexOf(d) >= 0) { still.push(d); return; }
       d.open = false;
     });
     state.opened = still;
@@ -291,10 +355,23 @@
   }
 
   /* ---- geometry / positioning ------------------------------------------ */
+  // `t` is one element or a list of elements; the result is the box that covers every visible one.
   function targetRect(t) {
-    var r = t.getBoundingClientRect();
-    if (!r.width && !r.height) return null;
-    return r;
+    var list = asList(t), box = null;
+    list.forEach(function (n) {
+      var r = n.getBoundingClientRect();
+      if (!r.width && !r.height) return;
+      if (!box) { box = { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; return; }
+      box.left = Math.min(box.left, r.left); box.top = Math.min(box.top, r.top);
+      box.right = Math.max(box.right, r.right); box.bottom = Math.max(box.bottom, r.bottom);
+    });
+    if (!box) return null;
+    box.width = box.right - box.left; box.height = box.bottom - box.top;
+    return box;
+  }
+  function firstEl(t) { return asList(t)[0] || null; }
+  function inSidebar(t) {
+    return asList(t).some(function (n) { return n.closest && n.closest(".t58-sidebar"); });
   }
 
   function place() {
@@ -372,7 +449,7 @@
     if (!r) return;
     var limit = window.innerHeight - state.els.card.offsetHeight - 24;
     if (r.bottom > limit) {
-      var scroller = state.target.closest(".t58-sidebar") || document.scrollingElement || document.documentElement;
+      var scroller = (firstEl(state.target) && firstEl(state.target).closest(".t58-sidebar")) || document.scrollingElement || document.documentElement;
       scroller.scrollTop += (r.bottom - limit);
     }
   }
@@ -466,22 +543,27 @@
     state.i = i;
     var step = STEPS[i];
 
-    // Make sure the sidebar item we're pointing at is actually visible.
-    var grp = step.group ? step.group() : null;
-    closeOpenedExcept(grp);
-    openGroup(grp);
-    var needsSidebar = !!(step.target && step.target() && step.target().closest(".t58-sidebar"));
+    // Resolve the target first, then open whichever sidebar section(s) hold it. (Every step used to need its own `group`
+    // function; steps without one never opened their section, so the item stayed hidden and the tour showed only the card.)
+    var tgt = step.target ? step.target() : null;
+    var grps = groupsOf(tgt);
+    if (step.group) { var g0 = step.group(); if (g0 && grps.indexOf(g0) < 0) grps.push(g0); }
+    closeOpenedExcept(grps);
+    grps.forEach(openGroup);
+    var needsSidebar = inSidebar(tgt);
     if (isMobile()) ensureDrawer(needsSidebar);
 
-    state.target = step.target ? step.target() : null;
+    state.target = tgt;
     if (state.target && !targetRect(state.target)) state.target = null; // hidden -> centered card
 
     render();
 
     if (state.target) {
       var block = step.scroll || "center";
-      try { state.target.scrollIntoView({ block: block, inline: "nearest" }); } catch (e) {}
-      if (block === "start" && !state.target.closest(".t58-sidebar")) {
+      var first = firstEl(state.target);
+      // Bring the highlighted thing into view: the sidebar scrolls inside itself, the page scrolls for dashboard panels.
+      try { first.scrollIntoView({ block: block, inline: "nearest" }); } catch (e) {}
+      if (block === "start" && !inSidebar(state.target)) {
         try { window.scrollBy(0, -16); } catch (e) {} // breathing room above the spotlight
       }
     }
@@ -489,6 +571,11 @@
     place();
     // Layout can shift a frame later (details opening, fonts): re-place once more.
     window.requestAnimationFrame(function () { if (state) { keepTargetAboveSheet(); place(); } });
+    // On phones the sidebar slides in as a drawer (a CSS transition): measure again once it has settled, or the
+    // spotlight lands where the drawer WAS.
+    if (isMobile() && needsSidebar) {
+      [140, 360].forEach(function (ms) { window.setTimeout(function () { if (state && state.i === i) { keepTargetAboveSheet(); place(); } }, ms); });
+    }
 
     var nextBtn = state.els.card.querySelector("[data-t58-tour-next]") ||
                   state.els.card.querySelector(".t58-tour-btn.primary");
@@ -528,6 +615,11 @@
     document.body.appendChild(state.els.block);
     document.body.appendChild(state.els.spot);
     document.body.appendChild(state.els.card);
+    // The Coach panel can pop open by itself at the start of a session; it would sit on top of what the tour points at.
+    try {
+      var pcPanel = document.getElementById("t58-pc-panel"), pcClose = document.getElementById("t58-pc-close");
+      if (pcPanel && !pcPanel.hidden && pcClose) pcClose.click();
+    } catch (e) {}
     document.addEventListener("keydown", onKey, true);
     window.addEventListener("resize", onReflow);
     window.addEventListener("scroll", onReflow, true);

@@ -218,27 +218,35 @@ def activate_project_route(project_id: str):
 @project_bp.route("/<project_id>/chat", methods=["POST"])
 @_json_safe
 def chat_route(project_id: str):
+    """Coach chat. Answers come from the built-in knowledge base (app.coach), not from an AI model:
+    instant, offline, and the same answer every time. The history is still saved on the project."""
     data = request.get_json(force=True, silent=True) or {}
     message = (data.get("message") or "").strip()
     if not message:
         return jsonify({"reply": "", "error": "Empty message."}), 400
 
-    project = projects.get_project(project_id)  # raises ProjectNotFound -> 404, via _json_safe
+    projects.get_project(project_id)  # raises ProjectNotFound -> 404, via _json_safe
     projects.append_chat_message(project_id, "user", message)
 
-    activity_lines = _activity_summary_lines(project_id)
-    client = ProjectChatClient(load_ollama_settings())
-    # Send the history as it stood BEFORE this turn's user message (the
-    # message itself is appended separately by chat()/_build_messages),
-    # so it isn't duplicated in the prompt.
-    reply, error = client.chat(
-        project["name"], message, history=project.get("chat_history", []), activity_lines=activity_lines,
-    )
-    if error:
-        return jsonify({"reply": "", "error": error})
+    from app.coach import answer as coach_answer
+    from app.coach.engine import entry_reply
 
-    updated = projects.append_chat_message(project_id, "assistant", reply)
-    return jsonify({"reply": reply, "error": None, "project": updated})
+    result = None
+    if data.get("entry"):
+        result = entry_reply(str(data.get("entry")), str(data.get("page") or ""))
+    if result is None:
+        result = coach_answer(message, str(data.get("page") or ""))
+
+    updated = projects.append_chat_message(project_id, "assistant", result["reply"])
+    return jsonify({"reply": result["reply"], "links": result["links"], "followups": result["followups"],
+                    "kind": result["kind"], "error": None, "project": updated})
+
+
+@project_bp.route("/coach/topics", methods=["GET"])
+def coach_topics_route():
+    """The browsable topic list for the Coach's 'Browse topics' view."""
+    from app.coach.engine import topics
+    return jsonify({"topics": topics()})
 
 
 @project_bp.route("/<project_id>/activity", methods=["GET"])

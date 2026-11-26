@@ -4,7 +4,7 @@ One Blueprint so server.py needs a single import + register line. Everything is 
 """
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, redirect, render_template, request
 
 desk_bp = Blueprint("desk_extra", __name__)
 
@@ -42,11 +42,8 @@ def _desk():
 
 @desk_bp.route("/desk")
 def desk_page():
-    from app.ai.agent_desk import ROLES, ROLE_ORDER
-    d = _desk()
-    roles = [{"id": r, "title": ROLES[r].title, "purpose": ROLES[r].purpose, "makes": ROLES[r].makes, "reads": list(ROLES[r].reads),
-              "agent": d.by_role[r].id} for r in ROLE_ORDER]
-    return render_template("desk.html", roles=roles, board=d.board(), n_artifacts=len(d.artifacts))
+    """The Agent Desk is a page of Strategy Library > Research now; the old address keeps working."""
+    return redirect("/library/research?view=desk", code=302)
 
 
 @desk_bp.route("/api/desk/board")
@@ -70,18 +67,38 @@ def desk_scout():
 # ------------------------------------------------------------------------------------------------------------------ research
 @desk_bp.route("/research-ledger")
 def research_ledger_page():
+    """The Research Ledger is a page of Strategy Library > Research now; the old address keeps working."""
+    return redirect("/library/research?view=ledger", code=302)
+
+
+@desk_bp.route("/library/research")
+def library_research_page():
+    """Strategy Library > Research: the Agent Desk and the Research Ledger as two pages of one tab (?view=desk|ledger)."""
+    from app.ai.agent_desk import ROLES, ROLE_ORDER
     from app.research_ledger import close_report, coverage_summary, grade_table, validate_coverage
     from app.research_ledger._store import read_rows
+    view = "ledger" if request.args.get("view") == "ledger" else "desk"
+    d = _desk()
+    roles = [{"id": r, "title": ROLES[r].title, "purpose": ROLES[r].purpose, "makes": ROLES[r].makes, "reads": list(ROLES[r].reads),
+              "agent": d.by_role[r].id} for r in ROLE_ORDER]
     try:
         report = close_report()
     except Exception:  # noqa: BLE001 -- the page is a report; a missing graveyard must not 500 it
-        report = {"closed": [], "watch": [], "open": []}
+        report = {"closed": [], "watch": [], "open": [], "counts": {}, "rows": [], "enabled": True}
     try:
         cov = coverage_summary()
     except Exception:  # noqa: BLE001
-        cov = {"families": [], "never_tested": [], "thin_high_evidence": [], "instruments": [], "timeframes": []}
-    return render_template("research_ledger.html", grades=grade_table(), coverage=cov, closure=report, check=validate_coverage(),
-                           sources=read_rows("sources")[-50:][::-1], queries=read_rows("queries")[-50:][::-1])
+        cov = {"families": [], "never_tested": [], "thin_high_evidence": [], "instruments": [], "timeframes": [], "n_cells_observed": 0}
+    try:
+        check = validate_coverage()
+    except Exception:  # noqa: BLE001
+        check = None
+    try:
+        sources, queries = read_rows("sources")[-50:][::-1], read_rows("queries")[-50:][::-1]
+    except Exception:  # noqa: BLE001
+        sources, queries = [], []
+    return render_template("research_hub.html", view=view, roles=roles, board=d.board(), n_artifacts=len(d.artifacts),
+                           grades=grade_table(), coverage=cov, closure=report, check=check, sources=sources, queries=queries)
 
 
 @desk_bp.route("/api/research-ledger/reopen", methods=["POST"])

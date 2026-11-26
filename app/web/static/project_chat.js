@@ -33,10 +33,12 @@
   var ICON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
   // What Coach offers on a fresh chat. Each chip either asks Coach a question or jumps to the right place in the app.
   var CHIPS = [
-    { label: "What should I do next?", ask: "Based on where my work stands, what should I do next? Keep it to three steps." },
-    { label: "How do I pass an evaluation?", ask: "Explain in simple terms how to give a strategy the best chance of passing a prop-firm evaluation." },
-    { label: "Review my risk settings", ask: "What risk settings should I check before deploying a strategy or bot to an account?" },
-    { label: "Explain a result", ask: "Explain what profit factor, max drawdown and win rate tell me, and which one matters most for a prop-firm evaluation." },
+    { label: "What should I do next?", entry: "next_step" },
+    { label: "Where is everything?", entry: "sidebar" },
+    { label: "How do I test a strategy?", entry: "test" },
+    { label: "Avoid overfitting", entry: "overfitting" },
+    { label: "How do I pass an evaluation?", entry: "prop_how" },
+    { label: "Browse all topics", topics: true },
     { label: "Today's updates", go: "brief" }
   ];
 
@@ -329,8 +331,8 @@
     box.id = "t58-pc-welcome";
     var hello = document.createElement("div");
     hello.className = "hello";
-    hello.innerHTML = "Hi, I&rsquo;m <b>Coach</b>. I keep an eye on your strategies, runs and accounts, suggest what to do next, " +
-      "and answer questions about testing, risk and prop-firm rules. Ask me anything, or tap a starter below.";
+    hello.innerHTML = "Hi, I&rsquo;m <b>Coach</b>. Ask me where to find anything, how to set something up, what to do next, " +
+      "or how trading and strategy development work. I answer instantly from built-in knowledge, no AI service needed. Tap a starter or just type.";
     box.appendChild(hello);
     var chips = document.createElement("div");
     chips.className = "t58-pc-chips";
@@ -341,8 +343,8 @@
       b.textContent = c.label;
       b.addEventListener("click", function () {
         if (c.go) { showTab(c.go); return; }
-        els.input.value = c.ask;
-        sendMessage(new Event("submit"));
+        if (c.topics) { showTopics(); return; }
+        ask(c.label, c.entry);
       });
       chips.appendChild(b);
     });
@@ -361,6 +363,95 @@
     return div;
   }
 
+  // Rich Coach reply: paragraphs, bullet lists, link buttons, and follow-up chips.
+  function appendCoachReply(data) {
+    var w = document.getElementById("t58-pc-welcome");
+    if (w && w.parentNode) w.parentNode.removeChild(w);
+    var div = document.createElement("div");
+    div.className = "t58-pc-msg assistant rich";
+    String(data.reply || "").split(/\n\n+/).forEach(function (block) {
+      var lines = block.split("\n");
+      var bullets = lines.filter(function (l) { return /^- /.test(l); });
+      if (bullets.length === lines.length) {
+        var ul = document.createElement("ul");
+        lines.forEach(function (l) { var li = document.createElement("li"); li.textContent = l.replace(/^- /, ""); ul.appendChild(li); });
+        div.appendChild(ul);
+      } else {
+        var p = document.createElement("p");
+        var head = lines.filter(function (l) { return !/^- /.test(l); });
+        p.textContent = head.join(" ");
+        div.appendChild(p);
+        if (bullets.length) {
+          var ul2 = document.createElement("ul");
+          bullets.forEach(function (l) { var li = document.createElement("li"); li.textContent = l.replace(/^- /, ""); ul2.appendChild(li); });
+          div.appendChild(ul2);
+        }
+      }
+    });
+    if (data.links && data.links.length) {
+      var lk = document.createElement("div"); lk.className = "t58-pc-links";
+      data.links.forEach(function (l) {
+        var a = document.createElement("a"); a.className = "t58-pc-link"; a.href = l.href; a.textContent = l.label + " \u2192";
+        lk.appendChild(a);
+      });
+      div.appendChild(lk);
+    }
+    if (data.followups && data.followups.length) {
+      var fu = document.createElement("div"); fu.className = "t58-pc-follow";
+      data.followups.forEach(function (f) {
+        var b = document.createElement("button"); b.type = "button"; b.className = "t58-pc-chip"; b.textContent = f.label;
+        b.addEventListener("click", function () { ask(f.label, f.id); });
+        fu.appendChild(b);
+      });
+      div.appendChild(fu);
+    }
+    els.messages.appendChild(div);
+    els.messages.scrollTop = els.messages.scrollHeight;
+  }
+
+  function showTopics() {
+    var w = document.getElementById("t58-pc-welcome");
+    if (w && w.parentNode) w.parentNode.removeChild(w);
+    fetch(API_BASE + "/coach/topics").then(function (r) { return r.json(); }).then(function (d) {
+      var div = document.createElement("div"); div.className = "t58-pc-msg assistant rich";
+      var p = document.createElement("p"); p.textContent = "Pick a topic and I will answer. Or type your own question."; div.appendChild(p);
+      (d.topics || []).forEach(function (t) {
+        if (!t.items.length) return;
+        var det = document.createElement("details"); det.className = "t58-pc-topic";
+        var sm = document.createElement("summary"); sm.textContent = t.label + " (" + t.items.length + ")"; det.appendChild(sm);
+        t.items.forEach(function (it) {
+          var b = document.createElement("button"); b.type = "button"; b.className = "t58-pc-topic-q"; b.textContent = it.label;
+          b.addEventListener("click", function () { ask(it.label, it.id); });
+          det.appendChild(b);
+        });
+        div.appendChild(det);
+      });
+      els.messages.appendChild(div); els.messages.scrollTop = els.messages.scrollHeight;
+    }).catch(function () { appendMessageEl("error", "Could not load the topic list."); });
+  }
+
+  function ask(text, entry) {
+    if (!state.project || !text) return;
+    appendMessageEl("user", text);
+    els.sendBtn.disabled = true;
+    els.typing.hidden = false;
+    var payload = { message: text, page: location.pathname };
+    if (entry) payload.entry = entry;
+    apiFetch("/" + state.project.id + "/chat", { method: "POST", body: JSON.stringify(payload) })
+      .then(function (data) {
+        els.typing.hidden = true;
+        els.sendBtn.disabled = false;
+        if (data.error) { appendMessageEl("error", data.error); return; }
+        appendCoachReply(data);
+        if (data.project) state.project = data.project;
+      })
+      .catch(function () {
+        els.typing.hidden = true;
+        els.sendBtn.disabled = false;
+        appendMessageEl("error", "Request failed. Check that the app is still running and try again.");
+      });
+  }
+
   function sendMessage(event) {
     if (event && event.preventDefault) event.preventDefault();
     if (!state.project) return;
@@ -368,28 +459,7 @@
     if (!text) return;
     els.input.value = "";
     els.input.style.height = "auto";
-    appendMessageEl("user", text);
-    els.sendBtn.disabled = true;
-    els.typing.hidden = false;
-
-    apiFetch("/" + state.project.id + "/chat", { method: "POST", body: JSON.stringify({ message: text }) })
-      .then(function (data) {
-        els.typing.hidden = true;
-        els.sendBtn.disabled = false;
-        if (data.error) {
-          var div = appendMessageEl("error", data.error + " (Coach's chat runs on your local AI model; the Updates tab still works without it.)");
-          div.className = "t58-pc-msg error";
-          return;
-        }
-        appendMessageEl("assistant", data.reply || "");
-        if (data.project) state.project = data.project;
-      })
-      .catch(function () {
-        els.typing.hidden = true;
-        els.sendBtn.disabled = false;
-        var div = appendMessageEl("error", "Request failed -- check your connection and try again.");
-        div.className = "t58-pc-msg error";
-      });
+    ask(text);
   }
 
   // -------------------------------------------------------------------

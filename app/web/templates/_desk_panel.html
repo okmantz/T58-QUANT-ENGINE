@@ -1,0 +1,39 @@
+{# Agent Desk panel (was the /desk page). Rendered inside Strategy Library > Research. Needs: roles, board, n_artifacts. #}
+  <div class="rs-lead">
+    <p>Nine roles take a strategy idea from lead to decision. The builder, the verifier and the quant are three different agents, and nobody grades their own work. The desk enforces that when it files, not by convention.</p>
+    <div class="ds-row"><span class="ds-badge info">{{ n_artifacts }} artifact{{ '' if n_artifacts == 1 else 's' }} on record</span>
+      <button class="primary t58-btn primary" id="scout-btn" type="button">Ask the scout for leads</button></div>
+  </div>
+
+  <div id="leads" class="ds-stack" style="margin-bottom:24px"></div>
+
+  <h2 style="margin:0 0 12px">Candidates</h2>
+  {% if board %}
+  <div class="card" style="padding:0;overflow:auto"><table>
+    <thead><tr><th>Candidate</th><th>Lead</th><th>Spec</th><th>Analysis</th><th>Build</th><th>Verifier</th><th>Quant</th><th>Decision</th></tr></thead>
+    <tbody>
+    {% for r in board %}<tr>
+      <td><strong>{{ r.candidate }}</strong></td>
+      {% for k in ['lead','spec','analysis','build','verification','quant_review'] %}
+      <td>{% set v = r[k] %}{% if not v %}<span class="ds-badge mute">—</span>{% elif v == 'PASS' %}<span class="ds-badge ok">pass</span>{% elif v == 'MARGINAL' %}<span class="ds-badge warn">marginal</span>{% elif v in ('FAIL',) %}<span class="ds-badge bad">fail</span>{% elif v == 'NOT_MEASURED' %}<span class="ds-badge mute">not measured</span>{% else %}<span class="ds-badge ok">filed</span>{% endif %}</td>
+      {% endfor %}
+      <td>{% set d = r.decision %}{% if not d %}<span class="ds-badge mute">open</span>{% elif d == 'PROMOTE' %}<span class="ds-badge ok">promote</span>{% elif d == 'FORWARD_TEST' %}<span class="ds-badge info">forward test</span>{% elif d == 'REWORK' %}<span class="ds-badge warn">rework</span>{% else %}<span class="ds-badge bad">reject</span>{% endif %}</td>
+    </tr>{% endfor %}
+    </tbody></table></div>
+  {% else %}
+  <div class="ds-empty">No candidates yet. Ask the scout for leads: it proposes open, well-evidenced families that the research ledger shows are under-tested.</div>
+  {% endif %}
+
+  <h2 style="margin:32px 0 12px">The desk</h2>
+  <div class="ds-grid cols-3">
+    {% for r in roles %}
+    <div class="card">
+      <div class="ds-row" style="justify-content:space-between"><strong style="font-size:15px">{{ r.title }}</strong><span class="ds-badge mute">{{ r.agent }}</span></div>
+      <p class="help" style="margin:8px 0 10px">{{ r.purpose }}</p>
+      <div class="ds-row" style="gap:6px"><span class="ds-badge info">files: {{ r.makes }}</span>
+        {% if r.reads %}<span class="help">reads {{ r.reads|join(', ') }}</span>{% else %}<span class="help">reads nothing from the desk</span>{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="ds-note" style="margin-top:28px"><strong>Separation rules.</strong> One agent holds one role. A review names the build it grades and its author may not appear anywhere in that build's lineage. The builder never reads reviews. The verifier and the quant never read each other's verdicts before filing their own. A decision to forward-test or promote needs a PASS from the verifier and a PASS (or, for a forward test, MARGINAL) from the quant, from different agents on the same build. The desk never lifts a pipeline verdict.</div>

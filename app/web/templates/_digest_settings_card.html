@@ -1,0 +1,39 @@
+<div class="card" id="digest-settings">
+  <h2>Weekly digest email</h2>
+  <p class="help" style="max-width:600px;">Every Sunday morning T58 emails you a clean report of your week: what you tested, what failed, which strategy is closest to READY, and one clear next step. It is built only from results saved on your computer and goes to <strong id="dg-email">the email you log in with</strong>. It is on by default.</p>
+  <label class="dg-switch" style="display:flex;align-items:center;gap:12px;cursor:pointer;margin:6px 0 10px;">
+    <input type="checkbox" id="dg-enabled" style="width:18px;height:18px;accent-color:var(--teal);">
+    <span style="font-weight:650;">Send me the weekly digest</span>
+  </label>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <button type="button" class="secondary-btn" id="dg-test">Send me a test now</button>
+    <a class="secondary-btn" id="dg-preview" style="text-decoration:none;display:inline-block" href="/api/digest/preview.html" target="_blank" rel="noopener">Preview the email</a>
+  </div>
+  <p class="field-note" id="dg-msg" aria-live="polite">&nbsp;</p>
+  <script>
+  (function () {
+    var cb = document.getElementById('dg-enabled'), msg = document.getElementById('dg-msg'), em = document.getElementById('dg-email'), test = document.getElementById('dg-test');
+    function say(t) { msg.textContent = t; }
+    function paint(d) {
+      cb.checked = !!d.enabled; if (d.email) em.textContent = d.email;
+      var parts = [];
+      parts.push(d.enabled ? 'On. Next email: ' + d.next_send + '.' : 'Off. You will not receive the weekly email.');
+      if (!d.route) parts.push('Heads up: this install cannot send email yet (no license-server connection or email account).');
+      if (d.last_error) parts.push('Last problem: ' + d.last_error);
+      say(parts.join(' '));
+    }
+    fetch('/api/digest/prefs').then(function (r) { return r.json(); }).then(paint).catch(function () { say('Could not load the digest setting.'); });
+    cb.addEventListener('change', function () {
+      fetch('/api/digest/prefs', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({enabled: cb.checked})})
+        .then(function (r) { return r.json(); }).then(paint).catch(function () { say('Could not save.'); });
+    });
+    test.addEventListener('click', function () {
+      test.disabled = true; say('Sending a test...');
+      fetch('/api/digest/test', {method: 'POST'}).then(function (r) { return r.json(); })
+        .then(function (d) { say(d.ok ? (d.message || 'Test sent. Check your inbox (and spam folder).') : ('Not sent: ' + (d.message || 'unknown problem'))); })
+        .catch(function () { say('Not sent: could not reach the app.'); })
+        .then(function () { test.disabled = false; });
+    });
+  })();
+  </script>
+</div>

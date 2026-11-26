@@ -238,6 +238,12 @@ def main() -> None:
         vault.start_background()
     except Exception:  # noqa: BLE001
         pass
+    try:
+        os.environ.setdefault("T58_PUBLIC_URL", f"http://localhost:{port}")
+        from app.inbox import digest_email  # noqa: WPS433
+        digest_email.start_scheduler()      # weekly digest email, Sundays; opt-out in Account settings
+    except Exception:  # noqa: BLE001
+        pass
 
     print_startup_banner(url, qr_path)
     from app.web.server import _start_lifecycle  # noqa: WPS433

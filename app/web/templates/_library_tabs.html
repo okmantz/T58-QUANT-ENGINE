@@ -1,6 +1,7 @@
-{# Strategy Library page tabs. Set lib_tab ('strategies' or 'graveyard') before including. The Strategy Graveyard used to be its own sidebar entry; it is a tab here now. #}
+{# Strategy Library page tabs. Set lib_tab ('strategies', 'research' or 'graveyard') before including. The Strategy Graveyard, the Agent Desk and the Research Ledger used to be their own sidebar entries; they are tabs here now (Research = Agent Desk + Research Ledger). #}
 <link rel="stylesheet" href="/static/page-tabs.css">
 <nav class="t58-ptabs" aria-label="Strategy Library pages">
   <a href="/library"{% if lib_tab == 'strategies' %} class="on" aria-current="page"{% endif %}><svg class="lu"><use href="#lu-library"/></svg>Strategies</a>
+  <a href="/library/research"{% if lib_tab == 'research' %} class="on" aria-current="page"{% endif %}><svg class="lu"><use href="#lu-microscope"/></svg>Research</a>
   <a href="/graveyard"{% if lib_tab == 'graveyard' %} class="on" aria-current="page"{% endif %}><svg class="lu"><use href="#lu-skull"/></svg>Graveyard</a>
 </nav>
