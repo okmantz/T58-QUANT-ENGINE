@@ -21,7 +21,7 @@ sys.argv = [x for x in sys.argv if x != "--ports"]
 
 def build(which, p, sealed=False):
     pk = json.loads((ROOT / f"BOT-{which}" / "params.json").read_text())
-    if PORTS:                                # use the repo-format strategy files (strategies/python/*_t58.py) for the new legs
+    if PORTS:                                # use the repo-format strategy files (strategies/python/*_1m_v1.py) for the new legs
         LG.use_ports(); S._B.clear()
     bk, pol = r4.book_pol(pk, p, sealed=sealed)
     return bk, pol, pk["plan"]

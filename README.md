@@ -344,9 +344,9 @@ policy and does not apply the round-6 entry filters, so live demo results will n
 
 ## Repository layout
 
-`app/` the application (web UI, engines, bots) · `strategies/` the 13 strategy files the bots use + the Gate 27 EA + the Pine port · `tests/` · `data/raw/` ES / NQ / GC 1-minute history ·
+`app/` the application (web UI, engines, bots) · `strategies/` the 13 Python strategy files the bots use + the Gate 27 EA + the Pine port · `tests/` · `data/raw/` ES / NQ / GC 1-minute history ·
 `docs/` guides and the three bot records · `research/` reading lists and papers for the AI assist, plus `t58_final_bots/` (the bot research engine, frozen picks and seals) ·
-`results/t58_final_bots/` round-6 research output · `scripts/` command-line tools · `launchers/`, `build_tools/`, `license_server/`, `license_sheet/` packaging and licensing · `assets/` branding.
+`scripts/` command-line and CI tools · `launchers/`, `build_tools/`, `license_server/`, `license_sheet/` packaging and licensing · `assets/` branding.
 
 ## Tests
 

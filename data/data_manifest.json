@@ -14,7 +14,7 @@
    "synthetic": false,
    "roll_gaps": "18 splice(s), 6 interleaved flip(s)",
    "spec_resolved": true,
-   "round_trip_cost_usd": 54.2,
+   "round_trip_cost_usd": 28.5,
    "cost_source": "registry default"
   },
   {
@@ -29,7 +29,7 @@
    "synthetic": false,
    "roll_gaps": "19 splice(s), 17 interleaved flip(s)",
    "spec_resolved": true,
-   "round_trip_cost_usd": 45.1,
+   "round_trip_cost_usd": 24.6,
    "cost_source": "registry default"
   },
   {
@@ -44,7 +44,7 @@
    "synthetic": false,
    "roll_gaps": "15 splice(s), 0 interleaved flip(s)",
    "spec_resolved": true,
-   "round_trip_cost_usd": 24.2,
+   "round_trip_cost_usd": 13.5,
    "cost_source": "registry default"
   }
  ]

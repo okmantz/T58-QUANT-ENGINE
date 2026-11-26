@@ -86,7 +86,7 @@ def test_new_t58_strategies_are_flat_on_tiny_data():
     ts = pd.date_range("2026-01-05 14:30", periods=400, freq="1min", tz="UTC")
     px = 100 + np.cumsum(np.random.default_rng(0).normal(0, 0.1, len(ts)))
     df = pd.DataFrame({"timestamp": ts, "open": px, "high": px + 0.1, "low": px - 0.1, "close": px, "volume": 1.0})
-    files = sorted((ROOT / "strategies" / "python").glob("*_t58.py"))
+    files = [ROOT / "strategies" / "python" / Path(LEG_FILES[k][0]).name for k in ("ORB15C_NQ", "ORB15C_ES", "ORB30T_NQ", "VWPB_NQ", "GAP_GC", "PDLB_GC")]
     assert files
     for p in files:
         s = _load(p).generate_signals(df)

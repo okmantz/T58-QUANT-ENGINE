@@ -18,7 +18,7 @@ WHO = {"BOT-A-R1": picks.BOT_A, "BOT-B-R1": picks.BOT_B, "BOT-B-R2": picks_r2.BO
 def plan_of(name, cost):
     return firm.Plan(cost=cost) if name == "pro50" else firm.Plan.flex50(cost=cost)
 def book_pol(who, p, sealed):
-    if who.endswith("-port"):          # the same pick with its factory legs replaced by the repo-style files (strategies/python/*_t58.py)
+    if who.endswith("-port"):          # the same pick with its factory legs replaced by the repo-style files (strategies/python/*_1m_v1.py)
         keep = dict(LG.CAND); LG.use_ports(); S._B.clear()
         try: return book_pol(who[:-5], p, sealed)
         finally: LG.CAND.clear(); LG.CAND.update(keep); S._B.clear()

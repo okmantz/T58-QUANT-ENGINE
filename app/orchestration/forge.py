@@ -509,6 +509,7 @@ def run_forge(
         if s.best_score is not None
     }
     stage3_rejects = [r for r in stage3_records if not r.get("passed_stage3_gate")]
+    from app.search.batch_runner import _graveyard_diag_kwargs  # lazy: batch_runner imports this package's siblings
     grave_entries: list[GraveyardEntry] = []
     for rec in stage3_rejects:
         diag = diagnose_candidate(

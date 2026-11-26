@@ -9,7 +9,6 @@ import factory as F, book, baseline as B
 CAND = {
     "OD_NQ":     ("repo", "OpenDrive_NQ_5m_v1", "NQ"),
     "CDL_NQ":    ("repo", "ContextDriveLong_NQ_1m_v2", "NQ"),
-    "CDLB_NQ":   ("repo", "ContextDriveLongBracket_NQ_1m_v1", "NQ"),
     "IR_NQ":     ("repo", "IndRule_NQ_15m_v1", "NQ"),
     "CDL_ES":    ("repo", "ContextDriveLong_NQ_1m_v2", "ES"),
     "ORB15_NQ":  ("fam", (F.fam_orb, dict(k=15, stop="opp", R=2.0, filt="none", cut=150)), "NQ"),
@@ -27,9 +26,9 @@ CAND = {
 }
 
 PORT_DIR = "strategies/python/"
-PORTS = {"ORB15C_NQ": "ORB15Compression_NQ_1m_t58", "ORB15C_ES": "ORB15Compression_ES_1m_t58", "ORB30T_NQ": "ORB30Trend_NQ_1m_t58",
-         "VWPB_NQ": "VWAPPullback_NQ_1m_t58", "PDLB_GC": "PriorDayBreak_GC_1m_t58",
-         "GAP_GC": "GapTrend_GC_1m_t58"}
+PORTS = {"ORB15C_NQ": "ORB15Compression_NQ_1m_v1", "ORB15C_ES": "ORB15Compression_ES_1m_v1", "ORB30T_NQ": "ORB30Trend_NQ_1m_v1",
+         "VWPB_NQ": "VWAPPullback_NQ_1m_v1", "PDLB_GC": "PriorDayBreak_GC_1m_v1",
+         "GAP_GC": "GapTrend_GC_1m_v1"}
 def use_ports():
     for k, stem in PORTS.items(): CAND[k] = ("port", stem, CAND[k][2])
 

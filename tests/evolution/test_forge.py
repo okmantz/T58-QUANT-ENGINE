@@ -141,3 +141,33 @@ def test_graveyard_skip_disabled_by_config(tmp_path):
     )
     assert not any(s.name.startswith("Graveyard pre-filter") for s in result.funnel)
     assert result.funnel[0].n_out == 6
+
+
+def test_stage3_rejections_are_diagnosed_and_logged_to_the_graveyard(tmp_path, monkeypatch):
+    """A candidate that clears Stage 2 but fails the Stage 3 gate must be diagnosed and written to the graveyard WITH its edge
+    diagnostics; run_forge used to raise NameError on exactly this path (the helper was never imported), which no other test reaches
+    because the tiny synthetic runs never get a candidate to Stage 3."""
+    import app.orchestration.forge as forge
+    from types import SimpleNamespace
+    from app.search.graveyard import load_graveyard
+
+    rejected = {
+        "candidate_id": "stage3_dead_1", "family": "trend_breakout", "passed_stage3_gate": False, "composite_score": 0.1,
+        "statistics": {}, "mc_summary": {"evaluation_pass_probability": 12.0}, "robustness": {"stability_ratio": 40.0},
+        "walk_forward": {}, "config": {"fast": 5, "slow": 20},
+        "graveyard_diag": {"n_trades": 120, "net_profit": -350.0, "avg_r_net": -0.04, "profit_factor": 0.9},
+    }
+
+    class _FakeDB:
+        def __init__(self, *_a, **_k): pass
+        def leaderboard(self, *_a, stage=None, **_k): return [rejected] if stage == "stage3" else []
+        def __getattr__(self, _name): return lambda *_a, **_k: None   # every other ResultsDB call is a no-op
+
+    monkeypatch.setattr(forge, "ResultsDB", _FakeDB)
+    monkeypatch.setattr(forge, "run_search", lambda *a, **k: SimpleNamespace(run_id="r1", stage1_survivors=1, stage2_survivors=1))
+    grave = tmp_path / "graveyard.jsonl"
+    run_forge(_trending_df(), RiskConfig(), PropRules(), _tiny_config(), db_path=str(tmp_path / "forge.db"),
+              instrument="TEST", timeframe="5m", graveyard_path=grave)
+    rows = [r for r in load_graveyard(path=grave, _install=False) if r.get("candidate_id") == "stage3_dead_1"]
+    assert rows, "the Stage 3 rejection never reached the graveyard"
+    assert rows[0].get("n_trades") == 120 and rows[0].get("instrument") == "TEST" and rows[0].get("timeframe") == "5m"

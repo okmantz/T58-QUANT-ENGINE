@@ -47,7 +47,7 @@ Pass and payout metrics average rolling account starts in each split; trade metr
 | Consistency blocks per 30d | 0.41 | 0.31 | 0.75 | 0.78 | 0.11 | 0.07 |
 | Trades a month | 29.27 | 29.04 | 32.72 | 21.84 | 23.25 | 25.23 |
 
-Repo-format legs (strategies/python/*_t58.py, causal bar-count filter; what the zip ships):
+Repo-format legs (strategies/python/*_1m_v1.py, causal bar-count filter; what the zip ships):
 
 | Metric | Research base | Research stress | Validation base | Validation stress | Holdout base | Holdout stress |
 |---|---|---|---|---|---|---|

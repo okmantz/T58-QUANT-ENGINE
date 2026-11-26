@@ -53,12 +53,12 @@ LEG_FILES = {
     "OD_NQ": ["python/OpenDrive_NQ_5m_v1.py", "Open Drive", "NQ", 45, "Opening-drive continuation, one shot a day."],
     "OD_ES": ["python/OpenDrive_NQ_5m_v1.py", "Open Drive ES", "ES", 45, "Opening-drive continuation on the S&P 500 future."],
     "CORB_ES": ["python/CompressionORB_ES_5m_v1.py", "Compression ORB", "ES", 30, "S&P 500 opening-range breakout after a quiet day."],
-    "ORB15C_NQ": ["python/ORB15Compression_NQ_1m_t58.py", "ORB15 compression NQ", "NQ", 30, "15m ORB after a compressed day, 3R."],
-    "ORB15C_ES": ["python/ORB15Compression_ES_1m_t58.py", "ORB15 compression ES", "ES", 30, "15m ORB after a compressed day, 2R."],
-    "ORB30T_NQ": ["python/ORB30Trend_NQ_1m_t58.py", "ORB30 with trend NQ", "NQ", 45, "30m ORB with the 20-day trend, 3R."],
-    "VWPB_NQ": ["python/VWAPPullback_NQ_1m_t58.py", "VWAP pullback NQ", "NQ", 45, "VWAP pullback in the daily trend, 2R."],
-    "GAP_GC": ["python/GapTrend_GC_1m_t58.py", "Gap with trend GC", "GC", 45, "Opening gap with the 20-day trend, 3R."],
-    "PDLB_GC": ["python/PriorDayBreak_GC_1m_t58.py", "Prior-day break GC", "GC", 200, "Prior-day break in a quiet regime, 3R."],
+    "ORB15C_NQ": ["python/ORB15Compression_NQ_1m_v1.py", "ORB15 compression NQ", "NQ", 30, "15m ORB after a compressed day, 3R."],
+    "ORB15C_ES": ["python/ORB15Compression_ES_1m_v1.py", "ORB15 compression ES", "ES", 30, "15m ORB after a compressed day, 2R."],
+    "ORB30T_NQ": ["python/ORB30Trend_NQ_1m_v1.py", "ORB30 with trend NQ", "NQ", 45, "30m ORB with the 20-day trend, 3R."],
+    "VWPB_NQ": ["python/VWAPPullback_NQ_1m_v1.py", "VWAP pullback NQ", "NQ", 45, "VWAP pullback in the daily trend, 2R."],
+    "GAP_GC": ["python/GapTrend_GC_1m_v1.py", "Gap with trend GC", "GC", 45, "Opening gap with the 20-day trend, 3R."],
+    "PDLB_GC": ["python/PriorDayBreak_GC_1m_v1.py", "Prior-day break GC", "GC", 200, "Prior-day break in a quiet regime, 3R."],
 }
 
 
