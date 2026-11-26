@@ -1,4 +1,4 @@
-"""Shipped bots follow their recipe revision: an old, idle copy is refreshed once; a running one is left alone; Objective B ships the 5-winning-days book."""
+"""Shipped bots follow their recipe revision: an old, idle copy is refreshed once; a running one is left alone; Objective B ships the round-4 twelve-leg book."""
 from __future__ import annotations
 
 import json
@@ -7,9 +7,9 @@ from app.bots import store
 from app.bots.presets import PRESET_REV, preset_configs
 
 
-def test_payout_hunter_is_the_four_leg_winning_days_book():
+def test_payout_hunter_is_the_twelve_leg_flex_book():
     b = next(c for c in preset_configs() if c.id == "bot-payout")
-    assert [(lg.label, lg.weight) for lg in b.legs] == [("Open Drive", 0.25), ("Ind Rule", 2.0), ("Open Drive ES", 0.25), ("Compression ORB", 0.5)]
+    assert len(b.legs) == 12 and b.legs[0].label == "Context Drive Long" and b.legs[-1].label == "Gap with trend GC"
     assert b.preset_rev == PRESET_REV and "five days of $150" in b.description
 
 
@@ -26,7 +26,7 @@ def test_old_idle_copy_is_refreshed_and_history_cleared():
     store.list_bots()
     _age("bot-payout", "stopped")
     rec = next(r for r in store.list_bots() if r["config"]["id"] == "bot-payout")
-    assert rec["config"]["preset_rev"] == PRESET_REV and len(rec["config"]["legs"]) == 4
+    assert rec["config"]["preset_rev"] == PRESET_REV and len(rec["config"]["legs"]) == 12
     assert rec["trades"] == [] and any("newest recipe" in e["text"] for e in rec["events"])
 
 

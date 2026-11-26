@@ -73,11 +73,12 @@ def test_twin_genes_sit_inside_their_own_bounds(path):
 
 def test_gate27_declares_a_low_trade_floor_and_default_is_unchanged_elsewhere():
     g27 = next(p for p in MQ if p.name.startswith("Gate27_Basket_Daily_v1"))
-    assert declared_min_trades(MQL5Strategy(g27.read_text(encoding="utf-8"))) == 30
-    assert effective_min_trades(MQL5Strategy(g27.read_text(encoding="utf-8")), 100) == 30
-    other = next(p for p in MQ if p.name.startswith("GoLong_"))
-    assert effective_min_trades(MQL5Strategy(other.read_text(encoding="utf-8")), 100) == 100
-    assert effective_min_trades(MQL5Strategy(g27.read_text(encoding="utf-8")), 10) == 10    # only ever lowers the floor
+    code = g27.read_text(encoding="utf-8")
+    assert declared_min_trades(MQL5Strategy(code)) == 30
+    assert effective_min_trades(MQL5Strategy(code), 100) == 30
+    other = MQL5Strategy(code.replace("// T58_MIN_TRADES=30", ""))        # the same EA with no floor declared: the default must not move
+    assert effective_min_trades(other, 100) == 100
+    assert effective_min_trades(MQL5Strategy(code), 10) == 10             # only ever lowers the floor
 
 
 def test_float_gene_bounds_never_cross_zero():

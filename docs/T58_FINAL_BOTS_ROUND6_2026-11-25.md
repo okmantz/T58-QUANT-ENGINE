@@ -65,6 +65,6 @@ consistency blocks than the baseline, and it lost more than round-4 B in 2026.
 On Pro, BOT-A also pays more than BOT-B (90-day paid $1,128 / $909 vs $351 / $485), so for Pro the A bot is the one to run.
 
 ## What changed in the package
-final/BOT-A/params.json (round-6; round 4 kept as params_r4.json), app/bots/t58_final_bots.py (T58_PICKS["A"], T58_ENTRY_FILTERS),
+final/BOT-A/params.json (round-6; round 4 kept as params_r4.json), app/bots/presets.py (T58_PICKS["A"], T58_ENTRY_FILTERS; since the 2026-11-25 cleanup these are the shipped Evaluation Passer),
 pine/T58_BOT.pine (A: $920 risk and the five filters via CBOE:VIX, CBOE:VIX3M, USI:TICK daily and a prior-session value area; round 4
 kept as T58_BOT_r4.pine). The Pine file has NOT been compile-checked: the TradingView daily quota was used up. run_bot.py takes pro100.

@@ -119,6 +119,6 @@ def test_builder_expands_gate27_into_two_swing_legs_and_keeps_their_symbols():
 def test_shipped_presets_use_the_winning_legs():
     from app.bots.presets import preset_configs
     by = {c.id: c for c in preset_configs()}
-    assert [lg.weight for lg in by["bot-pass"].legs] == [1.0, 3.0, 1.0]
+    assert [lg.weight for lg in by["bot-pass"].legs] == [1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5]
     assert any(lg.kind == "gate27" for lg in by["bot-profit"].legs) and not any(lg.kind == "gate27" for lg in by["bot-pass"].legs + by["bot-payout"].legs)
-    assert by["bot-payout"].governor["funded_mult"] == 1.0
+    assert abs(by["bot-payout"].governor["funded_mult"] - 250.0 / 300.0) < 1e-9      # $250 funded risk vs $300 in the evaluation

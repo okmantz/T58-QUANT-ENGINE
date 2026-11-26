@@ -40,7 +40,7 @@ Everything stays on your computer.
 
 [Run it](#run-it) · [Workflow](#workflow) · [Discovery Engine](#discovery-engine) · [Verdicts and scoring](#verdicts-and-scoring) ·
 [Monte Carlo](#monte-carlo) · [Champion and Deployment](#champion-and-deployment) · [Library and research](#library-and-research) ·
-[Account, ranks and themes](#account-ranks-and-themes) · [Settings and defaults](#settings-and-defaults) · [Strategy formats](#strategy-formats) · [Tests](#tests)
+[Account, ranks and themes](#account-ranks-and-themes) · [Settings and defaults](#settings-and-defaults) · [Strategy formats](#strategy-formats) · [Trading bots](#trading-bots) · [Tests](#tests)
 
 ## Run it
 
@@ -327,6 +327,26 @@ leaderboards: nothing in the app talks to a T58 server for that.
 Not supported: `CopyBuffer()` handles, custom indicators, multi-symbol logic, trailing stops.
 
 Both fail loudly on anything unsupported instead of producing a silently wrong backtest.
+
+## Trading bots
+
+Three bots ship, one per objective (`app/bots/presets.py`; the Deploy page and Trading Bots page run them on the T58 demo account, paper or a broker):
+
+| Bot | Objective | Account | Legs | Record |
+|---|---|---|---|---|
+| Evaluation Passer | A: pass the evaluation | Lucid Pro 50K | 7 (Context Drive Long, 15m ORB after a compressed day, Ind Rule, Open Drive, Gold prior-day break) | [docs/T58_FINAL_BOTS_ROUND6_2026-11-25.md](docs/T58_FINAL_BOTS_ROUND6_2026-11-25.md) |
+| Payout Hunter | B: first and repeat payouts | LucidFlex 50K | 12 on NQ / ES / GC at small fixed risk | [docs/T58_FINAL_BOTS_PERFORMANCE_2026-11-24.md](docs/T58_FINAL_BOTS_PERFORMANCE_2026-11-24.md) |
+| Net Profit Compounder | C: compound net wealth | rule-free sandbox | 6 intraday sleeves + 15m Compression ORB + Gate 27 swing basket | [docs/T58_THREE_BOTS_2026-11-20.md](docs/T58_THREE_BOTS_2026-11-20.md) |
+
+Each leg is a file in `strategies/python/` (or the built-in Gate 27 basket). Every number above comes from the research engine in `research/t58_final_bots/`
+(`run_bot.py` reproduces a bot's scores; `scripts/run_t58_final_bots.py A|B` is the shortcut). The app's runtime governor is an approximation of that engine's sizing
+policy and does not apply the round-6 entry filters, so live demo results will not match the research tables exactly.
+
+## Repository layout
+
+`app/` the application (web UI, engines, bots) · `strategies/` the 13 strategy files the bots use + the Gate 27 EA + the Pine port · `tests/` · `data/raw/` ES / NQ / GC 1-minute history ·
+`docs/` guides and the three bot records · `research/` reading lists and papers for the AI assist, plus `t58_final_bots/` (the bot research engine, frozen picks and seals) ·
+`results/t58_final_bots/` round-6 research output · `scripts/` command-line tools · `launchers/`, `build_tools/`, `license_server/`, `license_sheet/` packaging and licensing · `assets/` branding.
 
 ## Tests
 

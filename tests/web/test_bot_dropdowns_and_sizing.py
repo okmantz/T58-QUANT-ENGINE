@@ -78,9 +78,10 @@ def test_leg_weight_is_applied_before_the_caps():
 
 def test_shipped_presets_are_adaptive():
     from app.bots.presets import preset_configs
+    # A and B ship the frozen round-6 policy (no pace/streak knobs); the NET compounder is the adaptive one.
     gov = {c.preset_key: c.governor for c in preset_configs()}
-    for g in gov.values():
-        assert g.get("pace_max_mult", 1.0) > 1.0 or g.get("streak_mult", 1.0) < 1.0
+    g = gov["profit"]
+    assert (g.get("pace_max_mult") or 1.0) > 1.0 or (g.get("streak_mult") or 1.0) < 1.0
 
 
 def test_demo_account_day_rolls_without_a_booked_trade(tmp_path, monkeypatch):

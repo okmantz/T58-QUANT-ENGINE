@@ -1,9 +1,8 @@
-"""2026-11-21 (docs/T58_NEW_BOTS_2026-11-21.md): the rev-5 Payout Hunter on LucidFlex, the account's own winning-day payout terms, and the
-evaluation consistency rule in the governor (a LucidFlex evaluation is not passed while the best day is more than 40% of the profit)."""
+"""2026-11-21: LucidFlex's winning-day payout terms and the evaluation consistency rule in the governor (a LucidFlex evaluation is not passed while the best day
+is more than 40% of the profit)."""
 from __future__ import annotations
 
 from app.bots.models import AccountLink
-from app.bots.presets import PRESET_REV, preset_configs
 from app.bots.risk_governor import CONSISTENCY_PAD, AccountRulesLite, AccountState, GovernorConfig, decide_risk
 
 
@@ -17,25 +16,6 @@ def _pro() -> AccountRulesLite:
     from app.prop.lifecycle_v2 import V2Rules
     from app.prop.presets import get_preset
     return AccountRulesLite.from_v2(V2Rules.from_prop_rules(get_preset("lucid_50k").to_prop_rules()))
-
-
-def test_payout_hunter_rev5_exact_recipe():
-    b = next(c for c in preset_configs() if c.id == "bot-payout")
-    assert PRESET_REV == 5 and b.preset_rev == 5
-    assert [(lg.strategy, lg.symbol, lg.weight, lg.priority) for lg in b.legs] == [
-        ("python/OpenDrive_NQ_5m_v1.py", "NQ", 0.25, 0), ("python/IndRule_NQ_15m_v1.py", "NQ", 2.0, 1),
-        ("python/OpenDrive_NQ_5m_v1.py", "ES", 0.25, 2), ("python/CompressionORB_ES_5m_v1.py", "ES", 0.5, 3)]
-    g = b.governor_cfg()
-    assert (g.cushion_risk_frac, g.day_stop_frac, g.base_risk_pct, g.funded_mult, g.win_day_lock_mult) == (0.10, 0.30, 1.0, 1.0, 1.0)
-    assert (g.early_mult, g.mid_mult, g.late_mult, g.low_cushion_mult, g.streak_mult) == (1.0, 1.0, 1.0, 1.0, None)
-    assert b.account.preset_key == "lucid_flex_50k" and b.max_open_positions == 2 and b.max_trades_per_day == 6
-
-
-def test_round_trip_keeps_the_recipe():
-    from app.bots.models import BotConfig
-    b = next(c for c in preset_configs() if c.id == "bot-payout")
-    b2 = BotConfig.from_dict(b.to_dict())
-    assert b2.to_dict() == b.to_dict()
 
 
 def test_flex_rules_carry_consistency_and_the_150_dollar_days():

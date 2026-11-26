@@ -44,7 +44,7 @@ def test_leg_weight_reaches_the_sizer(nq_slice):
     st = build_bot_strategy("bot-pass")
     out = st.generate(nq_slice)
     assert out.size_multiplier is not None
-    assert float(out.size_multiplier.max()) >= 3.0 - 1e-9          # Ind Rule x3
+    assert float(out.size_multiplier.max()) >= 1.5 - 1e-9          # the x1.5 round-6 leg
     assert not is_vectorizable(out)                                  # the scalar engine sizes bot weights
 
 

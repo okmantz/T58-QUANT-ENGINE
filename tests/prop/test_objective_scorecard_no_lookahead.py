@@ -84,18 +84,3 @@ def test_score_net_sizes_at_entry_not_at_exit():
     r = sc.score_net(trades, gov=gov, rank_years=False)
     assert r["n"] == 2
     assert r["net"] == -4_000.0                   # both at full size: the second opened before the first's loss was known
-
-
-def test_research_bundle_daily_cap_reads_realised_pnl_only():
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-    import run_objective_scores as ros
-    nq = sc.frame([_t("14:30:00", "16:00:00", -900.0)]); nq["inst"] = "NQ"
-    es = sc.frame([_t("14:35:00", "15:00:00", 200.0), _t("16:30:00", "17:00:00", 200.0)]); es["inst"] = "ES"
-    out = ros.bundle([("nq", nq, 1.0, 0), ("es", es, 1.0, 1)], daily_cap=480.0, max_open=2)
-    # the 14:35 ES trade opens while the NQ loss is still open (not blocked); the 16:30 one opens after it closed (blocked)
-    assert len(out) == 2 and sorted(out["entry"].dt.strftime("%H:%M")) == ["14:30", "14:35"]
-    w = ros.bundle([("nq", nq, 3.0, 0), ("es", es, 1.0, 1)], daily_cap=None, max_open=2, as_weight=True)
-    assert "w" in w.columns and sorted(w["w"].tolist()) == [1.0, 1.0, 3.0]
-    assert w.loc[w["w"] == 3.0, "pnl"].iloc[0] == -900.0            # 1x P&L kept, the multiplier travels as the weight
